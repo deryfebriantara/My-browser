@@ -139,7 +139,7 @@ impl AppState {
         }
         for change in changes {
             if let UiChange::Notice(message) = change {
-                eprintln!("my-browser: {message}");
+                self.ui.nav.show_notice(&message);
             }
         }
     }

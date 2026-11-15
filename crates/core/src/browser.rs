@@ -212,6 +212,7 @@ impl<E: Engine> Browser<E> {
                 }
             }
             PageEvent::LoadFinished => {
+                tab.committed_url = tab.url.clone();
                 if tab.restore_scroll {
                     tab.restore_scroll = false;
                     let script = format!("window.scrollTo(0, {})", tab.scroll_y.round() as i64);
@@ -260,7 +261,22 @@ impl<E: Engine> Browser<E> {
                     self.pages[&id].reload();
                 }
             }
-            PageEvent::DownloadFinished(_) | PageEvent::DownloadFailed(_) => {}
+            PageEvent::DownloadStarted => {
+                tab.url = tab.committed_url.clone();
+                tab.loading = false;
+                self.dirty = true;
+                self.change(UiChange::Tabs);
+                if is_active {
+                    self.change(UiChange::Nav);
+                }
+            }
+            PageEvent::DownloadFinished(path) => {
+                let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                self.change(UiChange::Notice(format!("Selesai diunduh: {name}")));
+            }
+            PageEvent::DownloadFailed(message) => {
+                self.change(UiChange::Notice(format!("Gagal mengunduh: {message}")));
+            }
         }
     }
 
@@ -602,6 +618,49 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
     fn toggle_on_blank_tab_returns_none() {
         let (mut b, _log, _t0) = setup(None);
         assert_eq!(b.toggle_blocker_exception(), None);
+    }
+
+    #[test]
+    fn download_finished_emits_notice() {
+        let (mut b, _log, t0) = setup(None);
+        let a = b.tabs().active();
+        assert!(b.navigate("a.com", t0));
+        b.take_changes();
+        b.handle_event(a, PageEvent::DownloadFinished("/Users/x/Downloads/a.pdf".into()), t0);
+        assert!(b.take_changes().contains(&UiChange::Notice("Selesai diunduh: a.pdf".into())));
+    }
+
+    #[test]
+    fn download_failed_emits_notice() {
+        let (mut b, _log, t0) = setup(None);
+        let a = b.tabs().active();
+        assert!(b.navigate("a.com", t0));
+        b.take_changes();
+        b.handle_event(a, PageEvent::DownloadFailed("koneksi terputus".into()), t0);
+        assert!(b.take_changes().contains(&UiChange::Notice("Gagal mengunduh: koneksi terputus".into())));
+    }
+
+    #[test]
+    fn download_started_restores_last_committed_url() {
+        let (mut b, _log, t0) = setup(None);
+        let a = b.tabs().active();
+        assert!(b.navigate("a.com", t0));
+        b.handle_event(a, PageEvent::UrlChanged(u("https://a.com/")), t0);
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        b.handle_event(a, PageEvent::UrlChanged(u("https://cdn.a.com/file.zip")), t0);
+        b.handle_event(a, PageEvent::DownloadStarted, t0);
+        assert_eq!(b.tabs().get(a).unwrap().url.as_ref().unwrap().as_str(), "https://a.com/");
+    }
+
+    #[test]
+    fn download_in_fresh_tab_leaves_it_blank_and_out_of_session() {
+        let (mut b, _log, t0) = setup(None);
+        let a = b.tabs().active();
+        assert!(b.navigate("https://a.com/file.zip", t0));
+        b.handle_event(a, PageEvent::UrlChanged(u("https://cdn.a.com/file.zip")), t0);
+        b.handle_event(a, PageEvent::DownloadStarted, t0);
+        assert!(b.tabs().get(a).unwrap().url.is_none());
+        assert!(b.session_if_dirty().unwrap().tabs.is_empty());
     }
 
     #[test]

@@ -25,6 +25,8 @@ pub enum PageEvent {
     /// `true`: memutar media, memakai kamera/mikrofon, atau sedang download.
     MediaState(bool),
     Number { tag: JsTag, value: Option<f64> },
+    /// Navigasi terakhir berubah menjadi download; halaman tidak berganti.
+    DownloadStarted,
     DownloadFinished(PathBuf),
     DownloadFailed(String),
     ProcessCrashed,

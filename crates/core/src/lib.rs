@@ -10,3 +10,4 @@ pub mod browser;
 pub mod engine;
 pub mod youtube;
 pub mod blocking;
+pub mod downloads;

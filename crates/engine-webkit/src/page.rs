@@ -18,7 +18,7 @@ use objc2_web_kit::{
     WKMediaCaptureState, WKMediaPlaybackState, WKUserContentController, WKWebView, WKWebViewConfiguration,
     WKWebsiteDataStore,
 };
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use url::Url;
 
@@ -41,6 +41,7 @@ pub struct WebKitPage {
     observer: Retained<Observer>,
     _delegate: Retained<Delegate>,
     emitter: Emitter,
+    active_downloads: Rc<Cell<usize>>,
 }
 
 impl WebKitPage {
@@ -70,7 +71,8 @@ impl WebKitPage {
             webview.setInspectable(true)
         };
 
-        let delegate = Delegate::new(mtm, emitter.clone(), blocker, controller, blocking);
+        let active_downloads: Rc<Cell<usize>> = Rc::default();
+        let delegate = Delegate::new(mtm, emitter.clone(), blocker, controller, blocking, active_downloads.clone());
         unsafe {
             webview.setNavigationDelegate(Some(ProtocolObject::from_ref(&*delegate)));
             webview.setUIDelegate(Some(ProtocolObject::from_ref(&*delegate)));
@@ -88,7 +90,7 @@ impl WebKitPage {
             }
         }
 
-        Self { webview, observer, _delegate: delegate, emitter }
+        Self { webview, observer, _delegate: delegate, emitter, active_downloads }
     }
 }
 
@@ -120,13 +122,14 @@ impl Page for WebKitPage {
     }
 
     fn request_media_state(&self) {
-        let capturing = unsafe {
-            self.webview.cameraCaptureState() == WKMediaCaptureState::Active
-                || self.webview.microphoneCaptureState() == WKMediaCaptureState::Active
-        };
+        let busy = self.active_downloads.get() > 0
+            || unsafe {
+                self.webview.cameraCaptureState() == WKMediaCaptureState::Active
+                    || self.webview.microphoneCaptureState() == WKMediaCaptureState::Active
+            };
         let emitter = self.emitter.clone();
         let block = RcBlock::new(move |state: WKMediaPlaybackState| {
-            emitter.emit(PageEvent::MediaState(capturing || state == WKMediaPlaybackState::Playing));
+            emitter.emit(PageEvent::MediaState(busy || state == WKMediaPlaybackState::Playing));
         });
         unsafe { self.webview.requestMediaPlaybackStateWithCompletionHandler(&block) };
     }

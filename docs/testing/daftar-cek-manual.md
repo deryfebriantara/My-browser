@@ -55,3 +55,10 @@ Untuk uji manual, set `"sleep_idle_secs": 20` di `~/Library/Application Support/
 - [ ] Tampilan > Matikan Pemblokir untuk Situs Ini: halaman dimuat ulang dan iklan muncul lagi; centang menu ikut berubah
 - [ ] Menu itu nonaktif di tab kosong
 - [ ] YouTube masih memutar video dan login tetap ada
+
+## Task 11: Download
+
+Sudah diverifikasi otomatis (folder Downloads sementara): dua download bersamaan bernama sama menjadi `gitignore-main.zip` dan `gitignore-main (1).zip`; tab yang navigasinya berubah menjadi download tidak masuk sesi dan tidak mengunduh ulang saat aplikasi dibuka lagi.
+
+- [ ] Mengunduh sebuah PDF lewat link `download` dua kali menghasilkan `nama.pdf` dan `nama (1).pdf` di `~/Downloads`
+- [ ] Label "Selesai diunduh: ..." muncul di kanan nav bar lalu hilang setelah sekitar 6 detik

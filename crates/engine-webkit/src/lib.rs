@@ -2,6 +2,7 @@
 
 mod blocker;
 mod delegates;
+mod download_names;
 mod emitter;
 mod observer;
 mod page;

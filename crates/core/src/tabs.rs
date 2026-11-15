@@ -13,6 +13,8 @@ pub struct TabId(pub u64);
 pub struct Tab {
     pub id: TabId,
     pub url: Option<Url>,
+    /// URL halaman terakhir yang selesai dimuat (bukan URL sementara navigasi).
+    pub committed_url: Option<Url>,
     pub title: String,
     pub scroll_y: f64,
     pub video_time: Option<f64>,
@@ -31,6 +33,7 @@ impl Tab {
     fn new(id: TabId, url: Option<Url>, now: Instant) -> Self {
         Self {
             id,
+            committed_url: None,
             url,
             title: String::new(),
             scroll_y: 0.0,
