@@ -1,0 +1,80 @@
+//! Window utama: nav bar di atas, tab strip, lalu area konten.
+
+use crate::actions::ActionTarget;
+use crate::nav_bar::{self, NavBar};
+use crate::tab_strip::{self, TabStrip};
+use objc2::rc::Retained;
+use objc2::runtime::ProtocolObject;
+use objc2::{MainThreadMarker, MainThreadOnly};
+use objc2_app_kit::{NSAutoresizingMaskOptions, NSBackingStoreType, NSView, NSWindow, NSWindowStyleMask};
+use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
+use std::cell::RefCell;
+
+pub struct Ui {
+    pub window: Retained<NSWindow>,
+    pub nav: NavBar,
+    pub tabs: TabStrip,
+    pub content: Retained<NSView>,
+    pub target: Retained<ActionTarget>,
+    shown: RefCell<Option<Retained<NSView>>>,
+}
+
+impl Ui {
+    pub fn build(mtm: MainThreadMarker, target: Retained<ActionTarget>) -> Ui {
+        let rect = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(1280.0, 800.0));
+        let style = NSWindowStyleMask::Titled
+            | NSWindowStyleMask::Closable
+            | NSWindowStyleMask::Miniaturizable
+            | NSWindowStyleMask::Resizable;
+        let window = unsafe {
+            NSWindow::initWithContentRect_styleMask_backing_defer(
+                NSWindow::alloc(mtm),
+                rect,
+                style,
+                NSBackingStoreType::Buffered,
+                false,
+            )
+        };
+        unsafe { window.setReleasedWhenClosed(false) };
+        window.setTitle(&NSString::from_str("my-browser"));
+        window.setContentMinSize(NSSize::new(800.0, 500.0));
+        window.setDelegate(Some(ProtocolObject::from_ref(&*target)));
+        window.center();
+
+        let root = window.contentView().expect("window punya content view");
+        let size = root.bounds().size;
+        let (w, h) = (size.width, size.height);
+
+        let (bar, nav) = NavBar::build(mtm, w, h - nav_bar::HEIGHT, &target);
+        root.addSubview(&bar);
+
+        let tabs = TabStrip::build(mtm, w, h - nav_bar::HEIGHT - tab_strip::HEIGHT);
+        root.addSubview(tabs.view());
+
+        let content_h = h - nav_bar::HEIGHT - tab_strip::HEIGHT;
+        let content =
+            NSView::initWithFrame(NSView::alloc(mtm), NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(w, content_h)));
+        content.setAutoresizingMask(
+            NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
+        );
+        root.addSubview(&content);
+
+        Ui { window, nav, tabs, content, target, shown: RefCell::new(None) }
+    }
+
+    /// Mengganti view di area konten. `None` untuk tab kosong.
+    pub fn show_content(&self, view: Option<Retained<NSView>>) {
+        if let Some(old) = self.shown.borrow_mut().take() {
+            old.removeFromSuperview();
+        }
+        if let Some(view) = view {
+            view.setFrame(self.content.bounds());
+            self.content.addSubview(&view);
+            *self.shown.borrow_mut() = Some(view);
+        }
+    }
+
+    pub fn shown_view(&self) -> Option<Retained<NSView>> {
+        self.shown.borrow().clone()
+    }
+}
