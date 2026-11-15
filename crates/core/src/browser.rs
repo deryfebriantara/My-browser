@@ -20,6 +20,17 @@ const CRASH_RELOAD_WINDOW: Duration = Duration::from_secs(10);
 
 pub type SinkFactory = Box<dyn Fn(TabId) -> Box<dyn Fn(PageEvent)>>;
 
+fn download_notice(event: &PageEvent) -> Option<String> {
+    match event {
+        PageEvent::DownloadFinished(path) => {
+            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            Some(format!("Selesai diunduh: {name}"))
+        }
+        PageEvent::DownloadFailed(message) => Some(format!("Gagal mengunduh: {message}")),
+        _ => None,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UiChange {
     /// Daftar tab, judul, atau status tidur berubah.
@@ -101,29 +112,29 @@ impl<E: Engine> Browser<E> {
     pub fn activate(&mut self, id: TabId, now: Instant) {
         let prev = self.tabs.active();
         self.tabs.activate(id, now);
-        self.after_switch(prev);
+        self.after_switch(prev, now);
     }
 
     pub fn activate_index(&mut self, index: usize, now: Instant) {
         let prev = self.tabs.active();
         self.tabs.activate_index(index, now);
-        self.after_switch(prev);
+        self.after_switch(prev, now);
     }
 
     pub fn activate_next(&mut self, now: Instant) {
         let prev = self.tabs.active();
         self.tabs.activate_next(now);
-        self.after_switch(prev);
+        self.after_switch(prev, now);
     }
 
     pub fn activate_previous(&mut self, now: Instant) {
         let prev = self.tabs.active();
         self.tabs.activate_previous(now);
-        self.after_switch(prev);
+        self.after_switch(prev, now);
     }
 
     /// Memuat input address bar di tab aktif. `false` kalau input kosong.
-    pub fn navigate(&mut self, input: &str, _now: Instant) -> bool {
+    pub fn navigate(&mut self, input: &str, now: Instant) -> bool {
         let Some(url) = parse_input(input, &self.settings.search_template) else { return false };
         let id = self.tabs.active();
         if let Some(tab) = self.tabs.get_mut(id) {
@@ -134,7 +145,10 @@ impl<E: Engine> Browser<E> {
         }
         match self.pages.get(&id) {
             Some(page) => page.load(&url),
-            None => self.wake(id),
+            None => {
+                self.wake(id);
+                self.tick(now, Pressure::Normal);
+            }
         }
         self.dirty = true;
         self.change(UiChange::Tabs);
@@ -174,12 +188,33 @@ impl<E: Engine> Browser<E> {
             }
         }
         let active = self.tabs.active();
-        for tab in self.tabs.iter().filter(|t| t.id != active) {
-            let Some(page) = self.pages.get(&tab.id) else { continue };
-            page.request_media_state();
-            if tab.url.as_ref().is_some_and(is_youtube_watch) {
+        let background: Vec<TabId> =
+            self.tabs.iter().filter(|t| t.id != active && self.pages.contains_key(&t.id)).map(|t| t.id).collect();
+        for id in background {
+            let youtube = self.tabs.get(id).is_some_and(|t| t.url.as_ref().is_some_and(is_youtube_watch));
+            let page = &self.pages[&id];
+            // Posisi video diminta lebih dulu; tab YouTube baru ditidurkan setelah
+            // balasannya datang (lihat sleep_if_ready).
+            if youtube {
                 page.request_number(JsTag::VideoTime, VIDEO_TIME_JS);
             }
+            page.request_media_state();
+            if let Some(tab) = self.tabs.get_mut(id) {
+                tab.awaiting_video_time |= youtube;
+            }
+        }
+    }
+
+    /// Menidurkan tab yang menunggu tidur kalau status media sudah aman dan
+    /// posisi video (khusus YouTube) sudah diterima.
+    fn sleep_if_ready(&mut self, id: TabId) {
+        let active = self.tabs.active();
+        let ready = self
+            .tabs
+            .get(id)
+            .is_some_and(|t| t.id != active && t.sleep_pending && t.media_clear && !t.awaiting_video_time);
+        if ready {
+            self.sleep(id);
         }
     }
 
@@ -234,21 +269,33 @@ impl<E: Engine> Browser<E> {
             PageEvent::MediaState(active_media) => {
                 tab.media_active = active_media;
                 if tab.sleep_pending {
-                    if !active_media && !is_active {
-                        self.sleep(id);
-                    } else {
+                    if active_media || is_active {
                         tab.sleep_pending = false;
+                        tab.media_clear = false;
+                    } else {
+                        tab.media_clear = true;
+                        self.sleep_if_ready(id);
                     }
                 }
             }
-            PageEvent::Number { tag: JsTag::ScrollY, value: Some(y) } => {
-                tab.scroll_y = y;
-                self.dirty = true;
+            PageEvent::Number { tag, value } => {
+                // Angka tidak terhingga/NaN tidak bisa disimpan di JSON sesi.
+                let value = value.filter(|v| v.is_finite());
+                match (tag, value) {
+                    (JsTag::ScrollY, Some(y)) => {
+                        tab.scroll_y = y;
+                        self.dirty = true;
+                    }
+                    (JsTag::VideoTime, v) => {
+                        if v.is_some() {
+                            tab.video_time = v;
+                        }
+                        tab.awaiting_video_time = false;
+                        self.sleep_if_ready(id);
+                    }
+                    (JsTag::ScrollY, None) => {}
+                }
             }
-            PageEvent::Number { tag: JsTag::VideoTime, value: Some(t) } => {
-                tab.video_time = Some(t);
-            }
-            PageEvent::Number { value: None, .. } => {}
             PageEvent::ProcessCrashed => {
                 let previous = tab.last_crash.replace(now);
                 if !is_active {
@@ -270,12 +317,18 @@ impl<E: Engine> Browser<E> {
                     self.change(UiChange::Nav);
                 }
             }
-            PageEvent::DownloadFinished(path) => {
-                let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-                self.change(UiChange::Notice(format!("Selesai diunduh: {name}")));
+            event @ (PageEvent::DownloadFinished(_) | PageEvent::DownloadFailed(_)) => {
+                if let Some(message) = download_notice(&event) {
+                    self.change(UiChange::Notice(message));
+                }
             }
-            PageEvent::DownloadFailed(message) => {
-                self.change(UiChange::Notice(format!("Gagal mengunduh: {message}")));
+            PageEvent::LoadFailed(message) => {
+                tab.loading = false;
+                tab.restore_scroll = false;
+                if is_active {
+                    self.change(UiChange::Nav);
+                    self.change(UiChange::Notice(format!("Gagal memuat halaman: {message}")));
+                }
             }
         }
     }
@@ -296,8 +349,9 @@ impl<E: Engine> Browser<E> {
     pub fn toggle_blocker_exception(&mut self) -> Option<bool> {
         let host = self.active_host()?;
         let list = &mut self.settings.blocker_exceptions;
-        let excepted = if let Some(i) = list.iter().position(|e| *e == host) {
-            list.remove(i);
+        let excepted = if host_matches(&host, list) {
+            // Hapus semua entri yang menaungi host ini (host sendiri atau domain induknya).
+            list.retain(|e| !host_matches(&host, std::slice::from_ref(e)));
             false
         } else {
             list.push(host);
@@ -309,6 +363,13 @@ impl<E: Engine> Browser<E> {
         }
         self.change(UiChange::Settings);
         Some(excepted)
+    }
+
+    /// Event dari `Engine::set_global_sink`.
+    pub fn handle_global_event(&mut self, event: PageEvent) {
+        if let Some(message) = download_notice(&event) {
+            self.change(UiChange::Notice(message));
+        }
     }
 
     pub fn take_changes(&mut self) -> Vec<UiChange> {
@@ -329,15 +390,20 @@ impl<E: Engine> Browser<E> {
         }
     }
 
-    fn after_switch(&mut self, prev: TabId) {
+    fn after_switch(&mut self, prev: TabId, now: Instant) {
         let now_active = self.tabs.active();
         if now_active == prev {
             return;
         }
         if let Some(page) = self.pages.get(&prev) {
             page.request_number(JsTag::ScrollY, SCROLL_Y_JS);
+            if self.tabs.get(prev).is_some_and(|t| t.url.as_ref().is_some_and(is_youtube_watch)) {
+                page.request_number(JsTag::VideoTime, VIDEO_TIME_JS);
+            }
         }
         self.wake(now_active);
+        // Batas tab bangun ditegakkan langsung, bukan menunggu tick berikutnya.
+        self.tick(now, Pressure::Normal);
         self.dirty = true;
         self.change(UiChange::Active);
         self.change(UiChange::Tabs);
@@ -375,6 +441,8 @@ impl<E: Engine> Browser<E> {
             }
             tab.awake = false;
             tab.sleep_pending = false;
+            tab.media_clear = false;
+            tab.awaiting_video_time = false;
             tab.media_active = false;
             tab.loading = false;
             tab.restore_scroll = tab.scroll_y > 0.0;
@@ -387,7 +455,6 @@ impl<E: Engine> Browser<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::blocking::{host_matches, normalize_host};
 use crate::engine::{Engine, JsTag, Page, PageEvent};
     use crate::session::{SavedTab, SessionFile, SESSION_VERSION};
     use crate::settings::Settings;
@@ -431,6 +498,7 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
             FakePage(self.0.clone())
         }
         fn set_blocker_exceptions(&self, hosts: &[String]) { self.0.borrow_mut().exceptions = hosts.to_vec(); }
+        fn set_global_sink(&self, _sink: Box<dyn Fn(PageEvent)>) {}
     }
 
     fn u(s: &str) -> Url { Url::parse(s).unwrap() }
@@ -677,6 +745,109 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         b.handle_event(a, PageEvent::DownloadStarted, t0);
         assert!(b.tabs().get(a).unwrap().url.is_none());
         assert!(b.session_if_dirty().unwrap().tabs.is_empty());
+    }
+
+    #[test]
+    fn toggle_from_subdomain_turns_blocking_back_on() {
+        let (mut b, log, t0) = setup(None);
+        assert!(b.navigate("https://www.detik.com/x", t0));
+        assert_eq!(b.toggle_blocker_exception(), Some(true));
+        assert!(b.navigate("https://news.detik.com/y", t0));
+        assert!(b.active_host_excepted());
+        assert_eq!(b.toggle_blocker_exception(), Some(false));
+        assert!(b.settings().blocker_exceptions.is_empty());
+        assert!(log.borrow().exceptions.is_empty());
+        assert!(!b.active_host_excepted());
+    }
+
+    #[test]
+    fn youtube_resume_survives_media_state_arriving_first() {
+        let (mut b, _log, t0) = setup(None);
+        let yt = b.tabs().active();
+        assert!(b.navigate("https://www.youtube.com/watch?v=abc", t0));
+        b.new_tab(t0);
+        assert!(b.navigate("b.com", t0));
+        let t = t0 + secs(301);
+        b.tick(t, Pressure::Normal);
+        b.handle_event(yt, PageEvent::MediaState(false), t);
+        assert!(b.tabs().get(yt).unwrap().awake, "harus menunggu posisi video dulu");
+        b.handle_event(yt, PageEvent::Number { tag: JsTag::VideoTime, value: Some(125.7) }, t);
+        let tab = b.tabs().get(yt).unwrap();
+        assert!(!tab.awake);
+        assert_eq!(tab.url.as_ref().unwrap().as_str(), "https://www.youtube.com/watch?v=abc&t=125s");
+    }
+
+    #[test]
+    fn youtube_sleep_proceeds_when_video_time_unavailable() {
+        let (mut b, _log, t0) = setup(None);
+        let yt = b.tabs().active();
+        assert!(b.navigate("https://www.youtube.com/watch?v=abc", t0));
+        b.new_tab(t0);
+        assert!(b.navigate("b.com", t0));
+        let t = t0 + secs(301);
+        b.tick(t, Pressure::Normal);
+        b.handle_event(yt, PageEvent::MediaState(false), t);
+        b.handle_event(yt, PageEvent::Number { tag: JsTag::VideoTime, value: None }, t);
+        let tab = b.tabs().get(yt).unwrap();
+        assert!(!tab.awake);
+        assert_eq!(tab.url.as_ref().unwrap().as_str(), "https://www.youtube.com/watch?v=abc");
+    }
+
+    #[test]
+    fn deactivating_youtube_tab_requests_video_time() {
+        let (mut b, log, t0) = setup(None);
+        assert!(b.navigate("https://www.youtube.com/watch?v=abc", t0));
+        log.borrow_mut().calls.clear();
+        b.new_tab(t0);
+        assert!(has(&log, Call::Number(JsTag::VideoTime)));
+    }
+
+    #[test]
+    fn opening_fourth_awake_tab_sleeps_oldest_background_tab_right_away() {
+        let (mut b, log, t0) = setup(None);
+        let a = b.tabs().active();
+        assert!(b.navigate("a.com", t0));
+        for (i, site) in ["b.com", "c.com", "d.com"].iter().enumerate() {
+            b.new_tab(t0 + secs(i as u64 + 1));
+            assert!(b.navigate(site, t0 + secs(i as u64 + 1)));
+        }
+        assert_eq!(log.borrow().live, 4);
+        b.handle_event(a, PageEvent::MediaState(false), t0 + secs(4));
+        assert!(!b.tabs().get(a).unwrap().awake);
+        assert_eq!(log.borrow().live, 3);
+    }
+
+    #[test]
+    fn non_finite_numbers_are_ignored() {
+        let (mut b, _log, t0) = setup(None);
+        let (a, _) = two_tabs(&mut b, t0);
+        b.handle_event(a, PageEvent::Number { tag: JsTag::ScrollY, value: Some(f64::NAN) }, t0);
+        b.handle_event(a, PageEvent::Number { tag: JsTag::VideoTime, value: Some(f64::INFINITY) }, t0);
+        let tab = b.tabs().get(a).unwrap();
+        assert_eq!(tab.scroll_y, 0.0);
+        assert!(tab.video_time.is_none());
+    }
+
+    #[test]
+    fn load_failure_in_active_tab_emits_notice() {
+        let (mut b, _log, t0) = setup(None);
+        let a = b.tabs().active();
+        assert!(b.navigate("localhost:3000", t0));
+        b.take_changes();
+        b.handle_event(a, PageEvent::LoadFailed("Could not connect to the server.".into()), t0);
+        assert!(!b.tabs().get(a).unwrap().loading);
+        assert!(b.take_changes().contains(&UiChange::Notice("Gagal memuat halaman: Could not connect to the server.".into())));
+    }
+
+    #[test]
+    fn global_download_events_emit_notices() {
+        let (mut b, _log, _t0) = setup(None);
+        b.take_changes();
+        b.handle_global_event(PageEvent::DownloadFinished("/Users/x/Downloads/a.pdf".into()));
+        b.handle_global_event(PageEvent::DownloadFailed("koneksi terputus".into()));
+        let changes = b.take_changes();
+        assert!(changes.contains(&UiChange::Notice("Selesai diunduh: a.pdf".into())));
+        assert!(changes.contains(&UiChange::Notice("Gagal mengunduh: koneksi terputus".into())));
     }
 
     #[test]

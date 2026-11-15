@@ -70,4 +70,14 @@ mod tests {
         std::fs::write(&p, "{bukan json").unwrap();
         assert_eq!(Settings::load(&p), Settings::default());
     }
+
+    #[test]
+    fn corrupt_settings_file_is_kept_aside_not_overwritten() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("settings.json");
+        std::fs::write(&p, "{bukan json").unwrap();
+        Settings::load(&p);
+        assert!(!p.exists());
+        assert_eq!(std::fs::read_to_string(d.path().join("settings.json.bad")).unwrap(), "{bukan json");
+    }
 }

@@ -29,6 +29,8 @@ pub enum PageEvent {
     DownloadStarted,
     DownloadFinished(PathBuf),
     DownloadFailed(String),
+    /// Halaman gagal dimuat (DNS, server mati, offline). Berisi pesan yang bisa dibaca pengguna.
+    LoadFailed(String),
     ProcessCrashed,
 }
 
@@ -52,4 +54,7 @@ pub trait Engine {
     type Page: Page;
     fn create_page(&self, on_event: Box<dyn Fn(PageEvent)>) -> Self::Page;
     fn set_blocker_exceptions(&self, hosts: &[String]);
+    /// Penerima event yang tidak terikat ke satu tab (selesai/gagal download),
+    /// supaya pemberitahuan tetap sampai walaupun tab asalnya sudah ditutup.
+    fn set_global_sink(&self, sink: Box<dyn Fn(PageEvent)>);
 }

@@ -22,6 +22,10 @@ pub struct Tab {
     pub last_viewed: Instant,
     pub media_active: bool,
     pub sleep_pending: bool,
+    /// Balasan MediaState(false) sudah datang selama `sleep_pending`.
+    pub media_clear: bool,
+    /// Posisi video YouTube sudah diminta dan balasannya belum datang.
+    pub awaiting_video_time: bool,
     pub restore_scroll: bool,
     pub loading: bool,
     pub can_back: bool,
@@ -42,6 +46,8 @@ impl Tab {
             last_viewed: now,
             media_active: false,
             sleep_pending: false,
+            media_clear: false,
+            awaiting_video_time: false,
             restore_scroll: false,
             loading: false,
             can_back: false,
@@ -144,6 +150,7 @@ impl TabList {
         if let Some(tab) = self.get_mut(id) {
             tab.last_viewed = now;
             tab.sleep_pending = false;
+            tab.media_clear = false;
         }
     }
 

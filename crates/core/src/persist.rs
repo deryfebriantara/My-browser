@@ -35,7 +35,16 @@ pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T
     match serde_json::from_slice(&bytes) {
         Ok(v) => Some(v),
         Err(e) => {
-            eprintln!("my-browser: {} rusak, memakai nilai bawaan: {e}", path.display());
+            // Berkas rusak disisihkan, bukan ditimpa, supaya isinya (mis.
+            // pengecualian pemblokir) masih bisa dipulihkan dengan tangan.
+            let mut aside = path.as_os_str().to_owned();
+            aside.push(".bad");
+            let _ = std::fs::rename(path, &aside);
+            eprintln!(
+                "my-browser: {} rusak ({e}), disisihkan ke {}, memakai nilai bawaan",
+                path.display(),
+                std::path::Path::new(&aside).display()
+            );
             None
         }
     }

@@ -52,4 +52,6 @@ impl Engine for WebKitEngine {
     fn set_blocker_exceptions(&self, hosts: &[String]) {
         self.blocker.set_exceptions(hosts);
     }
+
+    fn set_global_sink(&self, _sink: Box<dyn Fn(PageEvent)>) {}
 }
