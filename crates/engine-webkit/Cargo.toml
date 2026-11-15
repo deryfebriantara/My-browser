@@ -1,0 +1,17 @@
+[package]
+name = "engine-webkit"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "engine_webkit"
+
+[dependencies]
+my-browser-core.workspace = true
+objc2.workspace = true
+objc2-foundation.workspace = true
+objc2-app-kit.workspace = true
+objc2-web-kit.workspace = true
+block2.workspace = true
+dispatch2.workspace = true

@@ -1,0 +1,17 @@
+[package]
+name = "my-browser"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[[bin]]
+name = "my-browser"
+path = "src/main.rs"
+
+[dependencies]
+my-browser-core.workspace = true
+engine-webkit.workspace = true
+objc2.workspace = true
+objc2-foundation.workspace = true
+objc2-app-kit.workspace = true
+objc2-web-kit.workspace = true

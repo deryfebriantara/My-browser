@@ -1,0 +1,28 @@
+[workspace]
+members = ["crates/*"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+publish = false
+
+[workspace.dependencies]
+my-browser-core = { path = "crates/core" }
+engine-webkit = { path = "crates/engine-webkit" }
+objc2 = "0.6"
+objc2-foundation = "0.3"
+objc2-app-kit = "0.3"
+objc2-web-kit = "0.3"
+block2 = "0.6"
+dispatch2 = "0.3"
+url = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+adblock = { version = "0.13", features = ["content-blocking"] }
+libc = "0.2"
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

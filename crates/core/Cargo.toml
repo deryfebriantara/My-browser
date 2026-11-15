@@ -1,0 +1,10 @@
+[package]
+name = "my-browser-core"
+edition.workspace = true
+version.workspace = true
+publish.workspace = true
+
+[lib]
+name = "browser_core"
+
+[dependencies]
