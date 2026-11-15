@@ -37,3 +37,14 @@ Catatan: dicek pengguna pada 2026-11-15, semua lancar. GATE lulus.
 - [ ] Menu Tampilan: Muat Ulang ⌘R, Layar Penuh ⌃⌘F
 - [ ] Menu Riwayat: Mundur ⌘[, Maju ⌘]
 - [ ] Menu Jendela: Tab Berikutnya ⌃⇥ dan ⇧⌘], Tab Sebelumnya ⌃⇧⇥ dan ⇧⌘[, ⌘1 sampai ⌘9
+
+## Task 9: Tab tidur, memory pressure, sesi
+
+Untuk uji manual, set `"sleep_idle_secs": 20` di `~/Library/Application Support/my-browser/settings.json`, lalu kembalikan ke 300 setelah selesai.
+
+- [ ] (a) Buka 4 tab ber-URL, aktifkan satu, tunggu 60 detik: tab latar tampil tidur (redup, tooltip "Tidur, dimuat ulang saat dibuka")
+- [ ] (b) Video YouTube diputar di tab latar: tab itu tidak pernah tidur
+- [ ] (c) Video YouTube di-pause di menit ke-2, ditidurkan, lalu dibuka: lanjut dari sekitar menit ke-2
+- [ ] (d) Halaman yang di-scroll jauh, ditidurkan, lalu dibuka: posisi scroll kembali
+- [ ] (e) Pengguna menjalankan `sudo memory_pressure -S -l warn`: semua tab latar tidur dalam beberapa detik
+- [ ] (f) ⌘Q lalu buka lagi: semua tab kembali, hanya tab aktif yang dimuat

@@ -5,11 +5,13 @@
 //! AppKit bisa memanggil balik handler aksi secara sinkron.
 
 use crate::actions::ActionTarget;
+use crate::persistence;
 use crate::tab_strip::TabInfo;
 use crate::window::Ui;
 use browser_core::browser::{Browser, SinkFactory, UiChange};
 use browser_core::session::SessionFile;
 use browser_core::settings::Settings;
+use browser_core::sleep::Pressure;
 use browser_core::tabs::{Tab, TabId};
 use engine_webkit::WebKitEngine;
 use objc2::MainThreadMarker;
@@ -43,10 +45,17 @@ fn display_title(tab: &Tab) -> String {
     }
 }
 
+fn debug_enabled() -> bool {
+    std::env::var_os("MYBROWSER_DEBUG").is_some()
+}
+
 fn sink_factory(weak: Weak<AppState>) -> SinkFactory {
     Box::new(move |id| {
         let weak = weak.clone();
         Box::new(move |event| {
+            if debug_enabled() {
+                eprintln!("[debug] tab {} event {:?}", id.0, event);
+            }
             if let Some(state) = weak.upgrade() {
                 state.browser.borrow_mut().handle_event(id, event, Instant::now());
                 state.refresh();
@@ -71,7 +80,12 @@ impl AppState {
         let active = b.tabs().active();
         b.tabs()
             .iter()
-            .map(|t| TabInfo { id: t.id.0, title: display_title(t), active: t.id == active, awake: t.awake })
+            .map(|t| TabInfo {
+                id: t.id.0,
+                title: display_title(t),
+                active: t.id == active,
+                sleeping: !t.awake && t.url.is_some(),
+            })
             .collect()
     }
 
@@ -121,6 +135,54 @@ impl AppState {
     pub fn layout_tabs(&self) {
         let infos = self.tab_infos();
         self.ui.tabs.render(self.mtm, &infos, &self.ui.target);
+    }
+
+    /// Dipanggil timer (Normal) dan sinyal memory pressure (Warning/Critical).
+    pub fn tick(&self, pressure: Pressure) {
+        self.browser.borrow_mut().tick(Instant::now(), pressure);
+        if debug_enabled() {
+            eprintln!("[debug] WKWebView terlepas yang masih hidup: {}", engine_webkit::dropped_webviews_alive());
+            let b = self.browser.borrow();
+            for t in b.tabs().iter() {
+                eprintln!(
+                    "[debug] tick {:?}: tab {} awake={} pending={} media={} idle={:?}",
+                    pressure,
+                    t.id.0,
+                    t.awake,
+                    t.sleep_pending,
+                    t.media_active,
+                    t.last_viewed.elapsed()
+                );
+            }
+        }
+        self.refresh();
+        let session = self.browser.borrow_mut().session_if_dirty();
+        if let Some(session) = session {
+            persistence::save_session(&session);
+        }
+    }
+
+    /// Dipanggil saat aplikasi akan keluar: sesi dan pengaturan selalu disimpan.
+    pub fn save_all(&self) {
+        let (session, settings) = {
+            let b = self.browser.borrow();
+            (b.tabs().to_session(), b.settings().clone())
+        };
+        persistence::save_session(&session);
+        persistence::save_settings(&settings);
+    }
+
+    /// URL dari argumen baris perintah. URL pertama memakai tab aktif kalau
+    /// tab itu masih kosong.
+    pub fn open_urls(&self, urls: &[String]) {
+        for (i, url) in urls.iter().enumerate() {
+            let blank = self.nav_info().blank;
+            if !(i == 0 && blank) {
+                self.browser.borrow_mut().new_tab(Instant::now());
+            }
+            self.browser.borrow_mut().navigate(url, Instant::now());
+        }
+        self.refresh();
     }
 
     pub fn new_tab(&self) {

@@ -28,3 +28,16 @@ Rincian proses terbesar:
 | Proses aplikasi | 36,8 MB | 58,8 MB |
 
 Batas pengukuran ini: masing-masing hanya satu sampel, diambil 2 menit setelah video diputar. Selisih buffer video antar pengambilan bisa besar, jadi angka di atas belum bisa dipakai untuk menyimpulkan selisih pasti antara kedua browser. Yang cukup jelas: proses aplikasi prototipe lebih kecil (36,8 MB banding 58,8 MB), dan proses WebContent lama sebesar 327 MB di prototipe adalah memory yang bisa dihemat.
+
+## Tab tidur dan proses WebContent (Task 9, 2026-11-15)
+
+Pengaturan uji: folder data terpisah (`MYBROWSER_DATA_DIR`), `sleep_idle_secs` 20, empat tab dari argumen (`id.wikipedia.org/wiki/Indonesia`, `github.com/servo/servo`, `example.com`, `www.rust-lang.org`), tab terakhir aktif. Diukur dengan `scripts/ukur-memory.sh --detail my-browser`.
+
+| Waktu | Proses WebContent | Total my-browser |
+|---|---|---|
+| t+22 detik, sebelum tick pertama | 4 | 399,0 MB |
+| t+40 detik, 10 detik setelah tick pertama menidurkan 3 tab | 1 | 122,9 MB |
+
+Bug yang ditemukan dan diperbaiki sebelum angka di atas: page yang dibuat di `main()` sebelum `app.run()` (tab sesi yang dipulihkan dan URL dari argumen) tidak pernah dibebaskan. Saat dilepas, `WKWebView`-nya masih punya 31 retain karena WebKit meng-autorelease objek itu puluhan kali saat dibuat, dan di luar `app.run()` tidak ada autorelease pool. Akibatnya proses WebContent tab yang ditidurkan tetap hidup (diamati: 4 proses tetap hidup lebih dari 120 detik). Perbaikan: seluruh persiapan di `main()` dibungkus `autoreleasepool` (`crates/app/src/main.rs`). Setelah perbaikan, retain saat dilepas = 1 dan prosesnya mati.
+
+Keputusan CHECKPOINT: proses WebContent tab yang tidur mati dalam 10 detik, jadi Task 12 (API privat) tidak diperlukan.

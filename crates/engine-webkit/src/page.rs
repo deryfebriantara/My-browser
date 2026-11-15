@@ -17,7 +17,22 @@ use objc2_web_kit::{
     WKMediaCaptureState, WKMediaPlaybackState, WKUserContentController, WKWebView, WKWebViewConfiguration,
     WKWebsiteDataStore,
 };
+use std::cell::RefCell;
 use url::Url;
+
+thread_local! {
+    /// Referensi lemah ke WKWebView dari page yang sudah dilepas, untuk diagnosis.
+    static DROPPED: RefCell<Vec<objc2::rc::Weak<WKWebView>>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Jumlah WKWebView dari page yang sudah dilepas tetapi masih hidup.
+pub fn dropped_webviews_alive() -> usize {
+    DROPPED.with(|d| {
+        let mut d = d.borrow_mut();
+        d.retain(|w| w.load().is_some());
+        d.len()
+    })
+}
 
 pub struct WebKitPage {
     webview: Retained<WKWebView>,
@@ -131,6 +146,10 @@ impl Page for WebKitPage {
 
 impl Drop for WebKitPage {
     fn drop(&mut self) {
+        if std::env::var_os("MYBROWSER_DEBUG").is_some() {
+            let count: usize = unsafe { objc2::msg_send![&*self.webview, retainCount] };
+            eprintln!("[debug] WebKitPage::drop retainCount WKWebView = {count}");
+        }
         self.emitter.kill();
         unsafe {
             self.webview.stopLoading();
@@ -141,5 +160,6 @@ impl Drop for WebKitPage {
             self.webview.setUIDelegate(None);
         }
         self.webview.removeFromSuperview();
+        DROPPED.with(|d| d.borrow_mut().push(objc2::rc::Weak::from(&*self.webview)));
     }
 }

@@ -18,7 +18,8 @@ pub struct TabInfo {
     pub id: u64,
     pub title: String,
     pub active: bool,
-    pub awake: bool,
+    /// Tab ber-URL yang page-nya sedang dilepas.
+    pub sleeping: bool,
 }
 
 pub struct TabStrip {
@@ -72,7 +73,12 @@ impl TabStrip {
             button.setState(if tab.active { NSControlStateValueOn } else { NSControlStateValueOff });
             button.setLineBreakMode(NSLineBreakMode::ByTruncatingTail);
             button.setTag(tab.id as isize);
-            button.setToolTip(Some(&title));
+            if tab.sleeping {
+                button.setAlphaValue(0.5);
+                button.setToolTip(Some(&NSString::from_str("Tidur, dimuat ulang saat dibuka")));
+            } else {
+                button.setToolTip(Some(&title));
+            }
             button.setFrame(NSRect::new(NSPoint::new(x + 2.0, 2.0), NSSize::new(w - 4.0, 24.0)));
             self.doc.addSubview(&button);
 

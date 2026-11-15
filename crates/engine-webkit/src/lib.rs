@@ -13,7 +13,7 @@ use objc2_foundation::NSString;
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub use page::WebKitPage;
+pub use page::{WebKitPage, dropped_webviews_alive};
 
 pub struct WebKitEngine {
     mtm: MainThreadMarker,
