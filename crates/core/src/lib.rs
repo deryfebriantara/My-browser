@@ -3,3 +3,6 @@
 pub mod omnibox;
 pub mod sleep;
 pub mod tabs;
+pub mod persist;
+pub mod session;
+pub mod settings;

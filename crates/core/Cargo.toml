@@ -9,3 +9,8 @@ name = "browser_core"
 
 [dependencies]
 url.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
