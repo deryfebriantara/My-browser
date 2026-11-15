@@ -358,6 +358,10 @@ impl<E: Engine> Browser<E> {
             tab.loading = true;
         }
         self.change(UiChange::Tabs);
+        // View baru untuk tab aktif harus dipasang ke area konten.
+        if id == self.tabs.active() {
+            self.change(UiChange::Active);
+        }
     }
 
     /// Melepas page tab. Halaman YouTube menyimpan posisi video ke URL.
@@ -456,6 +460,18 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         assert!(b.navigate("youtube.com", t0));
         assert_eq!(log.borrow().live, 1);
         assert!(has(&log, Call::Load("https://youtube.com/".into())));
+    }
+
+    #[test]
+    fn navigating_blank_active_tab_shows_its_page() {
+        let (mut b, _log, t0) = setup(None);
+        b.take_changes();
+        assert!(b.navigate("a.com", t0));
+        assert!(b.take_changes().contains(&UiChange::Active));
+        b.new_tab(t0);
+        b.take_changes();
+        assert!(b.navigate("b.com", t0));
+        assert!(b.take_changes().contains(&UiChange::Active));
     }
 
     #[test]
