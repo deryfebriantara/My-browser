@@ -6,3 +6,6 @@ pub mod tabs;
 pub mod persist;
 pub mod session;
 pub mod settings;
+pub mod browser;
+pub mod engine;
+pub mod youtube;
