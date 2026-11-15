@@ -1,0 +1,5 @@
+https://www.kompas.com
+https://www.detik.com
+https://id.wikipedia.org/wiki/Indonesia
+https://github.com/servo/servo
+https://www.reddit.com/r/rust/
