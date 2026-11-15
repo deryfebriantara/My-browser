@@ -1,0 +1,145 @@
+//! Satu halaman: WKWebView beserta observer dan delegate-nya.
+
+use crate::delegates::Delegate;
+use crate::emitter::Emitter;
+use crate::observer::{KEYS, Observer};
+use block2::RcBlock;
+use browser_core::engine::{JsTag, Page, PageEvent};
+use objc2::rc::Retained;
+use objc2::runtime::{AnyObject, ProtocolObject};
+use objc2::{MainThreadMarker, MainThreadOnly};
+use objc2_app_kit::{NSAutoresizingMaskOptions, NSView};
+use objc2_foundation::{
+    NSError, NSKeyValueObservingOptions, NSNumber, NSObjectNSKeyValueObserverRegistration, NSRect, NSString, NSURL,
+    NSURLRequest,
+};
+use objc2_web_kit::{
+    WKMediaCaptureState, WKMediaPlaybackState, WKUserContentController, WKWebView, WKWebViewConfiguration,
+    WKWebsiteDataStore,
+};
+use url::Url;
+
+pub struct WebKitPage {
+    webview: Retained<WKWebView>,
+    observer: Retained<Observer>,
+    _delegate: Retained<Delegate>,
+    emitter: Emitter,
+}
+
+impl WebKitPage {
+    pub(crate) fn new(mtm: MainThreadMarker, app_name: &NSString, on_event: Box<dyn Fn(PageEvent)>) -> Self {
+        let emitter = Emitter::new(on_event);
+        let config = unsafe { WKWebViewConfiguration::new(mtm) };
+        unsafe {
+            config.preferences().setElementFullscreenEnabled(true);
+            config.setApplicationNameForUserAgent(Some(app_name));
+            config.setWebsiteDataStore(&WKWebsiteDataStore::defaultDataStore(mtm));
+            config.setUserContentController(&WKUserContentController::new(mtm));
+        }
+        let webview =
+            unsafe { WKWebView::initWithFrame_configuration(WKWebView::alloc(mtm), NSRect::ZERO, &config) };
+        webview.setAutoresizingMask(
+            NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
+        );
+        #[cfg(debug_assertions)]
+        unsafe {
+            webview.setInspectable(true)
+        };
+
+        let delegate = Delegate::new(mtm, emitter.clone());
+        unsafe {
+            webview.setNavigationDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+            webview.setUIDelegate(Some(ProtocolObject::from_ref(&*delegate)));
+        }
+
+        let observer = Observer::new(mtm, emitter.clone(), &webview);
+        for key in KEYS {
+            unsafe {
+                webview.addObserver_forKeyPath_options_context(
+                    &observer,
+                    &NSString::from_str(key),
+                    NSKeyValueObservingOptions::New,
+                    std::ptr::null_mut(),
+                );
+            }
+        }
+
+        Self { webview, observer, _delegate: delegate, emitter }
+    }
+}
+
+impl Page for WebKitPage {
+    type View = Retained<NSView>;
+
+    fn load(&self, url: &Url) {
+        let Some(nsurl) = NSURL::URLWithString(&NSString::from_str(url.as_str())) else {
+            eprintln!("my-browser: URL tidak bisa dimuat: {url}");
+            return;
+        };
+        unsafe { self.webview.loadRequest(&NSURLRequest::requestWithURL(&nsurl)) };
+    }
+
+    fn go_back(&self) {
+        unsafe { self.webview.goBack() };
+    }
+
+    fn go_forward(&self) {
+        unsafe { self.webview.goForward() };
+    }
+
+    fn reload(&self) {
+        unsafe { self.webview.reload() };
+    }
+
+    fn stop(&self) {
+        unsafe { self.webview.stopLoading() };
+    }
+
+    fn request_media_state(&self) {
+        let capturing = unsafe {
+            self.webview.cameraCaptureState() == WKMediaCaptureState::Active
+                || self.webview.microphoneCaptureState() == WKMediaCaptureState::Active
+        };
+        let emitter = self.emitter.clone();
+        let block = RcBlock::new(move |state: WKMediaPlaybackState| {
+            emitter.emit(PageEvent::MediaState(capturing || state == WKMediaPlaybackState::Playing));
+        });
+        unsafe { self.webview.requestMediaPlaybackStateWithCompletionHandler(&block) };
+    }
+
+    fn request_number(&self, tag: JsTag, script: &str) {
+        let emitter = self.emitter.clone();
+        let block = RcBlock::new(move |result: *mut AnyObject, _error: *mut NSError| {
+            let value = unsafe { result.as_ref() }
+                .and_then(|obj| obj.downcast_ref::<NSNumber>())
+                .map(|n| n.doubleValue());
+            emitter.emit(PageEvent::Number { tag, value });
+        });
+        unsafe {
+            self.webview.evaluateJavaScript_completionHandler(&NSString::from_str(script), Some(&block));
+        }
+    }
+
+    fn run_script(&self, script: &str) {
+        unsafe { self.webview.evaluateJavaScript_completionHandler(&NSString::from_str(script), None) };
+    }
+
+    fn view(&self) -> Retained<NSView> {
+        Retained::into_super(self.webview.clone())
+    }
+}
+
+impl Drop for WebKitPage {
+    fn drop(&mut self) {
+        self.emitter.kill();
+        unsafe {
+            self.webview.stopLoading();
+            for key in KEYS {
+                self.webview.removeObserver_forKeyPath(&self.observer, &NSString::from_str(key));
+            }
+            self.webview.setNavigationDelegate(None);
+            self.webview.setUIDelegate(None);
+        }
+        self.webview.removeFromSuperview();
+    }
+}

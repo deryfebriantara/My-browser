@@ -15,3 +15,8 @@ objc2-app-kit.workspace = true
 objc2-web-kit.workspace = true
 block2.workspace = true
 dispatch2.workspace = true
+url.workspace = true
+
+[[test]]
+name = "smoke"
+harness = false
