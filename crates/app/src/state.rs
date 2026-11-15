@@ -15,7 +15,8 @@ use browser_core::sleep::Pressure;
 use browser_core::tabs::{Tab, TabId};
 use engine_webkit::WebKitEngine;
 use objc2::MainThreadMarker;
-use objc2_foundation::NSString;
+use objc2_foundation::{NSBundle, NSString};
+use std::path::PathBuf;
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 use std::time::Instant;
@@ -45,6 +46,12 @@ fn display_title(tab: &Tab) -> String {
     }
 }
 
+/// `Contents/Resources/blocklist` di dalam bundle aplikasi.
+fn blocklist_dir() -> PathBuf {
+    let resources = NSBundle::mainBundle().resourcePath().map(|p| p.to_string()).unwrap_or_default();
+    PathBuf::from(resources).join("blocklist")
+}
+
 fn debug_enabled() -> bool {
     std::env::var_os("MYBROWSER_DEBUG").is_some()
 }
@@ -69,8 +76,9 @@ impl AppState {
         Rc::new_cyclic(|weak: &Weak<AppState>| {
             let target = ActionTarget::new(mtm, weak.clone());
             let ui = Ui::build(mtm, target);
-            let browser =
-                Browser::new(WebKitEngine::new(mtm), settings, session, sink_factory(weak.clone()), Instant::now());
+            let engine = WebKitEngine::new(mtm);
+            engine.load_blocklists(&blocklist_dir());
+            let browser = Browser::new(engine, settings, session, sink_factory(weak.clone()), Instant::now());
             AppState { mtm, browser: RefCell::new(browser), ui }
         })
     }
@@ -124,6 +132,10 @@ impl AppState {
         }
         if has(UiChange::Nav) || has(UiChange::Active) {
             self.ui.nav.update(nav.can_back, nav.can_forward, nav.loading, &nav.url);
+        }
+        if has(UiChange::Settings) {
+            let settings = self.browser.borrow().settings().clone();
+            persistence::save_settings(&settings);
         }
         for change in changes {
             if let UiChange::Notice(message) = change {
@@ -250,6 +262,20 @@ impl AppState {
                 self.ui.window.makeFirstResponder(Some(&view));
             }
         }
+    }
+
+    /// Status menu pemblokir: `None` kalau tab aktif tidak punya host (menu
+    /// dinonaktifkan), `Some(true)` kalau pemblokir dimatikan untuk situs ini.
+    pub fn blocker_menu_state(&self) -> Option<bool> {
+        let b = self.browser.borrow();
+        let tab = b.tabs().get(b.tabs().active())?;
+        tab.url.as_ref()?.host_str()?;
+        Some(b.active_host_excepted())
+    }
+
+    pub fn toggle_blocker(&self) {
+        self.browser.borrow_mut().toggle_blocker_exception();
+        self.refresh();
     }
 
     pub fn reload_or_stop(&self) {

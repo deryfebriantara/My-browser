@@ -9,3 +9,4 @@ pub mod settings;
 pub mod browser;
 pub mod engine;
 pub mod youtube;
+pub mod blocking;

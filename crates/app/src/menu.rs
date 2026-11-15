@@ -83,6 +83,7 @@ pub fn build(mtm: MainThreadMarker, target: &ActionTarget) -> Retained<NSMenu> {
         &[
             it("Muat Ulang", sel!(reloadPage:), "r", cmd, t, 0),
             it("Layar Penuh", sel!(toggleFullScreen:), "f", ctrl_cmd, None, 0),
+            it("Matikan Pemblokir untuk Situs Ini", sel!(toggleBlocker:), "", cmd, t, 0),
         ],
     ));
     main.addItem(&submenu(

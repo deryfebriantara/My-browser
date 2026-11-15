@@ -5,7 +5,10 @@ use crate::state::AppState;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool, Sel};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
-use objc2_app_kit::{NSControl, NSControlTextEditingDelegate, NSTextFieldDelegate, NSTextView, NSWindowDelegate};
+use objc2_app_kit::{
+    NSControl, NSControlStateValueOff, NSControlStateValueOn, NSControlTextEditingDelegate, NSMenuItem,
+    NSMenuItemValidation, NSTextFieldDelegate, NSTextView, NSWindowDelegate,
+};
 use objc2_foundation::{NSNotification, NSObject, NSObjectProtocol};
 use std::rc::{Rc, Weak};
 
@@ -101,6 +104,24 @@ define_class!(
         #[unsafe(method(goForward:))]
         fn go_forward(&self, _sender: Option<&AnyObject>) {
             self.with(|s| s.go_forward());
+        }
+
+        #[unsafe(method(toggleBlocker:))]
+        fn toggle_blocker(&self, _sender: Option<&AnyObject>) {
+            self.with(|s| s.toggle_blocker());
+        }
+    }
+
+    unsafe impl NSMenuItemValidation for ActionTarget {
+        /// Menu pemblokir bercentang sesuai situs aktif dan nonaktif untuk tab kosong.
+        #[unsafe(method(validateMenuItem:))]
+        fn validate_menu_item(&self, item: &NSMenuItem) -> Bool {
+            if item.action() != Some(sel!(toggleBlocker:)) {
+                return Bool::YES;
+            }
+            let state = self.ivars().state.upgrade().and_then(|s| s.blocker_menu_state());
+            item.setState(if state == Some(true) { NSControlStateValueOn } else { NSControlStateValueOff });
+            Bool::new(state.is_some())
         }
     }
 

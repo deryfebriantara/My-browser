@@ -2,6 +2,7 @@
 //! Tidak tahu apa pun tentang UI; UI membaca `take_changes()` setelah setiap
 //! pemanggilan dan menggambar ulang.
 
+use crate::blocking::{host_matches, normalize_host};
 use crate::engine::{Engine, JsTag, Page, PageEvent};
 use crate::omnibox::parse_input;
 use crate::session::SessionFile;
@@ -263,6 +264,37 @@ impl<E: Engine> Browser<E> {
         }
     }
 
+    fn active_host(&self) -> Option<String> {
+        let tab = self.tabs.get(self.tabs.active())?;
+        tab.url.as_ref()?.host_str().map(normalize_host)
+    }
+
+    /// Apakah pemblokir dimatikan untuk host tab aktif (untuk centang menu).
+    pub fn active_host_excepted(&self) -> bool {
+        self.active_host().is_some_and(|h| host_matches(&h, &self.settings.blocker_exceptions))
+    }
+
+    /// Menyalakan/mematikan pengecualian pemblokir untuk host tab aktif, lalu
+    /// memuat ulang tab itu. Mengembalikan status pengecualian yang baru, atau
+    /// `None` kalau tab aktif tidak punya host.
+    pub fn toggle_blocker_exception(&mut self) -> Option<bool> {
+        let host = self.active_host()?;
+        let list = &mut self.settings.blocker_exceptions;
+        let excepted = if let Some(i) = list.iter().position(|e| *e == host) {
+            list.remove(i);
+            false
+        } else {
+            list.push(host);
+            true
+        };
+        self.engine.set_blocker_exceptions(&self.settings.blocker_exceptions);
+        if let Some(page) = self.pages.get(&self.tabs.active()) {
+            page.reload();
+        }
+        self.change(UiChange::Settings);
+        Some(excepted)
+    }
+
     pub fn take_changes(&mut self) -> Vec<UiChange> {
         std::mem::take(&mut self.changes)
     }
@@ -335,7 +367,8 @@ impl<E: Engine> Browser<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::{Engine, JsTag, Page, PageEvent};
+    use crate::blocking::{host_matches, normalize_host};
+use crate::engine::{Engine, JsTag, Page, PageEvent};
     use crate::session::{SavedTab, SessionFile, SESSION_VERSION};
     use crate::settings::Settings;
     use crate::sleep::Pressure;
@@ -546,6 +579,29 @@ mod tests {
         assert_eq!(tab.url.as_ref().unwrap().as_str(), "https://a.com/x");
         assert!(b.session_if_dirty().is_some());
         assert!(b.session_if_dirty().is_none());
+    }
+
+    #[test]
+    fn toggle_exception_updates_settings_engine_and_reloads() {
+        let (mut b, log, t0) = setup(None);
+        assert!(b.navigate("https://www.detik.com/x", t0));
+        b.take_changes();
+        assert_eq!(b.toggle_blocker_exception(), Some(true));
+        assert_eq!(b.settings().blocker_exceptions, vec!["detik.com".to_string()]);
+        assert_eq!(log.borrow().exceptions, vec!["detik.com".to_string()]);
+        assert!(b.active_host_excepted());
+        assert!(has(&log, Call::Reload));
+        assert!(b.take_changes().contains(&UiChange::Settings));
+        assert_eq!(b.toggle_blocker_exception(), Some(false));
+        assert!(b.settings().blocker_exceptions.is_empty());
+        assert!(log.borrow().exceptions.is_empty());
+        assert!(!b.active_host_excepted());
+    }
+
+    #[test]
+    fn toggle_on_blank_tab_returns_none() {
+        let (mut b, _log, _t0) = setup(None);
+        assert_eq!(b.toggle_blocker_exception(), None);
     }
 
     #[test]

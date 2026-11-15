@@ -41,3 +41,17 @@ Pengaturan uji: folder data terpisah (`MYBROWSER_DATA_DIR`), `sleep_idle_secs` 2
 Bug yang ditemukan dan diperbaiki sebelum angka di atas: page yang dibuat di `main()` sebelum `app.run()` (tab sesi yang dipulihkan dan URL dari argumen) tidak pernah dibebaskan. Saat dilepas, `WKWebView`-nya masih punya 31 retain karena WebKit meng-autorelease objek itu puluhan kali saat dibuat, dan di luar `app.run()` tidak ada autorelease pool. Akibatnya proses WebContent tab yang ditidurkan tetap hidup (diamati: 4 proses tetap hidup lebih dari 120 detik). Perbaikan: seluruh persiapan di `main()` dibungkus `autoreleasepool` (`crates/app/src/main.rs`). Setelah perbaikan, retain saat dilepas = 1 dan prosesnya mati.
 
 Keputusan CHECKPOINT: proses WebContent tab yang tidur mati dalam 10 detik, jadi Task 12 (API privat) tidak diperlukan.
+
+## Pemblokir iklan (Task 10, 2026-11-15)
+
+Daftar aturan: EasyList + EasyPrivacy (diunduh 2026-11-15) dikonversi `blocklist-gen` menjadi 131.509 aturan WebKit dalam 3 daftar (14 MB JSON); 3.627 filter tidak bisa dikonversi dan dilewati. Kompilasi pertama: 763, 1.183, dan 1.265 ms per daftar (berjalan paralel); peluncuran berikutnya memakai hasil kompilasi dari penyimpanan WebKit.
+
+Satu tab `https://www.detik.com`, diukur 30 detik setelah aplikasi dibuka, folder data terpisah per percobaan:
+
+| Percobaan | Proses WebContent | Total my-browser |
+|---|---|---|
+| Pemblokir aktif, kompilasi pertama | 142,2 MB | 190,8 MB |
+| detik.com dikecualikan (`blocker_exceptions`) | 455,1 MB | 529,6 MB |
+| Pemblokir aktif, daftar dari cache | 118,0 MB | 162,6 MB |
+
+Satu sampel per percobaan. Belum dicek secara visual apakah ada bagian situs yang rusak; itu masuk daftar cek manual.

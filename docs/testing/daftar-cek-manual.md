@@ -48,3 +48,10 @@ Untuk uji manual, set `"sleep_idle_secs": 20` di `~/Library/Application Support/
 - [ ] (d) Halaman yang di-scroll jauh, ditidurkan, lalu dibuka: posisi scroll kembali
 - [ ] (e) Pengguna menjalankan `sudo memory_pressure -S -l warn`: semua tab latar tidur dalam beberapa detik
 - [ ] (f) ⌘Q lalu buka lagi: semua tab kembali, hanya tab aktif yang dimuat
+
+## Task 10: Pemblokir iklan
+
+- [ ] https://www.detik.com menampilkan lebih sedikit iklan dibanding Safari tanpa content blocker
+- [ ] Tampilan > Matikan Pemblokir untuk Situs Ini: halaman dimuat ulang dan iklan muncul lagi; centang menu ikut berubah
+- [ ] Menu itu nonaktif di tab kosong
+- [ ] YouTube masih memutar video dan login tetap ada

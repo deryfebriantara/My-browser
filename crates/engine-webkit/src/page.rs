@@ -1,5 +1,6 @@
 //! Satu halaman: WKWebView beserta observer dan delegate-nya.
 
+use crate::blocker::Blocker;
 use crate::delegates::Delegate;
 use crate::emitter::Emitter;
 use crate::observer::{KEYS, Observer};
@@ -18,6 +19,7 @@ use objc2_web_kit::{
     WKWebsiteDataStore,
 };
 use std::cell::RefCell;
+use std::rc::Rc;
 use url::Url;
 
 thread_local! {
@@ -42,15 +44,22 @@ pub struct WebKitPage {
 }
 
 impl WebKitPage {
-    pub(crate) fn new(mtm: MainThreadMarker, app_name: &NSString, on_event: Box<dyn Fn(PageEvent)>) -> Self {
+    pub(crate) fn new(
+        mtm: MainThreadMarker,
+        app_name: &NSString,
+        blocker: Rc<Blocker>,
+        on_event: Box<dyn Fn(PageEvent)>,
+    ) -> Self {
         let emitter = Emitter::new(on_event);
         let config = unsafe { WKWebViewConfiguration::new(mtm) };
         unsafe {
             config.preferences().setElementFullscreenEnabled(true);
             config.setApplicationNameForUserAgent(Some(app_name));
             config.setWebsiteDataStore(&WKWebsiteDataStore::defaultDataStore(mtm));
-            config.setUserContentController(&WKUserContentController::new(mtm));
         }
+        let controller = unsafe { WKUserContentController::new(mtm) };
+        unsafe { config.setUserContentController(&controller) };
+        let blocking = blocker.register(&controller);
         let webview =
             unsafe { WKWebView::initWithFrame_configuration(WKWebView::alloc(mtm), NSRect::ZERO, &config) };
         webview.setAutoresizingMask(
@@ -61,7 +70,7 @@ impl WebKitPage {
             webview.setInspectable(true)
         };
 
-        let delegate = Delegate::new(mtm, emitter.clone());
+        let delegate = Delegate::new(mtm, emitter.clone(), blocker, controller, blocking);
         unsafe {
             webview.setNavigationDelegate(Some(ProtocolObject::from_ref(&*delegate)));
             webview.setUIDelegate(Some(ProtocolObject::from_ref(&*delegate)));
