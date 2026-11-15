@@ -8,3 +8,4 @@ publish.workspace = true
 name = "browser_core"
 
 [dependencies]
+url.workspace = true
