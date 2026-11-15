@@ -3,6 +3,7 @@
 mod blocker;
 mod delegates;
 mod download_names;
+mod downloads;
 mod emitter;
 mod observer;
 mod page;
@@ -13,6 +14,7 @@ use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_foundation::NSString;
 use blocker::Blocker;
+use downloads::DownloadCenter;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -22,6 +24,7 @@ pub struct WebKitEngine {
     mtm: MainThreadMarker,
     app_name: Retained<NSString>,
     blocker: Rc<Blocker>,
+    downloads: Retained<DownloadCenter>,
 }
 
 impl WebKitEngine {
@@ -32,6 +35,7 @@ impl WebKitEngine {
             mtm,
             app_name: NSString::from_str(&user_agent::safari_application_name(&version)),
             blocker: Rc::default(),
+            downloads: DownloadCenter::new(mtm),
         }
     }
 
@@ -46,12 +50,14 @@ impl Engine for WebKitEngine {
     type Page = WebKitPage;
 
     fn create_page(&self, on_event: Box<dyn Fn(PageEvent)>) -> WebKitPage {
-        WebKitPage::new(self.mtm, &self.app_name, self.blocker.clone(), on_event)
+        WebKitPage::new(self.mtm, &self.app_name, self.blocker.clone(), self.downloads.clone(), on_event)
     }
 
     fn set_blocker_exceptions(&self, hosts: &[String]) {
         self.blocker.set_exceptions(hosts);
     }
 
-    fn set_global_sink(&self, _sink: Box<dyn Fn(PageEvent)>) {}
+    fn set_global_sink(&self, sink: Box<dyn Fn(PageEvent)>) {
+        self.downloads.set_sink(sink);
+    }
 }

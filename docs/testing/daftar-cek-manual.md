@@ -40,7 +40,7 @@ Catatan: dicek pengguna pada 2026-11-15, semua lancar. GATE lulus.
 
 ## Task 9: Tab tidur, memory pressure, sesi
 
-Untuk uji manual, set `"sleep_idle_secs": 20` di `~/Library/Application Support/my-browser/settings.json`, lalu kembalikan ke 300 setelah selesai.
+Untuk uji manual, tutup browser dulu (⌘Q), set `"sleep_idle_secs": 20` di `~/Library/Application Support/my-browser/settings.json`, lalu buka lagi. Kembalikan ke 300 dengan cara yang sama setelah selesai.
 
 - [ ] (a) Buka 4 tab ber-URL, aktifkan satu, tunggu 60 detik: tab latar tampil tidur (redup, tooltip "Tidur, dimuat ulang saat dibuka")
 - [ ] (b) Video YouTube diputar di tab latar: tab itu tidak pernah tidur
@@ -62,3 +62,13 @@ Sudah diverifikasi otomatis (folder Downloads sementara): dua download bersamaan
 
 - [ ] Mengunduh sebuah PDF lewat link `download` dua kali menghasilkan `nama.pdf` dan `nama (1).pdf` di `~/Downloads`
 - [ ] Label "Selesai diunduh: ..." muncul di kanan nav bar lalu hilang setelah sekitar 6 detik
+
+## Perbaikan setelah review akhir
+
+- [ ] Tab kosong (tab pertama atau ⌘T): mengetik URL lalu Enter langsung menampilkan halamannya
+- [ ] Klik tab berulang kali (termasuk tab yang sudah aktif) dan tutup tab lewat tombol silang: tidak crash, tanda tab aktif tetap benar
+- [ ] Upload berkas (mis. form upload gambar di situs mana pun): jendela pilih berkas muncul
+- [ ] Dialog `alert`, `confirm`, dan `prompt` muncul (mis. ketik `javascript` tidak berlaku di address bar; pakai situs uji seperti https://www.w3schools.com/js/tryit.asp?filename=tryjs_alert)
+- [ ] Membuka `localhost:59999` (server mati): muncul "Gagal memuat halaman: ..." di kanan nav bar
+- [ ] Mulai download lalu langsung tutup tabnya: pemberitahuan "Selesai diunduh" tetap muncul
+- [ ] Pengecualian pemblokir dari subdomain (mis. aktifkan di www.detik.com, buka news.detik.com, matikan lagi): pemblokir benar-benar aktif kembali

@@ -2,6 +2,7 @@
 
 use crate::blocker::Blocker;
 use crate::delegates::Delegate;
+use crate::downloads::DownloadCenter;
 use crate::emitter::Emitter;
 use crate::observer::{KEYS, Observer};
 use block2::RcBlock;
@@ -41,7 +42,8 @@ pub struct WebKitPage {
     observer: Retained<Observer>,
     _delegate: Retained<Delegate>,
     emitter: Emitter,
-    active_downloads: Rc<Cell<usize>>,
+    /// Download aktif atau dialog JavaScript yang sedang terbuka dari page ini.
+    busy: Rc<Cell<usize>>,
 }
 
 impl WebKitPage {
@@ -49,6 +51,7 @@ impl WebKitPage {
         mtm: MainThreadMarker,
         app_name: &NSString,
         blocker: Rc<Blocker>,
+        downloads: Retained<DownloadCenter>,
         on_event: Box<dyn Fn(PageEvent)>,
     ) -> Self {
         let emitter = Emitter::new(on_event);
@@ -71,8 +74,8 @@ impl WebKitPage {
             webview.setInspectable(true)
         };
 
-        let active_downloads: Rc<Cell<usize>> = Rc::default();
-        let delegate = Delegate::new(mtm, emitter.clone(), blocker, controller, blocking, active_downloads.clone());
+        let busy: Rc<Cell<usize>> = Rc::default();
+        let delegate = Delegate::new(mtm, emitter.clone(), blocker, controller, blocking, downloads, busy.clone());
         unsafe {
             webview.setNavigationDelegate(Some(ProtocolObject::from_ref(&*delegate)));
             webview.setUIDelegate(Some(ProtocolObject::from_ref(&*delegate)));
@@ -90,7 +93,7 @@ impl WebKitPage {
             }
         }
 
-        Self { webview, observer, _delegate: delegate, emitter, active_downloads }
+        Self { webview, observer, _delegate: delegate, emitter, busy }
     }
 }
 
@@ -122,7 +125,7 @@ impl Page for WebKitPage {
     }
 
     fn request_media_state(&self) {
-        let busy = self.active_downloads.get() > 0
+        let busy = self.busy.get() > 0
             || unsafe {
                 self.webview.cameraCaptureState() == WKMediaCaptureState::Active
                     || self.webview.microphoneCaptureState() == WKMediaCaptureState::Active

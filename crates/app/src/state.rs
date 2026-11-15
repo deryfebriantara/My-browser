@@ -17,14 +17,20 @@ use engine_webkit::WebKitEngine;
 use objc2::MainThreadMarker;
 use objc2_foundation::{NSBundle, NSString};
 use std::path::PathBuf;
-use std::cell::RefCell;
+use block2::RcBlock;
+use browser_core::engine::Engine;
+use objc2_foundation::NSRunLoop;
+use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 use std::time::Instant;
 
 pub struct AppState {
     mtm: MainThreadMarker,
+    me: Weak<AppState>,
     pub browser: RefCell<Browser<WebKitEngine>>,
     pub ui: Ui,
+    /// Penggambaran ulang tab strip sudah dijadwalkan untuk putaran run loop berikutnya.
+    tabs_layout_pending: Cell<bool>,
 }
 
 struct NavInfo {
@@ -78,8 +84,24 @@ impl AppState {
             let ui = Ui::build(mtm, target);
             let engine = WebKitEngine::new(mtm);
             engine.load_blocklists(&blocklist_dir());
+            let global = weak.clone();
+            engine.set_global_sink(Box::new(move |event| {
+                if debug_enabled() {
+                    eprintln!("[debug] global event {:?}", event);
+                }
+                if let Some(state) = global.upgrade() {
+                    state.browser.borrow_mut().handle_global_event(event);
+                    state.refresh();
+                }
+            }));
             let browser = Browser::new(engine, settings, session, sink_factory(weak.clone()), Instant::now());
-            AppState { mtm, browser: RefCell::new(browser), ui }
+            AppState {
+                mtm,
+                me: weak.clone(),
+                browser: RefCell::new(browser),
+                ui,
+                tabs_layout_pending: Cell::new(false),
+            }
         })
     }
 
@@ -144,9 +166,23 @@ impl AppState {
         }
     }
 
+    /// Menjadwalkan penggambaran ulang tab strip di putaran run loop berikutnya.
+    /// Tidak langsung, karena aksi tombol tab sendiri yang sering memicunya, dan
+    /// membuang tombol itu di tengah aksinya berisiko crash.
     pub fn layout_tabs(&self) {
-        let infos = self.tab_infos();
-        self.ui.tabs.render(self.mtm, &infos, &self.ui.target);
+        if self.tabs_layout_pending.replace(true) {
+            return;
+        }
+        let me = self.me.clone();
+        let block = RcBlock::new(move || {
+            if let Some(state) = me.upgrade() {
+                state.tabs_layout_pending.set(false);
+                let infos = state.tab_infos();
+                state.ui.tabs.render(state.mtm, &infos, &state.ui.target);
+            }
+        });
+        // SAFETY: dijadwalkan dari main thread ke run loop main thread.
+        unsafe { NSRunLoop::mainRunLoop().performBlock(&block) };
     }
 
     /// Dipanggil timer (Normal) dan sinyal memory pressure (Warning/Critical).
@@ -174,14 +210,12 @@ impl AppState {
         }
     }
 
-    /// Dipanggil saat aplikasi akan keluar: sesi dan pengaturan selalu disimpan.
+    /// Dipanggil saat aplikasi akan keluar: sesi selalu disimpan. Pengaturan
+    /// hanya disimpan saat berubah (UiChange::Settings), supaya editan tangan
+    /// di settings.json tidak ditimpa nilai lama di memory.
     pub fn save_all(&self) {
-        let (session, settings) = {
-            let b = self.browser.borrow();
-            (b.tabs().to_session(), b.settings().clone())
-        };
+        let session = self.browser.borrow().tabs().to_session();
         persistence::save_session(&session);
-        persistence::save_settings(&settings);
     }
 
     /// URL dari argumen baris perintah. URL pertama memakai tab aktif kalau
