@@ -30,6 +30,22 @@ pub enum YoutubeAction {
     Rate,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LogLevel {
+    All,
+    Warn,
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WaitState {
+    Visible,
+    Present,
+    Hidden,
+}
+
 fn yes() -> bool {
     true
 }
@@ -116,6 +132,50 @@ pub enum ControlRequest {
         #[serde(default)]
         tab_id: Option<u64>,
     },
+    ConsoleLogs {
+        #[serde(default)]
+        level: Option<LogLevel>,
+        #[serde(default)]
+        since: Option<u64>,
+        #[serde(default)]
+        limit: Option<usize>,
+        #[serde(default)]
+        tab_id: Option<u64>,
+    },
+    NetworkLog {
+        #[serde(default)]
+        failed_only: bool,
+        #[serde(default)]
+        url_contains: Option<String>,
+        #[serde(default)]
+        include_resources: bool,
+        #[serde(default)]
+        limit: Option<usize>,
+        #[serde(default)]
+        tab_id: Option<u64>,
+    },
+    WaitFor {
+        #[serde(default)]
+        selector: Option<String>,
+        #[serde(default)]
+        text: Option<String>,
+        #[serde(default)]
+        state: Option<WaitState>,
+        #[serde(default)]
+        timeout_ms: Option<u64>,
+        #[serde(default)]
+        tab_id: Option<u64>,
+    },
+    InspectElement {
+        #[serde(default)]
+        selector: Option<String>,
+        #[serde(default)]
+        element: Option<u32>,
+        #[serde(default)]
+        styles: Option<Vec<String>>,
+        #[serde(default)]
+        tab_id: Option<u64>,
+    },
 }
 
 impl ControlRequest {
@@ -140,7 +200,11 @@ impl ControlRequest {
             | Self::Screenshot { tab_id }
             | Self::Click { tab_id, .. }
             | Self::Type { tab_id, .. }
-            | Self::RunJs { tab_id, .. } => *tab_id,
+            | Self::RunJs { tab_id, .. }
+            | Self::ConsoleLogs { tab_id, .. }
+            | Self::NetworkLog { tab_id, .. }
+            | Self::WaitFor { tab_id, .. }
+            | Self::InspectElement { tab_id, .. } => *tab_id,
             Self::ListTabs | Self::OpenTab { .. } | Self::MemoryUsage => None,
         }
     }
@@ -196,6 +260,38 @@ mod tests {
     }
 
     #[test]
+    fn developer_tool_arguments_have_defaults() {
+        assert_eq!(
+            parse(json!({"cmd": "console_logs", "level": "error"})),
+            ControlRequest::ConsoleLogs { level: Some(LogLevel::Error), since: None, limit: None, tab_id: None }
+        );
+        assert_eq!(
+            parse(json!({"cmd": "network_log", "failed_only": true})),
+            ControlRequest::NetworkLog {
+                failed_only: true,
+                url_contains: None,
+                include_resources: false,
+                limit: None,
+                tab_id: None
+            }
+        );
+        assert_eq!(
+            parse(json!({"cmd": "wait_for", "selector": "#app", "state": "hidden"})),
+            ControlRequest::WaitFor {
+                selector: Some("#app".into()),
+                text: None,
+                state: Some(WaitState::Hidden),
+                timeout_ms: None,
+                tab_id: None
+            }
+        );
+        assert_eq!(
+            parse(json!({"cmd": "inspect_element", "element": 4, "styles": ["color"]})),
+            ControlRequest::InspectElement { selector: None, element: Some(4), styles: Some(vec!["color".into()]), tab_id: None }
+        );
+    }
+
+    #[test]
     fn unknown_or_invalid_arguments_are_rejected() {
         assert!(serde_json::from_value::<ControlRequest>(json!({"cmd": "navigate"})).is_err());
         assert!(serde_json::from_value::<ControlRequest>(json!({"cmd": "hapus_semua"})).is_err());
@@ -207,7 +303,10 @@ mod tests {
         assert!(parse(json!({"cmd": "click", "element": 1})).needs_interaction());
         assert!(parse(json!({"cmd": "type", "element": 1, "text": "a"})).needs_interaction());
         assert!(parse(json!({"cmd": "run_js", "code": "1"})).needs_interaction());
-        for cmd in ["list_tabs", "memory_usage", "read_page", "list_elements", "screenshot"] {
+        for cmd in [
+            "list_tabs", "memory_usage", "read_page", "list_elements", "screenshot",
+            "console_logs", "network_log", "wait_for", "inspect_element",
+        ] {
             assert!(!parse(json!({"cmd": cmd})).needs_interaction(), "{cmd}");
         }
         assert!(!parse(json!({"cmd": "scroll", "direction": "down"})).needs_interaction());

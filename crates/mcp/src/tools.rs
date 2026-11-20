@@ -121,9 +121,57 @@ pub fn list() -> Vec<Value> {
         ),
         tool(
             "run_js",
-            &format!("Menjalankan JavaScript di halaman dan mengembalikan hasil ekspresi terakhir sebagai JSON.{INTERACTION}"),
+            &format!(
+                "Menjalankan JavaScript di halaman dan mengembalikan hasil ekspresi terakhir sebagai JSON (Promise ditunggu).{INTERACTION}"
+            ),
             json!({"code": {"type": "string"}, "tab_id": tab_id()}),
             &["code"],
+        ),
+        tool(
+            "console_logs",
+            "Catatan console halaman sejak dimuat: console.log/info/warn/error, error JavaScript yang tidak tertangkap (dengan sumber dan stack), dan promise yang gagal. Untuk debug web app: reload, lalu panggil ini. Gunakan since=last_seq untuk hanya melihat catatan baru.",
+            json!({
+                "level": {"type": "string", "enum": ["all", "warn", "error"], "description": "Level minimum (bawaan: all)."},
+                "since": {"type": "integer", "description": "Hanya catatan dengan seq lebih besar dari ini (last_seq dari panggilan sebelumnya)."},
+                "limit": {"type": "integer", "description": "Jumlah catatan terakhir (bawaan 100, maks 500)."},
+                "tab_id": tab_id(),
+            }),
+            &[],
+        ),
+        tool(
+            "network_log",
+            "Request fetch/XHR halaman sejak dimuat: method, URL, status, durasi, error. Untuk situs lokal (localhost, IP lokal, .test) isi respons teks/JSON ikut dicatat (dipotong 4000 karakter).",
+            json!({
+                "failed_only": {"type": "boolean", "description": "Hanya yang gagal atau status >= 400."},
+                "url_contains": {"type": "string", "description": "Hanya URL yang mengandung teks ini."},
+                "include_resources": {"type": "boolean", "description": "Sertakan gambar, CSS, dan script (URL dan durasi saja)."},
+                "limit": {"type": "integer", "description": "Jumlah entri terakhir (bawaan 50, maks 300)."},
+                "tab_id": tab_id(),
+            }),
+            &[],
+        ),
+        tool(
+            "wait_for",
+            "Menunggu sampai elemen (selector CSS) atau teks muncul, terlihat, atau hilang. Pakai setelah navigate/click di aplikasi yang memuat data belakangan.",
+            json!({
+                "selector": {"type": "string", "description": "Selector CSS."},
+                "text": {"type": "string", "description": "Teks yang harus ada (di dalam selector kalau diisi)."},
+                "state": {"type": "string", "enum": ["visible", "present", "hidden"], "description": "Bawaan: visible."},
+                "timeout_ms": {"type": "integer", "description": "Bawaan 5000, maks 30000."},
+                "tab_id": tab_id(),
+            }),
+            &[],
+        ),
+        tool(
+            "inspect_element",
+            "Detail satu elemen untuk debug tampilan: posisi dan ukuran, terlihat atau tidak, computed style, dan outerHTML (dipotong). Pilih lewat selector CSS atau nomor dari list_elements.",
+            json!({
+                "selector": {"type": "string", "description": "Selector CSS (elemen pertama yang cocok)."},
+                "element": {"type": "integer", "description": "Nomor dari list_elements."},
+                "styles": {"type": "array", "items": {"type": "string"}, "description": "Properti CSS yang ingin dilihat (bawaan: set umum untuk layout, warna, dan font)."},
+                "tab_id": tab_id(),
+            }),
+            &[],
         ),
     ]
 }

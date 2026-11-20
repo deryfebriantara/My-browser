@@ -2,9 +2,23 @@
 //! string JSON, berisi data atau `{"error": "..."}`.
 //!
 //! Elemen yang bisa diklik atau diisi diberi nomor oleh `list_elements`
-//! (atribut `data-mb-ref`); `click` dan `type_text` memakai nomor itu.
+//! (atribut `data-mb-ref`); `click`, `type_text`, dan `inspect_element`
+//! memakai nomor itu.
+//!
+//! `run_js` dan `wait_for` adalah badan fungsi async (dijalankan lewat
+//! `Page::evaluate_async`), sisanya ekspresi biasa (`Page::evaluate`).
 
-use crate::control::{ScrollDirection, YoutubeAction};
+use crate::control::{LogLevel, ScrollDirection, WaitState, YoutubeAction};
+
+/// Pencatat console dan network untuk alat developer, dipasang di awal
+/// setiap dokumen main frame.
+pub const DEV_CAPTURE: &str = include_str!("dev_capture.js");
+
+const NO_CAPTURE: &str = "JSON.stringify({error:'Pencatat developer belum ada di halaman ini \
+(halaman dibuka sebelum browser diperbarui). Muat ulang halaman lalu coba lagi.'})";
+
+/// Batas maksimum `timeout_ms` untuk `wait_for`.
+pub const MAX_WAIT_MS: u64 = 30_000;
 
 /// Batas bawaan panjang teks halaman yang dikirim ke Claude.
 pub const DEFAULT_MAX_CHARS: usize = 20_000;
@@ -111,12 +125,111 @@ pub fn youtube(action: YoutubeAction, value: Option<f64>) -> String {
     )
 }
 
+/// Badan fungsi async: hasil ekspresi terakhir `code`; Promise ditunggu.
 pub fn run_js(code: &str) -> String {
     format!(
-        "(function(){{var r;try{{r=(0,eval)({code});}}catch(e){{return JSON.stringify({{error:String(e)}});}}\
-         if(r&&typeof r.then==='function')return JSON.stringify({{result:'[Promise] hasil async tidak ditunggu'}});\
-         try{{return JSON.stringify({{result:r===undefined?null:r}});}}catch(e){{return JSON.stringify({{result:String(r)}});}}}})()",
+        "var r;try{{r=(0,eval)({code});if(r&&typeof r.then==='function')r=await r;}}\
+         catch(e){{return JSON.stringify({{error:String(e)}});}}\
+         try{{return JSON.stringify({{result:r===undefined?null:r}});}}catch(e){{return JSON.stringify({{result:String(r)}});}}",
         code = js_string(code)
+    )
+}
+
+pub fn console_logs(level: LogLevel, since: u64, limit: usize) -> String {
+    let min = match level {
+        LogLevel::All => 0,
+        LogLevel::Warn => 1,
+        LogLevel::Error => 2,
+    };
+    format!(
+        "(function(){{var d=window.__mbDev;if(!d)return {NO_CAPTURE};\
+         var rank={{debug:0,log:0,info:0,warn:1,error:2}};\
+         var list=d.logs.filter(function(e){{return rank[e.level]>={min}&&e.seq>{since};}});\
+         var total=list.length;list=list.slice(-{limit});\
+         return JSON.stringify({{url:location.href,total:total,returned:list.length,last_seq:d.seq,entries:list}});}})()"
+    )
+}
+
+pub fn network_log(failed_only: bool, url_contains: Option<&str>, include_resources: bool, limit: usize) -> String {
+    let contains = js_string(url_contains.unwrap_or(""));
+    format!(
+        "(function(){{var d=window.__mbDev;if(!d)return {NO_CAPTURE};var list=d.net.slice();\
+         if({include_resources}){{performance.getEntriesByType('resource').forEach(function(r){{\
+         if(r.initiatorType==='fetch'||r.initiatorType==='xmlhttprequest')return;\
+         list.push({{type:r.initiatorType,url:r.name,start:Math.round(r.startTime),duration:Math.round(r.duration),\
+         size:r.transferSize||undefined,status:r.responseStatus||undefined}});}});\
+         list.sort(function(a,b){{return a.start-b.start;}});}}\
+         if({failed_only})list=list.filter(function(e){{return e.error||e.status>=400;}});\
+         var c={contains};if(c)list=list.filter(function(e){{return e.url.indexOf(c)>=0;}});\
+         var total=list.length;list=list.slice(-{limit});\
+         return JSON.stringify({{url:location.href,total:total,returned:list.length,entries:list,\
+         note:d.local?undefined:'Isi respons hanya dicatat untuk situs lokal (localhost, IP lokal, .test).'}});}})()"
+    )
+}
+
+/// Badan fungsi async yang menunggu elemen (atau teks) muncul, terlihat,
+/// atau hilang, paling lama `timeout_ms`.
+pub fn wait_for(selector: Option<&str>, text: Option<&str>, state: WaitState, timeout_ms: u64) -> String {
+    if selector.is_none() && text.is_none() {
+        return "return JSON.stringify({error:'wait_for butuh selector atau text.'});".into();
+    }
+    let state = match state {
+        WaitState::Visible => "visible",
+        WaitState::Present => "present",
+        WaitState::Hidden => "hidden",
+    };
+    format!(
+        "var sel={sel},txt={txt},state='{state}',timeout={timeout},start=Date.now();\
+         function shown(e){{var r=e.getBoundingClientRect(),s=getComputedStyle(e);\
+         return r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none';}}\
+         function find(){{var els=sel?Array.prototype.slice.call(document.querySelectorAll(sel)):(document.body?[document.body]:[]);\
+         if(txt!==null)els=els.filter(function(e){{return (e.innerText||e.textContent||'').indexOf(txt)>=0;}});return els;}}\
+         while(true){{var els;try{{els=find();}}catch(e){{return JSON.stringify({{error:'Selector tidak valid: '+e.message}});}}\
+         var ok=state==='present'?els.length>0:state==='hidden'?!els.some(shown):els.some(shown);\
+         if(ok)return JSON.stringify({{found:state!=='hidden',state:state,count:els.length,waited_ms:Date.now()-start}});\
+         if(Date.now()-start>=timeout)return JSON.stringify({{error:'Waktu habis setelah '+timeout+' ms: kondisi '+state+' belum terpenuhi \
+         (elemen cocok: '+els.length+').'}});\
+         await new Promise(function(r){{setTimeout(r,100);}});}}",
+        sel = selector.map_or("null".into(), js_string),
+        txt = text.map_or("null".into(), js_string),
+        timeout = timeout_ms.min(MAX_WAIT_MS),
+    )
+}
+
+/// Properti CSS bawaan untuk `inspect_element`.
+const DEFAULT_STYLES: &[&str] = &[
+    "display", "position", "top", "left", "width", "height", "margin", "padding", "box-sizing", "color",
+    "background-color", "font-family", "font-size", "font-weight", "line-height", "text-align", "border",
+    "border-radius", "opacity", "visibility", "overflow", "z-index", "flex-direction", "justify-content",
+    "align-items", "gap", "grid-template-columns",
+];
+
+pub fn inspect_element(selector: Option<&str>, element: Option<u32>, styles: Option<&[String]>) -> String {
+    let query = match (selector, element) {
+        (Some(sel), _) => js_string(sel),
+        (None, Some(n)) => js_string(&format!("[data-mb-ref=\"{n}\"]")),
+        (None, None) => return "JSON.stringify({error:'inspect_element butuh selector atau element.'})".into(),
+    };
+    let names: Vec<String> = match styles {
+        Some(list) => list.iter().filter(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')).cloned().collect(),
+        None => DEFAULT_STYLES.iter().map(|s| s.to_string()).collect(),
+    };
+    let names = serde_json::to_string(&names).expect("daftar string selalu bisa diserialisasi");
+    format!(
+        "(function(){{var q={query},e,count;try{{e=document.querySelector(q);count=document.querySelectorAll(q).length;}}\
+         catch(x){{return JSON.stringify({{error:'Selector tidak valid: '+x.message}});}}\
+         if(!e)return JSON.stringify({{error:'Elemen tidak ditemukan: '+q}});\
+         var r=e.getBoundingClientRect(),s=getComputedStyle(e),styles={{}};\
+         {names}.forEach(function(p){{styles[p]=s.getPropertyValue(p);}});\
+         function name(x){{if(!x)return null;var n=x.tagName.toLowerCase();if(x.id)n+='#'+x.id;\
+         if(typeof x.className==='string'&&x.className.trim())n+='.'+x.className.trim().split(/\\s+/).join('.');return n;}}\
+         var html=e.outerHTML,t=(e.innerText||'').trim();\
+         return JSON.stringify({{element:name(e),matches:count,parent:name(e.parentElement),children:e.children.length,\
+         text:t.length>300?t.slice(0,300)+'…':t,\
+         box:{{x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height)}},\
+         visible:r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none',\
+         in_viewport:r.bottom>0&&r.right>0&&r.top<innerHeight&&r.left<innerWidth,\
+         styles:styles,outer_html:html.length>3000?html.slice(0,3000)+'…':html}});}})()"
     )
 }
 
@@ -131,6 +244,7 @@ mod tests {
         assert!(js.contains("if(true)"));
         let js = run_js("document.title = \"x\"");
         assert!(js.contains(r#"(0,eval)("document.title = \"x\"")"#), "{js}");
+        assert!(js.contains("await r"));
     }
 
     #[test]
@@ -143,6 +257,19 @@ mod tests {
         assert!(youtube(YoutubeAction::Seek, None).contains("error"));
         assert!(youtube(YoutubeAction::Seek, Some(f64::NAN)).contains("error"));
         assert!(youtube(YoutubeAction::Seek, Some(90.0)).contains("p.seekTo(90,true);"));
+    }
+
+    #[test]
+    fn developer_scripts_validate_their_inputs() {
+        assert!(wait_for(None, None, WaitState::Visible, 1000).contains("butuh selector atau text"));
+        assert!(wait_for(Some("#a"), None, WaitState::Visible, 999_999).contains("timeout=30000"));
+        assert!(wait_for(Some("a'b"), Some("x"), WaitState::Hidden, 10).contains(r#"var sel="a'b",txt="x""#));
+        assert!(inspect_element(None, None, None).contains("butuh selector atau element"));
+        assert!(inspect_element(None, Some(3), None).contains(r#"var q="[data-mb-ref=\"3\"]""#));
+        let js = inspect_element(Some("#x"), None, Some(&["color".into(), "x;alert(1)".into()]));
+        assert!(js.contains(r#"["color"].forEach"#), "properti CSS yang aneh dibuang: {js}");
+        assert!(console_logs(LogLevel::Error, 5, 20).contains(">=2&&e.seq>5"));
+        assert!(network_log(true, Some("api/'x"), false, 10).contains(r#"var c="api/'x""#));
     }
 
     #[test]

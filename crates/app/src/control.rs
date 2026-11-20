@@ -1,7 +1,7 @@
 //! Menjalankan permintaan kontrol dari server MCP di main thread.
 
 use crate::state::{AppState, display_title};
-use browser_core::control::{ControlRequest as R, ControlResponse, TabInfo};
+use browser_core::control::{ControlRequest as R, ControlResponse, LogLevel, TabInfo, WaitState};
 use browser_core::engine::Page;
 use browser_core::page_scripts as js;
 use browser_core::tabs::TabId;
@@ -66,15 +66,38 @@ fn script_result(result: Result<String, String>) -> ControlResponse {
     }
 }
 
+/// Cara script dijalankan di halaman.
+#[derive(Clone, Copy)]
+enum Script {
+    /// Ekspresi biasa (`Page::evaluate`).
+    Expression,
+    /// Badan fungsi async yang boleh `await` (`Page::evaluate_async`).
+    AsyncBody,
+}
+
 /// Menjalankan script di page tab tujuan. Tab yang tidur tidak dibangunkan.
 fn run_on_page(state: &AppState, tab_id: Option<u64>, script: String, reply: Reply) {
+    run_script_on_page(state, tab_id, Script::Expression, script, reply)
+}
+
+fn run_async_on_page(state: &AppState, tab_id: Option<u64>, body: String, reply: Reply) {
+    run_script_on_page(state, tab_id, Script::AsyncBody, body, reply)
+}
+
+fn run_script_on_page(state: &AppState, tab_id: Option<u64>, kind: Script, script: String, reply: Reply) {
     let id = match target(state, tab_id) {
         Ok(id) => id,
         Err(e) => return reply(e),
     };
     let b = state.browser.borrow();
     match b.page(id) {
-        Some(page) => page.evaluate(&script, Box::new(move |result| reply(script_result(result)))),
+        Some(page) => {
+            let done: Box<dyn FnOnce(Result<String, String>)> = Box::new(move |result| reply(script_result(result)));
+            match kind {
+                Script::Expression => page.evaluate(&script, done),
+                Script::AsyncBody => page.evaluate_async(&script, done),
+            }
+        }
         None => {
             drop(b);
             reply(err(format!("Tab {} sedang tidur atau kosong. Panggil activate_tab atau navigate dulu.", id.0)))
@@ -172,7 +195,33 @@ pub fn handle(state: &Rc<AppState>, request: R, reply: Reply) {
         }
         R::RunJs { code, tab_id } => {
             notice(state, "Claude: menjalankan JavaScript");
-            run_on_page(state, tab_id, js::run_js(&code), reply)
+            run_async_on_page(state, tab_id, js::run_js(&code), reply)
+        }
+        R::ConsoleLogs { level, since, limit, tab_id } => run_on_page(
+            state,
+            tab_id,
+            js::console_logs(level.unwrap_or(LogLevel::All), since.unwrap_or(0), limit.unwrap_or(100).min(500)),
+            reply,
+        ),
+        R::NetworkLog { failed_only, url_contains, include_resources, limit, tab_id } => run_on_page(
+            state,
+            tab_id,
+            js::network_log(failed_only, url_contains.as_deref(), include_resources, limit.unwrap_or(50).min(300)),
+            reply,
+        ),
+        R::WaitFor { selector, text, state: wait_state, timeout_ms, tab_id } => run_async_on_page(
+            state,
+            tab_id,
+            js::wait_for(
+                selector.as_deref(),
+                text.as_deref(),
+                wait_state.unwrap_or(WaitState::Visible),
+                timeout_ms.unwrap_or(5000),
+            ),
+            reply,
+        ),
+        R::InspectElement { selector, element, styles, tab_id } => {
+            run_on_page(state, tab_id, js::inspect_element(selector.as_deref(), element, styles.as_deref()), reply)
         }
     }
 }

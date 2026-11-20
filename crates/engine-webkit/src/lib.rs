@@ -6,6 +6,7 @@ mod download_names;
 mod downloads;
 mod emitter;
 mod observer;
+mod scripts;
 mod page;
 pub mod user_agent;
 

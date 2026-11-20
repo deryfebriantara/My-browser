@@ -14,11 +14,11 @@ use objc2_app_kit::{
     NSAutoresizingMaskOptions, NSBitmapImageFileType, NSBitmapImageRep, NSImage, NSImageCompressionFactor, NSView,
 };
 use objc2_foundation::{
-    NSDictionary, NSError, NSKeyValueObservingOptions, NSNumber, NSObjectNSKeyValueObserverRegistration, NSRect, NSString, NSURL,
+    NSDictionary, NSError, NSKeyValueObservingOptions, NSNumber, NSObjectNSKeyValueObserverRegistration, NSPoint, NSRect, NSSize, NSString, NSURL,
     NSURLRequest,
 };
 use objc2_web_kit::{
-    WKMediaCaptureState, WKMediaPlaybackState, WKSnapshotConfiguration, WKUserContentController, WKWebView, WKWebViewConfiguration,
+    WKContentWorld, WKMediaCaptureState, WKMediaPlaybackState, WKSnapshotConfiguration, WKUserContentController, WKWebView, WKWebViewConfiguration,
     WKWebsiteDataStore,
 };
 use std::cell::{Cell, RefCell};
@@ -38,6 +38,9 @@ pub fn dropped_webviews_alive() -> usize {
         d.len()
     })
 }
+
+const INITIAL_WIDTH: f64 = 1280.0;
+const INITIAL_HEIGHT: f64 = 720.0;
 
 pub struct WebKitPage {
     webview: Retained<WKWebView>,
@@ -66,8 +69,12 @@ impl WebKitPage {
         let controller = unsafe { WKUserContentController::new(mtm) };
         unsafe { config.setUserContentController(&controller) };
         let blocking = blocker.register(&controller);
-        let webview =
-            unsafe { WKWebView::initWithFrame_configuration(WKWebView::alloc(mtm), NSRect::ZERO, &config) };
+        // Ukuran awal seukuran jendela bawaan. Tab latar yang belum pernah
+        // tampil tetap di-layout seperti desktop (bukan lebar nol), jadi
+        // halaman tidak berubah tata letak saat dibuka dan elemen bisa dibaca
+        // lewat MCP. Saat ditampilkan, ukurannya mengikuti area konten.
+        let initial = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(INITIAL_WIDTH, INITIAL_HEIGHT));
+        let webview = unsafe { WKWebView::initWithFrame_configuration(WKWebView::alloc(mtm), initial, &config) };
         webview.setAutoresizingMask(
             NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
         );
@@ -164,23 +171,24 @@ impl Page for WebKitPage {
     }
 
     fn evaluate(&self, script: &str, reply: Box<dyn FnOnce(Result<String, String>)>) {
-        let reply = RefCell::new(Some(reply));
-        let block = RcBlock::new(move |result: *mut AnyObject, error: *mut NSError| {
-            let Some(reply) = reply.borrow_mut().take() else { return };
-            objc2::rc::autoreleasepool(|_| {
-                if let Some(error) = unsafe { error.as_ref() } {
-                    reply(Err(javascript_error(error)));
-                    return;
-                }
-                let text = unsafe { result.as_ref() }
-                    .and_then(|obj| obj.downcast_ref::<NSString>())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "null".into());
-                reply(Ok(text));
-            });
-        });
+        let block = string_reply(reply);
         unsafe {
             self.webview.evaluateJavaScript_completionHandler(&NSString::from_str(script), Some(&block));
+        }
+    }
+
+    fn evaluate_async(&self, function_body: &str, reply: Box<dyn FnOnce(Result<String, String>)>) {
+        let mtm = MainThreadMarker::from(&*self.webview);
+        let world = unsafe { WKContentWorld::pageWorld(mtm) };
+        let block = string_reply(reply);
+        unsafe {
+            self.webview.callAsyncJavaScript_arguments_inFrame_inContentWorld_completionHandler(
+                &NSString::from_str(function_body),
+                None,
+                None,
+                &world,
+                Some(&block),
+            );
         }
     }
 
@@ -220,6 +228,26 @@ impl Page for WebKitPage {
     fn view(&self) -> Retained<NSView> {
         Retained::into_super(self.webview.clone())
     }
+}
+
+/// Completion handler JavaScript yang meneruskan hasil string ke `reply`
+/// (sekali saja, di dalam autorelease pool).
+fn string_reply(reply: Box<dyn FnOnce(Result<String, String>)>) -> RcBlock<dyn Fn(*mut AnyObject, *mut NSError)> {
+    let reply = RefCell::new(Some(reply));
+    RcBlock::new(move |result: *mut AnyObject, error: *mut NSError| {
+        let Some(reply) = reply.borrow_mut().take() else { return };
+        objc2::rc::autoreleasepool(|_| {
+            if let Some(error) = unsafe { error.as_ref() } {
+                reply(Err(javascript_error(error)));
+                return;
+            }
+            let text = unsafe { result.as_ref() }
+                .and_then(|obj| obj.downcast_ref::<NSString>())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "null".into());
+            reply(Ok(text));
+        });
+    })
 }
 
 /// Pesan error JavaScript, termasuk pesan exception kalau WebKit menyertakannya.

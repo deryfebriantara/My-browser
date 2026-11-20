@@ -50,6 +50,9 @@ pub trait Page {
     /// Menjalankan script yang menghasilkan string (biasanya JSON). Balasan
     /// lewat `reply`, tidak pernah sinkron dari dalam pemanggilan ini.
     fn evaluate(&self, script: &str, reply: Box<dyn FnOnce(Result<String, String>)>);
+    /// Seperti `evaluate`, tetapi `function_body` adalah badan fungsi async
+    /// (boleh `await`); nilai yang di-`return` (string) menjadi balasan.
+    fn evaluate_async(&self, function_body: &str, reply: Box<dyn FnOnce(Result<String, String>)>);
     /// Gambar halaman yang sedang tampil sebagai JPEG, lebar paling besar
     /// `max_width` poin. Balasan lewat `reply`, tidak pernah sinkron.
     fn snapshot(&self, max_width: f64, reply: Box<dyn FnOnce(Result<Vec<u8>, String>)>);

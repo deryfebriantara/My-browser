@@ -550,6 +550,9 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         fn evaluate(&self, script: &str, _reply: Box<dyn FnOnce(Result<String, String>)>) {
             self.0.borrow_mut().calls.push(Call::Script(script.into()));
         }
+        fn evaluate_async(&self, body: &str, _reply: Box<dyn FnOnce(Result<String, String>)>) {
+            self.0.borrow_mut().calls.push(Call::Script(body.into()));
+        }
         fn snapshot(&self, _max_width: f64, _reply: Box<dyn FnOnce(Result<Vec<u8>, String>)>) {}
         fn process_id(&self) -> Option<i32> { None }
         fn view(&self) {}

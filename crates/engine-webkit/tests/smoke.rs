@@ -115,6 +115,102 @@ fn json(page: &engine_webkit::WebKitPage, script: &str) -> serde_json::Value {
     serde_json::from_str(&text).unwrap_or_else(|e| panic!("bukan JSON ({e}): {text}"))
 }
 
+fn evaluate_async(page: &engine_webkit::WebKitPage, body: &str) -> Result<String, String> {
+    let slot: Rc<RefCell<Option<Result<String, String>>>> = Rc::default();
+    let sink = slot.clone();
+    page.evaluate_async(body, Box::new(move |r| *sink.borrow_mut() = Some(r)));
+    assert!(slot.borrow().is_none(), "balasan evaluate_async tidak boleh sinkron");
+    assert!(spin_until(Duration::from_secs(10), || slot.borrow().is_some()), "evaluate_async tidak dibalas");
+    slot.borrow_mut().take().unwrap()
+}
+
+fn json_async(page: &engine_webkit::WebKitPage, body: &str) -> serde_json::Value {
+    let text = evaluate_async(page, body).expect("script berhasil");
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("bukan JSON ({e}): {text}"))
+}
+
+fn messages(logs: &serde_json::Value) -> Vec<String> {
+    logs["entries"].as_array().unwrap().iter().map(|e| e["message"].as_str().unwrap().to_string()).collect()
+}
+
+/// Alat developer: console_logs, network_log, wait_for, inspect_element.
+fn developer_tools(engine: &WebKitEngine) {
+    use browser_core::control::{LogLevel, WaitState};
+    use browser_core::page_scripts as js;
+    let events: Rc<RefCell<Vec<PageEvent>>> = Rc::default();
+    let sink = events.clone();
+    let page = engine.create_page(Box::new(move |e| sink.borrow_mut().push(e)));
+    let html = r#"<title>dev</title>
+        <div id="box" class="kartu utama" style="width:120px;height:40px;color:rgb(255, 0, 0);display:flex">Kotak</div>
+        <script>
+          console.log('halo', {a: 1});
+          console.warn('awas');
+          fetch('data:application/json,{"ok":true}');
+          fetch('http://127.0.0.1:9/api').catch(function(){});
+          var x = new XMLHttpRequest(); x.open('GET', 'data:text/plain,xhr-ok'); x.send();
+          setTimeout(function(){ Promise.reject(new Error('janji gagal')); fungsiTidakAda(); }, 50);
+          setTimeout(function(){ var p = document.createElement('p'); p.id = 'telat'; p.textContent = 'Muncul belakangan'; document.body.appendChild(p); }, 3000);
+        </script>"#;
+    load_and_wait(&page, &events, html, "http://localhost:8000/");
+    spin_until(Duration::from_secs(2), || false);
+
+    let logs = json(&page, &js::console_logs(LogLevel::All, 0, 100));
+    let all = messages(&logs);
+    assert!(all.contains(&r#"halo {"a":1}"#.to_string()), "{all:?}");
+    assert!(all.contains(&"awas".to_string()), "{all:?}");
+    assert!(all.iter().any(|m| m.contains("fungsiTidakAda")), "error tak tertangkap: {all:?}");
+    assert!(all.iter().any(|m| m.contains("Unhandled promise rejection") && m.contains("janji gagal")), "{all:?}");
+    let errors = json(&page, &js::console_logs(LogLevel::Error, 0, 100));
+    assert!(errors["entries"].as_array().unwrap().iter().all(|e| e["level"] == "error"));
+    assert!(errors["returned"].as_u64().unwrap() >= 2);
+    let last = logs["last_seq"].as_u64().unwrap();
+    assert_eq!(json(&page, &js::console_logs(LogLevel::All, last, 100))["returned"], 0);
+    println!("ok: console_logs (console, error tak tertangkap, promise gagal, filter level dan since)");
+
+    let net = json(&page, &js::network_log(false, None, false, 50));
+    let entries = net["entries"].as_array().unwrap();
+    let data_fetch = entries.iter().find(|e| e["type"] == "fetch" && e["url"].as_str().unwrap().starts_with("data:")).expect("fetch data tercatat");
+    assert_eq!(data_fetch["status"], 200);
+    assert!(data_fetch["body"].as_str().unwrap_or_default().contains("ok"), "isi respons situs lokal disimpan: {data_fetch}");
+    let xhr = entries.iter().find(|e| e["type"] == "xhr").expect("xhr tercatat");
+    assert_eq!(xhr["body"], "xhr-ok", "{xhr}");
+    let failed = json(&page, &js::network_log(true, None, false, 50));
+    assert_eq!(failed["returned"], 1, "{failed}");
+    assert!(failed["entries"][0]["url"].as_str().unwrap().contains("127.0.0.1:9"));
+    assert!(failed["entries"][0]["error"].is_string());
+    assert_eq!(json(&page, &js::network_log(false, Some("127.0.0.1"), false, 50))["returned"], 1);
+    println!("ok: network_log (fetch, xhr, gagal, filter, isi respons lokal)");
+
+    let found = json_async(&page, &js::wait_for(Some("#telat"), None, WaitState::Visible, 5000));
+    assert_eq!(found["found"], true, "{found}");
+    assert!(found["waited_ms"].as_u64().unwrap() > 200, "seharusnya benar-benar menunggu: {found}");
+    assert_eq!(json_async(&page, &js::wait_for(None, Some("Kotak"), WaitState::Visible, 1000))["found"], true);
+    let missing = json_async(&page, &js::wait_for(Some("#tidak-ada"), None, WaitState::Present, 300));
+    assert!(missing["error"].as_str().unwrap().contains("Waktu habis"), "{missing}");
+    let invalid = json_async(&page, &js::wait_for(Some("##"), None, WaitState::Present, 300));
+    assert!(invalid["error"].as_str().unwrap().contains("Selector tidak valid"), "{invalid}");
+    println!("ok: wait_for (muncul belakangan, teks, waktu habis, selector rusak)");
+
+    let info = json(&page, &js::inspect_element(Some("#box"), None, None));
+    assert_eq!(info["element"], "div#box.kartu.utama", "{info}");
+    assert_eq!(info["box"]["width"], 120);
+    assert_eq!(info["styles"]["color"], "rgb(255, 0, 0)");
+    assert_eq!(info["styles"]["display"], "flex");
+    assert!(info["outer_html"].as_str().unwrap().contains(r#"id="box""#));
+    assert!(json(&page, &js::inspect_element(Some("#tidak-ada"), None, None))["error"].is_string());
+    println!("ok: inspect_element");
+
+    let remote = r#"<title>remote</title><script>fetch('data:application/json,{"rahasia":1}');</script>"#;
+    engine.set_blocker_exceptions(&["example.com".to_string()]);
+    load_and_wait(&page, &events, remote, "https://example.com/");
+    spin_until(Duration::from_secs(1), || false);
+    let net = json(&page, &js::network_log(false, None, false, 50));
+    assert!(net["entries"][0].get("body").is_none(), "isi respons situs biasa tidak boleh disimpan: {net}");
+    assert!(net["note"].is_string());
+    engine.set_blocker_exceptions(&[]);
+    println!("ok: situs biasa: tanpa isi respons, dan pencatat tetap ada saat pemblokir dimatikan");
+}
+
 /// Script kontrol Claude di halaman sungguhan: baca teks, daftar elemen,
 /// ketik, klik, run_js, error JS, screenshot, dan pid proses halaman.
 fn page_scripts(engine: &WebKitEngine) {
@@ -147,8 +243,9 @@ fn page_scripts(engine: &WebKitEngine) {
     assert!(json(&page, &js::click(99))["error"].is_string());
     println!("ok: type_text dan click");
 
-    assert_eq!(json(&page, &js::run_js("document.title.length"))["result"], 16);
-    assert!(json(&page, &js::run_js("nggak_ada()"))["error"].as_str().unwrap().contains("ReferenceError"));
+    assert_eq!(json_async(&page, &js::run_js("document.title.length"))["result"], 16);
+    assert_eq!(json_async(&page, &js::run_js("Promise.resolve(41 + 1)"))["result"], 42, "Promise harus ditunggu");
+    assert!(json_async(&page, &js::run_js("nggak_ada()"))["error"].as_str().unwrap().contains("ReferenceError"));
     let err = evaluate(&page, "(function(){throw new Error('rusak')})()").unwrap_err();
     assert!(err.contains("rusak"), "{err}");
     println!("ok: run_js dan error JavaScript");
@@ -257,6 +354,7 @@ fn main() {
 
     youtube_ad_skip(&engine);
     page_scripts(&engine);
+    developer_tools(&engine);
 
     // Daftar aturan yang isinya berubah (mis. setelah update-filters.sh)
     // membuat daftar lama di penyimpanan WebKit usang dan dihapus. WebKit
