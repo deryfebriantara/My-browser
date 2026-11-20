@@ -111,6 +111,11 @@ define_class!(
             self.with(|s| s.toggle_blocker());
         }
 
+        #[unsafe(method(toggleChat:))]
+        fn toggle_chat(&self, _sender: Option<&AnyObject>) {
+            self.with(|s| s.chat.toggle(s));
+        }
+
         #[unsafe(method(pickElement:))]
         fn pick_element(&self, _sender: Option<&AnyObject>) {
             self.with(|s| s.start_pick());
@@ -134,6 +139,11 @@ define_class!(
             if item.action() == Some(sel!(toggleClaudeInteract:)) {
                 let on = self.ivars().state.upgrade().is_some_and(|s| s.claude_interact.get());
                 item.setState(if on { NSControlStateValueOn } else { NSControlStateValueOff });
+                return Bool::YES;
+            }
+            if item.action() == Some(sel!(toggleChat:)) {
+                let open = self.ivars().state.upgrade().is_some_and(|s| s.chat.is_open());
+                item.setState(if open { NSControlStateValueOn } else { NSControlStateValueOff });
                 return Bool::YES;
             }
             if item.action() == Some(sel!(resetEmulation:)) {

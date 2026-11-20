@@ -8,6 +8,7 @@ mod emitter;
 mod observer;
 mod scripts;
 mod page;
+mod panel;
 pub mod user_agent;
 
 use browser_core::engine::{Engine, PageEvent};
@@ -20,6 +21,7 @@ use std::path::Path;
 use std::rc::Rc;
 
 pub use page::{WebKitPage, dropped_webviews_alive};
+pub use panel::PanelView;
 
 pub struct WebKitEngine {
     mtm: MainThreadMarker,

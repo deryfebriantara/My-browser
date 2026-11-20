@@ -13,6 +13,8 @@ use std::rc::Rc;
 
 pub const HEIGHT: f64 = 36.0;
 const NOTICE_W: f64 = 260.0;
+/// Ruang tombol Tanya Claude di ujung kanan.
+const CLAUDE_W: f64 = 36.0;
 const NOTICE_SECS: f64 = 6.0;
 
 pub struct NavBar {
@@ -56,7 +58,7 @@ impl NavBar {
         let reload = icon_button(mtm, &reload_icon, target, sel!(reloadOrStop:), 72.0);
 
         let address = NSTextField::new(mtm);
-        address.setFrame(NSRect::new(NSPoint::new(108.0, 7.0), NSSize::new(width - 116.0, 22.0)));
+        address.setFrame(NSRect::new(NSPoint::new(108.0, 7.0), NSSize::new(width - 116.0 - CLAUDE_W, 22.0)));
         address.setAutoresizingMask(NSAutoresizingMaskOptions::ViewWidthSizable);
         address.setPlaceholderString(Some(&NSString::from_str("Cari atau ketik alamat")));
         unsafe {
@@ -66,11 +68,15 @@ impl NavBar {
         unsafe { address.setDelegate(Some(ProtocolObject::from_ref(target))) };
 
         let notice = NSTextField::labelWithString(&NSString::from_str(""), mtm);
-        notice.setFrame(NSRect::new(NSPoint::new(width - NOTICE_W - 8.0, 9.0), NSSize::new(NOTICE_W, 18.0)));
+        notice.setFrame(NSRect::new(NSPoint::new(width - NOTICE_W - 8.0 - CLAUDE_W, 9.0), NSSize::new(NOTICE_W, 18.0)));
         notice.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinXMargin);
         notice.setHidden(true);
 
-        for view in [&*back, &*forward, &*reload] {
+        let claude = icon_button(mtm, &symbol("sparkles", "Tanya Claude"), target, sel!(toggleChat:), width - CLAUDE_W + 2.0);
+        claude.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinXMargin);
+        claude.setToolTip(Some(&NSString::from_str("Tanya Claude (Cmd+J)")));
+
+        for view in [&*back, &*forward, &*reload, &*claude] {
             bar.addSubview(view);
         }
         bar.addSubview(&address);

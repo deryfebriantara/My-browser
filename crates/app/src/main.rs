@@ -1,6 +1,7 @@
 //! my-browser: browser macOS hemat memory di atas WebKit.
 
 mod actions;
+mod chat;
 mod control;
 mod control_server;
 mod memory_pressure;
@@ -45,6 +46,7 @@ define_class!(
         fn will_terminate(&self, _notification: &NSNotification) {
             if let Some(state) = self.ivars().state.borrow().as_ref() {
                 state.save_all();
+                state.chat.shutdown();
             }
             control_server::stop(&socket_path());
         }

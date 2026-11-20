@@ -418,6 +418,42 @@ fn visual_tools(engine: &WebKitEngine) {
     println!("ok: Esc membatalkan mode Tunjuk Elemen");
 }
 
+/// Panel HTML lokal: pesan dua arah, tidak bisa berpindah halaman, dan
+/// webview-nya bebas setelah panel dilepas.
+fn panel_bridge(mtm: MainThreadMarker) {
+    let html = r#"<script>
+        function post(o){ webkit.messageHandlers.mb.postMessage(JSON.stringify(o)); }
+        window.mbReceive = function(m){
+          if (m.t === 'go') { location.href = 'https://example.com/'; setTimeout(function(){ post({t:'href', href: location.href}); }, 800); }
+          else post({t:'echo', got: m.text});
+        };
+        post({t:'ready'});
+    </script>"#;
+    let inbox: Rc<RefCell<Vec<serde_json::Value>>> = Rc::default();
+    let sink = inbox.clone();
+    // Pool per langkah, seperti event loop AppKit di aplikasi: objek yang
+    // di-autorelease saat membuat webview harus dikuras supaya bisa bebas.
+    let panel = objc2::rc::autoreleasepool(|_| {
+        engine_webkit::PanelView::new(mtm, html, Box::new(move |text| sink.borrow_mut().push(serde_json::from_str(&text).unwrap())))
+    });
+    let has = |t: &str| inbox.borrow().iter().any(|m| m["t"] == t);
+    assert!(spin_until(Duration::from_secs(10), || has("ready")), "panel tidak mengirim ready");
+    objc2::rc::autoreleasepool(|_| panel.send(&serde_json::json!({"t": "echo", "text": "halo \u{2028} \"kutip\" </script>"}).to_string()));
+    assert!(spin_until(Duration::from_secs(5), || has("echo")), "pesan ke panel tidak sampai");
+    assert_eq!(inbox.borrow().iter().find(|m| m["t"] == "echo").unwrap()["got"], "halo \u{2028} \"kutip\" </script>");
+    println!("ok: panel: pesan dua arah (termasuk U+2028, kutip, dan </script>)");
+
+    objc2::rc::autoreleasepool(|_| panel.send(r#"{"t":"go"}"#));
+    assert!(spin_until(Duration::from_secs(5), || has("href")), "panel tidak melapor");
+    assert_eq!(inbox.borrow().iter().find(|m| m["t"] == "href").unwrap()["href"], "about:blank", "panel tidak boleh berpindah halaman");
+    println!("ok: panel: navigasi ke situs lain diblokir");
+
+    let weak = objc2::rc::autoreleasepool(|_| objc2::rc::Weak::from(&*panel.view()));
+    objc2::rc::autoreleasepool(|_| drop(panel));
+    assert!(spin_until(Duration::from_secs(5), || weak.load().is_none()), "webview panel masih hidup setelah dilepas");
+    println!("ok: panel: webview dibebaskan setelah ditutup");
+}
+
 fn main() {
     let mtm = MainThreadMarker::new().expect("smoke test harus di main thread");
     let _app = NSApplication::sharedApplication(mtm);
@@ -510,6 +546,7 @@ fn main() {
     page_scripts(&engine);
     developer_tools(&engine);
     visual_tools(&engine);
+    panel_bridge(mtm);
 
     // Daftar aturan yang isinya berubah (mis. setelah update-filters.sh)
     // membuat daftar lama di penyimpanan WebKit usang dan dihapus. WebKit

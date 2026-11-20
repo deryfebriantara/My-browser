@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<!-- Tanpa sumber luar sama sekali: jawaban Claude (yang bisa memuat teks dari
+     situs) tidak bisa memuat gambar atau script dari internet. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:">
+<style>
+  :root {
+    --bg: #faf9f7; --surface: #ffffff; --text: #1f1e1d; --muted: #6f6b66; --line: #e7e3dd;
+    --accent: #c96442; --accent-text: #ffffff; --user: #efe9e1; --code: #f1eee9; --error: #b3261e; --error-bg: #fbeceb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1f1e1d; --surface: #2a2927; --text: #ecebe8; --muted: #a29d96; --line: #3a3835;
+      --accent: #d97757; --accent-text: #1f1e1d; --user: #393632; --code: #33312e; --error: #f2b8b5; --error-bg: #3b2321;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column; background: var(--bg); color: var(--text);
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    border-left: 1px solid var(--line); -webkit-font-smoothing: antialiased;
+  }
+  header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  header .title { font-weight: 600; flex: 1; display: flex; align-items: center; gap: 6px; }
+  header .title svg { color: var(--accent); }
+  .icon-btn {
+    border: 0; background: transparent; color: var(--muted); border-radius: 6px; padding: 4px 8px;
+    font: inherit; cursor: default;
+  }
+  .icon-btn:hover { background: var(--line); color: var(--text); }
+  #log { flex: 1; overflow-y: auto; padding: 14px 14px 6px; }
+  .msg { margin-bottom: 14px; overflow-wrap: anywhere; }
+  .user { display: flex; justify-content: flex-end; }
+  .user .bubble { background: var(--user); padding: 7px 11px; border-radius: 14px 14px 4px 14px; max-width: 88%; white-space: pre-wrap; }
+  .assistant .body > :first-child { margin-top: 0; }
+  .assistant .body > :last-child { margin-bottom: 0; }
+  .assistant p { margin: 0 0 8px; }
+  .assistant ul, .assistant ol { margin: 0 0 8px; padding-left: 20px; }
+  .assistant li { margin: 2px 0; }
+  .assistant h4 { margin: 12px 0 6px; font-size: 13px; }
+  .assistant code { background: var(--code); padding: 1px 4px; border-radius: 4px; font: 12px ui-monospace, Menlo, monospace; }
+  .assistant pre { background: var(--code); padding: 8px 10px; border-radius: 8px; overflow-x: auto; margin: 0 0 8px; }
+  .assistant pre code { background: none; padding: 0; white-space: pre; }
+  .assistant table { border-collapse: collapse; margin: 0 0 8px; font-size: 12px; }
+  .assistant th, .assistant td { border: 1px solid var(--line); padding: 3px 6px; text-align: left; vertical-align: top; }
+  .assistant a { color: var(--accent); text-decoration: underline; cursor: pointer; }
+  .tools { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+  .tool { font-size: 11px; color: var(--muted); border: 1px solid var(--line); border-radius: 999px; padding: 1px 8px; }
+  .error .bubble { background: var(--error-bg); color: var(--error); padding: 8px 11px; border-radius: 10px; white-space: pre-wrap; }
+  .typing { color: var(--muted); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+  .dots span { display: inline-block; width: 4px; height: 4px; margin-right: 2px; border-radius: 50%; background: var(--muted); animation: blink 1.2s infinite; }
+  .dots span:nth-child(2) { animation-delay: .2s; } .dots span:nth-child(3) { animation-delay: .4s; }
+  @keyframes blink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+  .empty { color: var(--muted); padding: 24px 6px 0; }
+  .empty h2 { color: var(--text); font-size: 15px; margin: 0 0 4px; }
+  .empty p { margin: 0 0 14px; }
+  .suggest { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .suggest button {
+    font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line);
+    border-radius: 999px; padding: 5px 11px; cursor: default; text-align: left;
+  }
+  .suggest button:hover { border-color: var(--accent); }
+  footer { padding: 10px 12px 12px; border-top: 1px solid var(--line); }
+  .composer { display: flex; align-items: flex-end; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 6px 6px 6px 10px; }
+  .composer:focus-within { border-color: var(--accent); }
+  textarea {
+    flex: 1; resize: none; border: 0; outline: 0; background: transparent; color: var(--text);
+    font: inherit; max-height: 140px; padding: 4px 0;
+  }
+  #send {
+    border: 0; border-radius: 8px; background: var(--accent); color: var(--accent-text);
+    font: inherit; font-weight: 600; padding: 5px 12px; cursor: default;
+  }
+  .hint { color: var(--muted); font-size: 11px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="title">
+    <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2l1.9 6.2L20 10l-6.1 1.8L12 18l-1.9-6.2L4 10l6.1-1.8z"/></svg>
+    Tanya Claude
+  </div>
+  <button class="icon-btn" id="new" title="Percakapan baru">Baru</button>
+  <button class="icon-btn" id="close" title="Tutup panel (Cmd+J)">✕</button>
+</header>
+<div id="log"></div>
+<footer>
+  <div class="composer">
+    <textarea id="input" rows="1" placeholder="Tanya tentang halaman ini…"></textarea>
+    <button id="send">Kirim</button>
+  </div>
+  <div class="hint">Claude bisa membaca dan memotret tab, tetapi tidak bisa membuka situs, mengklik, atau menyentuh file.</div>
+</footer>
+<script>
+(function () {
+  var log = document.getElementById('log');
+  var input = document.getElementById('input');
+  var send = document.getElementById('send');
+  var busy = false, current = null;
+
+  function post(o) { webkit.messageHandlers.mb.postMessage(JSON.stringify(o)); }
+
+  // --- Markdown sederhana yang aman: semua teks di-escape dulu. ---
+  function esc(s) {
+    return s.replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; });
+  }
+  function inline(text) {
+    return esc(text).split(/(`[^`]+`)/).map(function (part, i) {
+      if (i % 2) return '<code>' + part.slice(1, -1) + '</code>';
+      return part
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[^*\w])\*([^*\s][^*]*)\*/g, '$1<em>$2</em>')
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a data-url="$2">$1</a>')
+        .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a data-url="$2">$2</a>');
+    }).join('');
+  }
+  function cells(line) {
+    return line.trim().replace(/^\||\|$/g, '').split('|').map(function (c) { return c.trim(); });
+  }
+  function markdown(src) {
+    var lines = src.replace(/\r/g, '').split('\n'), out = [], para = [], list = null, i = 0;
+    function flushPara() { if (para.length) { out.push('<p>' + para.map(inline).join('<br>') + '</p>'); para = []; } }
+    function flushList() {
+      if (!list) return;
+      out.push('<' + list.type + '>' + list.items.map(function (x) { return '<li>' + inline(x) + '</li>'; }).join('') + '</' + list.type + '>');
+      list = null;
+    }
+    while (i < lines.length) {
+      var line = lines[i];
+      if (/^\s*```/.test(line)) {
+        flushPara(); flushList();
+        var code = []; i++;
+        while (i < lines.length && !/^\s*```/.test(lines[i])) code.push(lines[i++]);
+        i++;
+        out.push('<pre><code>' + esc(code.join('\n')) + '</code></pre>');
+        continue;
+      }
+      if (/^\s*\|/.test(line) && i + 1 < lines.length && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1])) {
+        flushPara(); flushList();
+        var head = cells(line), rows = []; i += 2;
+        while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(cells(lines[i++]));
+        out.push('<table><tr>' + head.map(function (c) { return '<th>' + inline(c) + '</th>'; }).join('') + '</tr>' +
+          rows.map(function (r) { return '<tr>' + r.map(function (c) { return '<td>' + inline(c) + '</td>'; }).join('') + '</tr>'; }).join('') + '</table>');
+        continue;
+      }
+      var h = line.match(/^#{1,6}\s+(.*)$/);
+      if (h) { flushPara(); flushList(); out.push('<h4>' + inline(h[1]) + '</h4>'); i++; continue; }
+      var ul = line.match(/^\s*[-*•]\s+(.*)$/), ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
+      if (ul || ol) {
+        flushPara();
+        var type = ul ? 'ul' : 'ol';
+        if (!list || list.type !== type) { flushList(); list = { type: type, items: [] }; }
+        list.items.push((ul || ol)[1]); i++; continue;
+      }
+      if (/^\s*$/.test(line)) { flushPara(); flushList(); i++; continue; }
+      if (list && /^\s{2,}\S/.test(line)) { list.items[list.items.length - 1] += ' ' + line.trim(); i++; continue; }
+      flushList(); para.push(line); i++;
+    }
+    flushPara(); flushList();
+    return out.join('');
+  }
+
+  // --- Tampilan ---
+  function nearBottom() { return log.scrollHeight - log.scrollTop - log.clientHeight < 80; }
+  function scroll(force) { if (force || nearBottom()) log.scrollTop = log.scrollHeight; }
+
+  function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+
+  function addUser(text) {
+    var m = el('div', 'msg user'); var b = el('div', 'bubble'); b.textContent = text; m.appendChild(b); log.appendChild(m);
+  }
+  function addAssistant(text, tools) {
+    var m = el('div', 'msg assistant');
+    var t = el('div', 'tools'); var body = el('div', 'body');
+    m.appendChild(t); m.appendChild(body); log.appendChild(m);
+    current = { el: m, tools: t, body: body, text: text || '', typing: null };
+    (tools || []).forEach(addTool);
+    render();
+    return current;
+  }
+  function addTool(label) {
+    if (!current) return;
+    current.tools.appendChild(el('span', 'tool')).textContent = label;
+  }
+  function addError(text) {
+    var m = el('div', 'msg error'); var b = el('div', 'bubble'); b.textContent = text; m.appendChild(b); log.appendChild(m);
+  }
+  function render() {
+    if (!current) return;
+    current.body.innerHTML = markdown(current.text);
+    if (busy) {
+      if (!current.typing) current.typing = el('div', 'typing', '<span class="dots"><span></span><span></span><span></span></span><span class="status"></span>');
+      current.el.appendChild(current.typing);
+    } else if (current.typing) { current.typing.remove(); current.typing = null; }
+  }
+  function setStatus(text) {
+    if (current && current.typing) current.typing.querySelector('.status').textContent = text || '';
+  }
+  function setBusy(b) {
+    busy = b;
+    send.textContent = b ? 'Berhenti' : 'Kirim';
+    render();
+  }
+  function empty() {
+    if (log.children.length) return;
+    var e = el('div', 'empty');
+    e.innerHTML = '<h2>Tanya tentang halaman ini</h2><p>Claude bisa membaca tab yang sedang Anda lihat, memotretnya, dan melihat elemen yang Anda tunjuk (Cmd+Shift+E).</p>';
+    var s = el('div', 'suggest');
+    ['Ringkas halaman ini', 'Apa poin terpentingnya?', 'Jelaskan elemen yang saya tunjuk'].forEach(function (q) {
+      var b = el('button'); b.textContent = q; b.onclick = function () { submit(q); }; s.appendChild(b);
+    });
+    e.appendChild(s); log.appendChild(e);
+  }
+
+  function submit(text) {
+    text = (text || '').trim();
+    if (!text || busy) return;
+    post({ t: 'send', text: text });
+    input.value = ''; grow();
+  }
+  function grow() { input.style.height = 'auto'; input.style.height = Math.min(input.scrollHeight, 140) + 'px'; }
+
+  send.onclick = function () { if (busy) post({ t: 'stop' }); else submit(input.value); };
+  input.addEventListener('input', grow);
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(input.value); }
+    if (e.key === 'Escape') { e.preventDefault(); if (busy) post({ t: 'stop' }); }
+  });
+  document.getElementById('new').onclick = function () { post({ t: 'new' }); };
+  document.getElementById('close').onclick = function () { post({ t: 'close' }); };
+  log.addEventListener('click', function (e) {
+    var a = e.target.closest('a[data-url]');
+    if (a) { e.preventDefault(); post({ t: 'open', url: a.getAttribute('data-url') }); }
+  });
+
+  // --- Pesan dari aplikasi ---
+  window.mbReceive = function (m) {
+    if (m.t === 'reset') {
+      log.innerHTML = ''; current = null; busy = false;
+      (m.items || []).forEach(function (it) {
+        if (it.role === 'user') addUser(it.text);
+        else if (it.role === 'assistant') addAssistant(it.text, it.tools);
+        else addError(it.text);
+      });
+      setBusy(!!m.busy);
+      empty(); scroll(true); input.focus();
+    } else if (m.t === 'user') {
+      var e = log.querySelector('.empty'); if (e) e.remove();
+      addUser(m.text); scroll(true);
+    } else if (m.t === 'start') {
+      busy = true; addAssistant('', []); setBusy(true); setStatus(m.status || ''); scroll(true);
+    } else if (m.t === 'status') {
+      setStatus(m.text);
+    } else if (m.t === 'delta') {
+      if (current) { current.text += m.text; render(); setStatus(''); scroll(false); }
+    } else if (m.t === 'tool') {
+      addTool(m.label); setStatus(m.label + '…'); scroll(false);
+    } else if (m.t === 'done') {
+      if (current && m.stopped) { current.text += (current.text ? '\n\n' : '') + '*(dihentikan)*'; }
+      setBusy(false);
+      if (current && !current.text && !current.tools.children.length) { current.el.remove(); current = null; }
+      if (m.error) addError(m.error);
+      scroll(false); input.focus();
+    } else if (m.t === 'error') {
+      var e2 = log.querySelector('.empty'); if (e2) e2.remove();
+      addError(m.text); scroll(true);
+    } else if (m.t === 'focus') {
+      input.focus();
+    }
+  };
+  post({ t: 'ready' });
+})();
+</script>
+</body>
+</html>

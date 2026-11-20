@@ -16,6 +16,12 @@ pub struct Settings {
     pub blocker_exceptions: Vec<String>,
     pub sleep_idle_secs: u64,
     pub max_awake: usize,
+    /// Lokasi `claude` untuk panel Tanya Claude. Kosong: dicari otomatis.
+    pub claude_path: Option<String>,
+    /// Profil Claude Code (`CLAUDE_CONFIG_DIR`). Kosong: `~/.claude`.
+    pub claude_config_dir: Option<String>,
+    /// Model untuk panel (mis. `sonnet`). Kosong: model bawaan Claude Code.
+    pub claude_model: Option<String>,
 }
 
 impl Default for Settings {
@@ -26,6 +32,9 @@ impl Default for Settings {
             blocker_exceptions: Vec::new(),
             sleep_idle_secs: policy.idle_after.as_secs(),
             max_awake: policy.max_awake,
+            claude_path: None,
+            claude_config_dir: None,
+            claude_model: None,
         }
     }
 }
@@ -55,6 +64,7 @@ mod tests {
         assert_eq!(s.search_template, "https://www.google.com/search?q={}");
         assert_eq!((s.sleep_idle_secs, s.max_awake), (300, 3));
         assert!(s.blocker_exceptions.is_empty());
+        assert_eq!((s.claude_path, s.claude_config_dir, s.claude_model), (None, None, None));
     }
 
     #[test]

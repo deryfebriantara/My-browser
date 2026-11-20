@@ -17,7 +17,12 @@ pub struct Ui {
     pub content: Retained<NSView>,
     pub target: Retained<ActionTarget>,
     shown: RefCell<Option<Retained<NSView>>>,
+    /// Panel di kanan area konten (Tanya Claude).
+    panel: RefCell<Option<Retained<NSView>>>,
 }
+
+/// Lebar panel di kanan area konten.
+pub const PANEL_WIDTH: f64 = 380.0;
 
 impl Ui {
     pub fn build(mtm: MainThreadMarker, target: Retained<ActionTarget>) -> Ui {
@@ -59,7 +64,7 @@ impl Ui {
         );
         root.addSubview(&content);
 
-        Ui { window, nav, tabs, content, target, shown: RefCell::new(None) }
+        Ui { window, nav, tabs, content, target, shown: RefCell::new(None), panel: RefCell::new(None) }
     }
 
     /// Mengganti view di area konten. `None` untuk tab kosong. `viewport`
@@ -99,6 +104,29 @@ impl Ui {
                         | NSAutoresizingMaskOptions::ViewMinYMargin,
                 );
             }
+        }
+    }
+
+    /// Memasang (atau melepas, `None`) panel di kanan. Area konten menyempit
+    /// selebar panel; halaman dan viewport emulasi ikut menyesuaikan.
+    pub fn set_panel(&self, view: Option<Retained<NSView>>) {
+        let Some(root) = self.window.contentView() else { return };
+        if let Some(old) = self.panel.borrow_mut().take() {
+            old.removeFromSuperview();
+        }
+        let width = root.bounds().size.width;
+        let height = self.content.frame().size.height;
+        match view {
+            Some(view) => {
+                self.content.setFrameSize(NSSize::new((width - PANEL_WIDTH).max(0.0), height));
+                view.setFrame(NSRect::new(NSPoint::new(width - PANEL_WIDTH, 0.0), NSSize::new(PANEL_WIDTH, height)));
+                view.setAutoresizingMask(
+                    NSAutoresizingMaskOptions::ViewMinXMargin | NSAutoresizingMaskOptions::ViewHeightSizable,
+                );
+                root.addSubview(&view);
+                *self.panel.borrow_mut() = Some(view);
+            }
+            None => self.content.setFrameSize(NSSize::new(width, height)),
         }
     }
 

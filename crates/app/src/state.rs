@@ -5,6 +5,7 @@
 //! AppKit bisa memanggil balik handler aksi secara sinkron.
 
 use crate::actions::ActionTarget;
+use crate::chat::Chat;
 use crate::persistence;
 use crate::tab_strip::TabInfo;
 use crate::window::Ui;
@@ -38,6 +39,8 @@ pub struct AppState {
     pub claude_interact: Cell<bool>,
     /// Tab tempat pengguna terakhir memakai Tunjuk Elemen ke Claude.
     pub picked_tab: Cell<Option<TabId>>,
+    /// Panel Tanya Claude.
+    pub chat: Chat,
 }
 
 struct NavInfo {
@@ -110,6 +113,7 @@ impl AppState {
                 tabs_layout_pending: Cell::new(false),
                 claude_interact: Cell::new(false),
                 picked_tab: Cell::new(None),
+                chat: Chat::default(),
             }
         })
     }
