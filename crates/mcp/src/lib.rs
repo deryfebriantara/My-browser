@@ -23,10 +23,10 @@ pub fn run_stdio(socket: PathBuf, app: Option<PathBuf>) {
         if line.trim().is_empty() {
             continue;
         }
-        if let Some(response) = server.handle_line(&line) {
-            if writeln!(out, "{response}").and_then(|_| out.flush()).is_err() {
-                break;
-            }
+        if let Some(response) = server.handle_line(&line)
+            && writeln!(out, "{response}").and_then(|_| out.flush()).is_err()
+        {
+            break;
         }
     }
 }

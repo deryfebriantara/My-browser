@@ -23,7 +23,7 @@ pub fn is_youtube_watch(url: &Url) -> bool {
 /// Menyetel parameter `t=<detik>s` (dibulatkan ke bawah), menggantikan `t` lama.
 /// Posisi di bawah satu detik tidak mengubah URL.
 pub fn with_resume_time(url: &Url, seconds: f64) -> Url {
-    if !(seconds >= 1.0) {
+    if seconds.is_nan() || seconds < 1.0 {
         return url.clone();
     }
     let kept: Vec<(String, String)> =

@@ -24,7 +24,7 @@ fn main() {
         );
         if detail {
             let mut list = usage.processes.clone();
-            list.sort_by(|a, b| b.footprint.cmp(&a.footprint));
+            list.sort_by_key(|p| std::cmp::Reverse(p.footprint));
             for p in list {
                 println!("    {:>6}  {:<40} {:>9.1} MB", p.pid, p.name, p.footprint as f64 / MB);
             }

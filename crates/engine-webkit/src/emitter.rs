@@ -28,10 +28,10 @@ impl Emitter {
         let alive = self.alive.clone();
         let slot = Cell::new(Some(event));
         let block = RcBlock::new(move || {
-            if let Some(event) = slot.take() {
-                if alive.get() {
-                    sink(event);
-                }
+            if let Some(event) = slot.take()
+                && alive.get()
+            {
+                sink(event);
             }
         });
         // SAFETY: emit hanya dipanggil dari main thread (semua objek AppKit/WebKit
