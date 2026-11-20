@@ -92,6 +92,12 @@ pub fn build(mtm: MainThreadMarker, target: &ActionTarget) -> Retained<NSMenu> {
         &[it("Mundur", sel!(goBack:), "[", cmd, t, 0), it("Maju", sel!(goForward:), "]", cmd, t, 0)],
     ));
 
+    main.addItem(&submenu(
+        mtm,
+        "Claude",
+        &[it("Izinkan Claude Berinteraksi", sel!(toggleClaudeInteract:), "", cmd, t, 0)],
+    ));
+
     let mut window_items = vec![
         it("Tab Berikutnya", sel!(nextTab:), "\t", ctrl, t, 0),
         it("Tab Berikutnya", sel!(nextTab:), "]", cmd_shift, t, 0),

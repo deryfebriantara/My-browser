@@ -110,12 +110,22 @@ define_class!(
         fn toggle_blocker(&self, _sender: Option<&AnyObject>) {
             self.with(|s| s.toggle_blocker());
         }
+
+        #[unsafe(method(toggleClaudeInteract:))]
+        fn toggle_claude_interact(&self, _sender: Option<&AnyObject>) {
+            self.with(|s| s.toggle_claude_interact());
+        }
     }
 
     unsafe impl NSMenuItemValidation for ActionTarget {
         /// Menu pemblokir bercentang sesuai situs aktif dan nonaktif untuk tab kosong.
         #[unsafe(method(validateMenuItem:))]
         fn validate_menu_item(&self, item: &NSMenuItem) -> Bool {
+            if item.action() == Some(sel!(toggleClaudeInteract:)) {
+                let on = self.ivars().state.upgrade().is_some_and(|s| s.claude_interact.get());
+                item.setState(if on { NSControlStateValueOn } else { NSControlStateValueOff });
+                return Bool::YES;
+            }
             if item.action() != Some(sel!(toggleBlocker:)) {
                 return Bool::YES;
             }

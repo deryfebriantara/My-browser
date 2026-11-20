@@ -116,6 +116,7 @@ dependencies = [
  "objc2-app-kit",
  "objc2-foundation",
  "objc2-web-kit",
+ "serde_json",
  "url",
 ]
 
@@ -322,11 +323,15 @@ dependencies = [
  "block2",
  "dispatch2",
  "engine-webkit",
+ "libc",
+ "memtool",
  "my-browser-core",
+ "my-browser-mcp",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
  "objc2-web-kit",
+ "serde_json",
  "url",
 ]
 
@@ -338,6 +343,14 @@ dependencies = [
  "serde_json",
  "tempfile",
  "url",
+]
+
+[[package]]
+name = "my-browser-mcp"
+version = "0.1.0"
+dependencies = [
+ "my-browser-core",
+ "serde_json",
 ]
 
 [[package]]

@@ -31,6 +31,9 @@ pub struct AppState {
     pub ui: Ui,
     /// Penggambaran ulang tab strip sudah dijadwalkan untuk putaran run loop berikutnya.
     tabs_layout_pending: Cell<bool>,
+    /// Claude boleh klik, mengetik, dan menjalankan JavaScript lewat MCP.
+    /// Selalu mati saat aplikasi dibuka.
+    pub claude_interact: Cell<bool>,
 }
 
 struct NavInfo {
@@ -42,7 +45,7 @@ struct NavInfo {
     blank: bool,
 }
 
-fn display_title(tab: &Tab) -> String {
+pub(crate) fn display_title(tab: &Tab) -> String {
     if !tab.title.is_empty() {
         return tab.title.clone();
     }
@@ -101,6 +104,7 @@ impl AppState {
                 browser: RefCell::new(browser),
                 ui,
                 tabs_layout_pending: Cell::new(false),
+                claude_interact: Cell::new(false),
             }
         })
     }
@@ -142,8 +146,7 @@ impl AppState {
 
         if has(UiChange::Tabs) || has(UiChange::Active) {
             self.layout_tabs();
-            let title = if nav.title.is_empty() { "my-browser".to_string() } else { nav.title.clone() };
-            self.ui.window.setTitle(&NSString::from_str(&title));
+            self.update_window_title(&nav.title);
         }
         if has(UiChange::Active) {
             let view = self.browser.borrow().active_view();
@@ -164,6 +167,28 @@ impl AppState {
                 self.ui.nav.show_notice(&message);
             }
         }
+    }
+
+    /// Judul window mengikuti tab aktif, ditambah penanda selama Claude boleh
+    /// berinteraksi.
+    fn update_window_title(&self, tab_title: &str) {
+        let mut title = if tab_title.is_empty() { "my-browser".to_string() } else { tab_title.to_string() };
+        if self.claude_interact.get() {
+            title.push_str(" — Claude dapat berinteraksi");
+        }
+        self.ui.window.setTitle(&NSString::from_str(&title));
+    }
+
+    pub fn toggle_claude_interact(&self) {
+        let on = !self.claude_interact.get();
+        self.claude_interact.set(on);
+        let title = self.nav_info().title;
+        self.update_window_title(&title);
+        self.ui.nav.show_notice(if on {
+            "Claude sekarang boleh klik, mengetik, dan menjalankan JavaScript"
+        } else {
+            "Interaksi Claude dimatikan"
+        });
     }
 
     /// Menjadwalkan penggambaran ulang tab strip di putaran run loop berikutnya.
