@@ -28,7 +28,11 @@ Claude Code ──stdio JSON-RPC──▶ my-browser --mcp ──control.sock─
 | `list_tabs`, `open_tab`, `close_tab`, `activate_tab` | Mengatur tab | Tidak |
 | `navigate`, `go_back`, `go_forward`, `reload` | Navigasi, menunggu halaman selesai dimuat | Tidak |
 | `sleep_tab`, `memory_usage` | Menidurkan tab, memory per tab | Tidak |
-| `read_page`, `list_elements`, `scroll`, `screenshot` | Membaca halaman | Tidak |
+| `read_page`, `list_elements`, `scroll` | Membaca halaman | Tidak |
+| `screenshot` | Layar tab aktif; `full_page` untuk seluruh halaman (dipotong per 1600 px, maks 6 gambar); `selector` untuk satu elemen (elemen kecil diperbesar 2x) | Tidak |
+| `emulate` | Meniru HP (390×844 + user agent iPhone), tablet, desktop, ukuran khusus, mode gelap/terang; `device=reset` untuk kembali | Tidak |
+| `get_selection` | Elemen yang Anda tunjuk lewat **Claude > Tunjuk Elemen ke Claude**: selector, style, HTML, dan gambarnya | Tidak |
+| `check_page` | Satu panggilan: reload (atau buka url), tunggu, error console, request gagal, screenshot | Tidak |
 | `youtube` | Status, play, pause, seek, kecepatan | Tidak |
 | `console_logs` | Console, error tak tertangkap (sumber dan stack), promise gagal | Tidak |
 | `network_log` | Request fetch/XHR: status, durasi, error; isi respons untuk situs lokal | Tidak |
@@ -42,8 +46,17 @@ Minta Claude membuat atau memperbaiki website, misalnya "buatkan landing page ke
 
 1. Menulis kode dan menjalankan server lokal (`npm run dev`, `python3 -m http.server`, dan sejenisnya).
 2. `navigate` ke `http://localhost:<port>`.
-3. Setelah setiap perubahan: `reload`, lalu `console_logs` (level `error`), `network_log` (`failed_only`), dan `screenshot` atau `inspect_element` untuk tampilan.
-4. Untuk halaman yang memuat data belakangan: `wait_for` sebelum membaca atau mengambil screenshot.
+3. Setelah setiap perubahan: `check_page`. Isinya sama dengan `reload` lalu `console_logs` (warn dan error), `network_log` (`failed_only`), dan `screenshot`, tetapi dalam satu panggilan. Untuk halaman yang memuat data belakangan, isi `wait_for` dengan selector yang ditunggu.
+4. Tampilan di layar lain: `emulate` dengan `device=mobile` atau `tablet`, dan `color_scheme=dark`. Setelah selesai, `emulate device=reset`. Anda melihat perubahannya di jendela: halaman tampil selebar HP di tengah atas. Kalau Claude lupa mengembalikan, pakai menu **Claude > Kembalikan Tampilan Normal**.
+5. Detail tampilan: `screenshot` dengan `selector`, `full_page`, atau `inspect_element`.
+
+### Menunjuk elemen ke Claude
+
+Daripada menjelaskan "tombol oranye di bawah judul", pilih **Claude > Tunjuk Elemen ke Claude** (⌘⇧E). Elemen di bawah kursor disorot; klik elemen yang dimaksud (Esc untuk batal). Klik ini tidak diteruskan ke halaman, jadi tombol dan link tidak ikut jalan. Setelah itu cukup bilang ke Claude, misalnya "perbesar elemen yang saya pilih". Claude memanggil `get_selection` dan menerima selector unik, teks, posisi, computed style, outerHTML, dan potongan gambar elemen itu.
+
+### Catatan screenshot
+
+Screenshot biasa adalah foto layar tab aktif, termasuk video. `full_page`, `selector`, dan gambar `get_selection` dirender ulang dari halaman lewat PDF WebKit, sehingga bagian di luar layar ikut tergambar dan bisa dipakai untuk tab latar. Video dan canvas WebGL bisa tampil kosong di gambar jenis ini, dan gambar yang lazy-load di bawah layar mungkin belum dimuat.
 
 Pencatat console dan network terpasang di awal setiap halaman dan dibatasi jumlahnya (200 catatan console, 300 request). Isi respons hanya disimpan untuk situs lokal (`localhost`, IP lokal, `.local`, `.test`, `file:`), karena isi respons situs sungguhan bisa berisi data pribadi. Mesinnya WebKit, jadi hasilnya sekaligus menunjukkan perilaku di Safari.
 

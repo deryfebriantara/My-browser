@@ -90,3 +90,9 @@ Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`), lal
 - [ ] Matikan lagi: klik ditolak lagi
 - [ ] Tutup browser (⌘Q), lalu minta Claude melihat daftar tab: browser terbuka otomatis
 - [ ] Minta Claude membuat website kecil, menjalankannya di localhost, lalu memeriksanya: Claude memakai console_logs, network_log, dan screenshot, lalu memperbaiki error yang ditemukan
+- [ ] Pilih Claude > Tunjuk Elemen ke Claude (⌘⇧E), arahkan kursor: elemen disorot dengan label ukuran; klik sebuah tombol: tombolnya tidak ikut jalan, tanda "Terpilih" muncul sebentar. Lalu minta Claude "lihat elemen yang saya pilih": Claude menyebut elemen yang benar dan bisa melihat gambarnya
+- [ ] Mode Tunjuk Elemen lalu tekan Esc: sorotan hilang, klik berikutnya berjalan normal
+- [ ] Minta Claude "cek tampilan HP dan mode gelap": halaman tampil selebar HP di tengah atas jendela, pemberitahuan "Claude: HP 390×844, mode gelap" muncul; setelah Claude selesai (atau lewat menu Claude > Kembalikan Tampilan Normal) tampilan kembali penuh
+- [ ] Menu Kembalikan Tampilan Normal nonaktif (abu-abu) di tab yang tidak diemulasi
+- [ ] Minta Claude "screenshot seluruh halaman" di halaman panjang: Claude menerima beberapa gambar dan bisa menjelaskan bagian bawah halaman
+- [ ] Minta Claude memakai check_page setelah mengubah kode situs lokal: satu panggilan berisi ringkasan error, request gagal, dan screenshot
