@@ -96,3 +96,16 @@ Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`), lal
 - [ ] Menu Kembalikan Tampilan Normal nonaktif (abu-abu) di tab yang tidak diemulasi
 - [ ] Minta Claude "screenshot seluruh halaman" di halaman panjang: Claude menerima beberapa gambar dan bisa menjelaskan bagian bawah halaman
 - [ ] Minta Claude memakai check_page setelah mengubah kode situs lokal: satu panggilan berisi ringkasan error, request gagal, dan screenshot
+
+## Tanya Claude
+
+Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
+
+- [ ] Tombol ✦ di kanan nav bar dan ⌘J membuka panel di kanan; halaman menyempit (tidak tertutup panel); ⌘J lagi menutupnya
+- [ ] Di YouTube atau artikel, tanya "ringkas halaman ini": jawaban muncul bertahap, label "Membaca halaman" tampil di atas jawaban
+- [ ] Tunjuk sebuah elemen (⌘⇧E), lalu tanya "jelaskan elemen yang saya tunjuk": Claude membahas elemen yang benar
+- [ ] Minta "buka youtube.com": Claude menolak, tidak ada tab baru
+- [ ] Tutup panel saat Claude sedang menjawab: jawaban berhenti; buka lagi: riwayat masih ada dan pertanyaan berikutnya nyambung dengan percakapan sebelumnya
+- [ ] Monitor Aktivitas: proses `claude` hanya ada selama panel terbuka dan sudah dipakai
+- [ ] Klik link di jawaban Claude: terbuka di tab baru
+- [ ] Mode terang dan gelap macOS: panel ikut berganti warna
