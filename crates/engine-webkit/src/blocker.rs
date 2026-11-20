@@ -150,11 +150,17 @@ impl Blocker {
         let store_in = store.clone();
         let on_list = RcBlock::new(move |ids: *mut NSArray<NSString>| {
             let Some(ids) = (unsafe { ids.as_ref() }) else { return };
+            // WebKit memanggil completion handler ini tanpa cek nil, jadi
+            // wajib diisi meskipun hasilnya tidak dipakai.
+            let on_removed = RcBlock::new(|_error: *mut NSError| {});
             for id in ids.iter() {
                 let id = id.to_string();
                 if id.starts_with(PREFIX) && !wanted.contains(&id) {
                     unsafe {
-                        store_in.removeContentRuleListForIdentifier_completionHandler(Some(&NSString::from_str(&id)), None);
+                        store_in.removeContentRuleListForIdentifier_completionHandler(
+                            Some(&NSString::from_str(&id)),
+                            Some(&on_removed),
+                        );
                     }
                 }
             }

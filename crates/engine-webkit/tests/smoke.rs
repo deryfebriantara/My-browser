@@ -117,5 +117,22 @@ fn main() {
     assert!(freed, "WKWebView masih hidup setelah page dilepas (retain cycle?)");
     println!("ok: WKWebView dibebaskan setelah page dibuat dan dilepas di dalam callback");
     drop(page_a);
+
+    // Daftar aturan yang isinya berubah (mis. setelah update-filters.sh)
+    // membuat daftar lama di penyimpanan WebKit usang dan dihapus. WebKit
+    // memanggil completion handler penghapusan tanpa cek nil, jadi handler
+    // kosong membuat proses crash.
+    let base = std::env::temp_dir().join(format!("mb-smoke-blocklist-{}", std::process::id()));
+    let rule = |sel: &str| format!(r#"[{{"trigger":{{"url-filter":".*"}},"action":{{"type":"css-display-none","selector":"{sel}"}}}}]"#);
+    for (name, sel) in [("a", ".mb-smoke-a"), ("b", ".mb-smoke-b")] {
+        std::fs::create_dir_all(base.join(name)).unwrap();
+        std::fs::write(base.join(name).join("blocklist-0.json"), rule(sel)).unwrap();
+    }
+    engine.load_blocklists(&base.join("a"));
+    spin_until(Duration::from_secs(3), || false);
+    engine.load_blocklists(&base.join("b"));
+    spin_until(Duration::from_secs(3), || false);
+    let _ = std::fs::remove_dir_all(&base);
+    println!("ok: daftar aturan usang dihapus tanpa crash");
     println!("smoke: semua lulus");
 }
