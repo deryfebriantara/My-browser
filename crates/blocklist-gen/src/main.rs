@@ -1,7 +1,7 @@
 //! Pemakaian: blocklist-gen <folder-filter> <folder-keluaran>
 //! Membaca semua *.txt di folder filter, menulis blocklist-<i>.json.
 
-use blocklist_gen::{MAX_RULES_PER_LIST, chunk, convert};
+use blocklist_gen::{MAX_RULES_PER_LIST, build_lists};
 use std::path::Path;
 
 fn main() {
@@ -18,9 +18,8 @@ fn main() {
     files.sort();
     let text: String = files.iter().map(|p| std::fs::read_to_string(p).expect("filter bisa dibaca") + "\n").collect();
 
-    let (rules, skipped) = convert(&text);
-    let total = rules.len();
-    let chunks = chunk(rules, MAX_RULES_PER_LIST);
+    let (chunks, skipped) = build_lists(&text, MAX_RULES_PER_LIST);
+    let sizes: Vec<usize> = chunks.iter().map(Vec::len).collect();
 
     let out = Path::new(output);
     std::fs::create_dir_all(out).expect("folder keluaran bisa dibuat");
@@ -34,7 +33,7 @@ fn main() {
         std::fs::write(&path, serde_json::to_vec(list).expect("JSON")).expect("bisa menulis");
     }
     println!(
-        "{} berkas filter, {total} aturan WebKit, {skipped} filter dilewati, {} daftar",
+        "{} berkas filter, {skipped} filter dilewati, {} daftar berukuran {sizes:?}",
         files.len(),
         chunks.len()
     );

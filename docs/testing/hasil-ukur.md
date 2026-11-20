@@ -55,3 +55,30 @@ Satu tab `https://www.detik.com`, diukur 30 detik setelah aplikasi dibuka, folde
 | Pemblokir aktif, daftar dari cache | 118,0 MB | 162,6 MB |
 
 Satu sampel per percobaan. Belum dicek secara visual apakah ada bagian situs yang rusak; itu masuk daftar cek manual.
+
+## Perbaikan pemblokir: tombol "Lewati" YouTube (2026-11-20)
+
+Laporan pengguna: iklan video YouTube tidak punya tombol "Lewati".
+
+Penyebab, dibuktikan di WebKit dengan program diagnostik yang memuat halaman dengan daftar aturan tertentu lalu memeriksa elemen uji yang disisipkan ke halaman:
+
+1. EasyList menyembunyikan `.video-ads` di semua situs (`##.video-ads`) dan mengecualikan YouTube (`youtube.com#@#.video-ads`). Crate adblock mengubah pengecualian itu menjadi aturan sembunyi dengan `unless-domain`, sementara aturan umumnya tetap berlaku di mana-mana. Akibatnya wadah UI iklan YouTube, termasuk tombol "Lewati", ikut tersembunyi, padahal video iklannya tetap diputar.
+2. `@@||www.youtube.com^$generichide` (dan 180 situs lain, termasuk GitHub, Gmail, dan Wikipedia) dibuang crate adblock. Akibatnya 13.637 aturan sembunyi umum tetap berlaku di situs-situs itu.
+3. Domain di aturan kosmetik ditulis tanpa awalan `*`. Di WebKit, `youtube.com` hanya cocok dengan host yang persis sama, jadi aturan khusus YouTube tidak berlaku di `www.youtube.com`.
+
+Temuan perilaku WebKit yang menentukan bentuk perbaikan: `ignore-previous-rules` yang hanya cocok dengan URL dokumen tidak cukup. Untuk setiap subresource yang tidak terkena pengecualian (mis. CSS dari ytimg.com), WebKit memasang lagi stylesheet aturan umum. Karena itu generichide ditulis sebagai satu aturan dengan `url-filter` `.*` dan `if-domain` berisi semua situsnya, ditaruh di daftar khusus aturan sembunyi umum.
+
+Hasil (1 = tersembunyi, 0 = tampil; baris terakhir menghitung muatan dari jaringan iklan):
+
+| Uji | Tanpa pemblokir | Daftar lama | Daftar baru |
+|---|---|---|---|
+| YouTube, elemen `.video-ads` (wadah tombol Lewati) | 0 | 1 | 0 |
+| YouTube, selector umum `.video-ads-container` | 0 | 1 | 0 |
+| YouTube, aturan khusus youtube.com | 0 | 0 | 1 |
+| GitHub, selector umum | 0 | 1 | 0 |
+| detik.com, selector umum (situs tanpa pengecualian) | 0 | 1 | 1 |
+| detik.com, muatan doubleclick/googlesyndication/adservice | 5 | 0 | 0 |
+
+Batas: iklan video YouTube tetap diputar, karena dikirim dari server yang sama dengan videonya dan content blocker WebKit tidak bisa membedakannya. Perbaikan ini hanya mengembalikan tombol "Lewati" untuk iklan yang memang bisa dilewati.
+
+Bug lain yang ditemukan saat pengujian ini: menghapus daftar aturan lama dari penyimpanan WebKit dengan completion handler kosong membuat proses crash (SIGSEGV di `removeContentRuleListForIdentifier:completionHandler:`). Ini terjadi setiap kali isi daftar aturan berubah, termasuk saat daftar baru ini dipasang. Diperbaiki dan dijaga oleh smoke test.
