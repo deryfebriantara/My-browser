@@ -1,12 +1,16 @@
 //! Content blocker: kompilasi daftar aturan sekali (disimpan WebKit di disk),
 //! lalu pasang ke setiap page kecuali page yang host-nya dikecualikan.
+//! Script skip iklan YouTube ikut dipasang dan dilepas bersama daftar aturan.
 
 use block2::RcBlock;
 use browser_core::blocking::host_matches;
-use objc2::MainThreadMarker;
+use browser_core::youtube::AD_SKIP_JS;
+use objc2::{MainThreadMarker, MainThreadOnly};
 use objc2::rc::{Retained, Weak};
 use objc2_foundation::{NSArray, NSError, NSString};
-use objc2_web_kit::{WKContentRuleList, WKContentRuleListStore, WKUserContentController};
+use objc2_web_kit::{
+    WKContentRuleList, WKContentRuleListStore, WKUserContentController, WKUserScript, WKUserScriptInjectionTime,
+};
 use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
@@ -17,6 +21,22 @@ const PREFIX: &str = "blocklist-";
 /// FNV-1a 64-bit, cukup untuk membedakan versi isi daftar.
 fn fnv1a64(bytes: &[u8]) -> u64 {
     bytes.iter().fold(0xcbf29ce484222325u64, |h, b| (h ^ *b as u64).wrapping_mul(0x100000001b3))
+}
+
+/// Memasang script skip iklan YouTube. Script pengguna di controller page
+/// hanya milik pemblokir, jadi mematikannya cukup dengan
+/// `removeAllUserScripts`.
+fn add_ad_skip(controller: &WKUserContentController) {
+    let mtm = MainThreadMarker::from(controller);
+    unsafe {
+        let script = WKUserScript::initWithSource_injectionTime_forMainFrameOnly(
+            WKUserScript::alloc(mtm),
+            &NSString::from_str(AD_SKIP_JS),
+            WKUserScriptInjectionTime::AtDocumentEnd,
+            false,
+        );
+        controller.addUserScript(&script);
+    }
 }
 
 struct Registered {
@@ -47,13 +67,14 @@ impl Blocker {
         for list in self.lists.borrow().iter() {
             unsafe { controller.addContentRuleList(list) };
         }
+        add_ad_skip(controller);
         let mut pages = self.pages.borrow_mut();
         pages.retain(|p| p.controller.load().is_some());
         pages.push(Registered { controller: Weak::from(controller), enabled: enabled.clone() });
         enabled
     }
 
-    /// Menyalakan/mematikan semua daftar untuk satu page.
+    /// Menyalakan/mematikan semua daftar dan script skip iklan untuk satu page.
     pub(crate) fn apply(&self, controller: &WKUserContentController, enabled: &Cell<bool>, block: bool) {
         if enabled.get() == block {
             return;
@@ -64,8 +85,10 @@ impl Blocker {
                 for list in self.lists.borrow().iter() {
                     controller.addContentRuleList(list);
                 }
+                add_ad_skip(controller);
             } else {
                 controller.removeAllContentRuleLists();
+                controller.removeAllUserScripts();
             }
         }
     }

@@ -57,6 +57,9 @@ Untuk uji manual, tutup browser dulu (⌘Q), set `"sleep_idle_secs": 20` di `~/L
 - [ ] YouTube masih memutar video dan login tetap ada
 - [ ] Iklan video YouTube yang bisa dilewati menampilkan tombol "Lewati" (perbaikan 2026-11-20)
 - [ ] github.com dan Gmail tampil utuh (aturan sembunyi umum tidak berlaku di situs generichide)
+- [ ] Skip iklan YouTube otomatis: iklan yang bisa dilewati hilang dalam sekitar 1 detik; iklan yang tidak bisa dilewati bisu dan selesai dalam 1-2 detik
+- [ ] Setelah iklan, kecepatan video (mis. 1,5x) dan suara kembali seperti sebelumnya
+- [ ] Tampilan > Matikan Pemblokir untuk Situs Ini di YouTube: iklan diputar normal lagi; nyalakan lagi: iklan dilewati lagi
 
 ## Task 11: Download
 

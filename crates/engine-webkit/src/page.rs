@@ -95,6 +95,13 @@ impl WebKitPage {
 
         Self { webview, observer, _delegate: delegate, emitter, busy }
     }
+
+    /// Memuat HTML dengan alamat dasar tertentu, seolah-olah halaman dari
+    /// situs itu. Dipakai test untuk meniru halaman situs tanpa jaringan.
+    pub fn load_html(&self, html: &str, base: &Url) {
+        let base = NSURL::URLWithString(&NSString::from_str(base.as_str()));
+        unsafe { self.webview.loadHTMLString_baseURL(&NSString::from_str(html), base.as_deref()) };
+    }
 }
 
 impl Page for WebKitPage {

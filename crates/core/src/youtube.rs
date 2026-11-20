@@ -1,10 +1,15 @@
-//! Bantuan khusus YouTube: melanjutkan video dari posisi terakhir.
+//! Bantuan khusus YouTube: melanjutkan video dari posisi terakhir dan
+//! melewati iklan video.
 
 use url::Url;
 
 /// Script yang mengembalikan posisi video pertama di halaman (detik), atau null.
 pub const VIDEO_TIME_JS: &str =
     "(function(){var v=document.querySelector('video');return v?v.currentTime:null;})()";
+
+/// Script pemblokir bawaan yang melewati iklan video YouTube. Dipasang di
+/// setiap halaman; script sendiri yang membatasi diri ke youtube.com.
+pub const AD_SKIP_JS: &str = include_str!("youtube_ad_skip.js");
 
 const HOSTS: [&str; 3] = ["youtube.com", "www.youtube.com", "m.youtube.com"];
 
