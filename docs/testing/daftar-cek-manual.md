@@ -89,3 +89,4 @@ Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`), lal
 - [ ] Nyalakan Claude > Izinkan Claude Berinteraksi: judul window berpenanda, klik berhasil, pemberitahuan "Claude: klik elemen ..." muncul
 - [ ] Matikan lagi: klik ditolak lagi
 - [ ] Tutup browser (⌘Q), lalu minta Claude melihat daftar tab: browser terbuka otomatis
+- [ ] Minta Claude membuat website kecil, menjalankannya di localhost, lalu memeriksanya: Claude memakai console_logs, network_log, dan screenshot, lalu memperbaiki error yang ditemukan

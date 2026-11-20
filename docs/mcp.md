@@ -30,7 +30,22 @@ Claude Code ──stdio JSON-RPC──▶ my-browser --mcp ──control.sock─
 | `sleep_tab`, `memory_usage` | Menidurkan tab, memory per tab | Tidak |
 | `read_page`, `list_elements`, `scroll`, `screenshot` | Membaca halaman | Tidak |
 | `youtube` | Status, play, pause, seek, kecepatan | Tidak |
-| `click`, `type`, `run_js` | Berinteraksi dengan halaman | **Ya** |
+| `console_logs` | Console, error tak tertangkap (sumber dan stack), promise gagal | Tidak |
+| `network_log` | Request fetch/XHR: status, durasi, error; isi respons untuk situs lokal | Tidak |
+| `wait_for` | Menunggu elemen atau teks muncul, terlihat, atau hilang | Tidak |
+| `inspect_element` | Posisi, ukuran, computed style, outerHTML satu elemen | Tidak |
+| `click`, `type`, `run_js` | Berinteraksi dengan halaman (`run_js` menunggu Promise) | **Ya** |
+
+## Membangun website bersama Claude
+
+Minta Claude membuat atau memperbaiki website, misalnya "buatkan landing page kedai kopi, jalankan, dan cek di browser". Alur yang dipakai Claude:
+
+1. Menulis kode dan menjalankan server lokal (`npm run dev`, `python3 -m http.server`, dan sejenisnya).
+2. `navigate` ke `http://localhost:<port>`.
+3. Setelah setiap perubahan: `reload`, lalu `console_logs` (level `error`), `network_log` (`failed_only`), dan `screenshot` atau `inspect_element` untuk tampilan.
+4. Untuk halaman yang memuat data belakangan: `wait_for` sebelum membaca atau mengambil screenshot.
+
+Pencatat console dan network terpasang di awal setiap halaman dan dibatasi jumlahnya (200 catatan console, 300 request). Isi respons hanya disimpan untuk situs lokal (`localhost`, IP lokal, `.local`, `.test`, `file:`), karena isi respons situs sungguhan bisa berisi data pribadi. Mesinnya WebKit, jadi hasilnya sekaligus menunjukkan perilaku di Safari.
 
 ## Izin interaksi
 
