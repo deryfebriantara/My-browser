@@ -31,6 +31,9 @@ pub struct Tab {
     pub can_back: bool,
     pub can_forward: bool,
     pub last_crash: Option<Instant>,
+    /// Jumlah halaman yang selesai dimuat di tab ini (dipakai untuk menunggu
+    /// navigasi selesai).
+    pub loads: u64,
 }
 
 impl Tab {
@@ -53,6 +56,7 @@ impl Tab {
             can_back: false,
             can_forward: false,
             last_crash: None,
+            loads: 0,
         }
     }
 }

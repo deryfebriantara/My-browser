@@ -11,3 +11,5 @@ pub mod engine;
 pub mod youtube;
 pub mod blocking;
 pub mod downloads;
+pub mod control;
+pub mod page_scripts;

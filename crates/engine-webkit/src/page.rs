@@ -9,14 +9,16 @@ use block2::RcBlock;
 use browser_core::engine::{JsTag, Page, PageEvent};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{MainThreadMarker, MainThreadOnly};
-use objc2_app_kit::{NSAutoresizingMaskOptions, NSView};
+use objc2::{MainThreadMarker, MainThreadOnly, msg_send, sel};
+use objc2_app_kit::{
+    NSAutoresizingMaskOptions, NSBitmapImageFileType, NSBitmapImageRep, NSImage, NSImageCompressionFactor, NSView,
+};
 use objc2_foundation::{
-    NSError, NSKeyValueObservingOptions, NSNumber, NSObjectNSKeyValueObserverRegistration, NSRect, NSString, NSURL,
+    NSDictionary, NSError, NSKeyValueObservingOptions, NSNumber, NSObjectNSKeyValueObserverRegistration, NSRect, NSString, NSURL,
     NSURLRequest,
 };
 use objc2_web_kit::{
-    WKMediaCaptureState, WKMediaPlaybackState, WKUserContentController, WKWebView, WKWebViewConfiguration,
+    WKMediaCaptureState, WKMediaPlaybackState, WKSnapshotConfiguration, WKUserContentController, WKWebView, WKWebViewConfiguration,
     WKWebsiteDataStore,
 };
 use std::cell::{Cell, RefCell};
@@ -161,9 +163,86 @@ impl Page for WebKitPage {
         unsafe { self.webview.evaluateJavaScript_completionHandler(&NSString::from_str(script), None) };
     }
 
+    fn evaluate(&self, script: &str, reply: Box<dyn FnOnce(Result<String, String>)>) {
+        let reply = RefCell::new(Some(reply));
+        let block = RcBlock::new(move |result: *mut AnyObject, error: *mut NSError| {
+            let Some(reply) = reply.borrow_mut().take() else { return };
+            objc2::rc::autoreleasepool(|_| {
+                if let Some(error) = unsafe { error.as_ref() } {
+                    reply(Err(javascript_error(error)));
+                    return;
+                }
+                let text = unsafe { result.as_ref() }
+                    .and_then(|obj| obj.downcast_ref::<NSString>())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| "null".into());
+                reply(Ok(text));
+            });
+        });
+        unsafe {
+            self.webview.evaluateJavaScript_completionHandler(&NSString::from_str(script), Some(&block));
+        }
+    }
+
+    fn snapshot(&self, max_width: f64, reply: Box<dyn FnOnce(Result<Vec<u8>, String>)>) {
+        let mtm = MainThreadMarker::from(&*self.webview);
+        // Lebar snapshot dalam poin; layar Retina menggandakan pikselnya.
+        let scale = self.webview.window().map_or(1.0, |w| w.backingScaleFactor());
+        let width = (max_width / scale).min(self.webview.bounds().size.width);
+        let config = unsafe { WKSnapshotConfiguration::new(mtm) };
+        unsafe { config.setSnapshotWidth(Some(&NSNumber::new_f64(width))) };
+        let reply = RefCell::new(Some(reply));
+        let block = RcBlock::new(move |image: *mut NSImage, error: *mut NSError| {
+            let Some(reply) = reply.borrow_mut().take() else { return };
+            objc2::rc::autoreleasepool(|_| {
+                let result = match (unsafe { image.as_ref() }, unsafe { error.as_ref() }) {
+                    (Some(image), _) => jpeg(image).ok_or_else(|| "gambar tidak bisa diubah ke JPEG".to_string()),
+                    (None, Some(error)) => Err(error.localizedDescription().to_string()),
+                    (None, None) => Err("snapshot kosong".to_string()),
+                };
+                reply(result);
+            });
+        });
+        unsafe { self.webview.takeSnapshotWithConfiguration_completionHandler(Some(&config), &block) };
+    }
+
+    /// Memakai properti privat `_webProcessIdentifier` (hanya dibaca, dicek
+    /// dulu keberadaannya) karena WebKit tidak punya API publik untuk pid.
+    fn process_id(&self) -> Option<i32> {
+        let responds: bool = unsafe { msg_send![&*self.webview, respondsToSelector: sel!(_webProcessIdentifier)] };
+        if !responds {
+            return None;
+        }
+        let pid: i32 = unsafe { msg_send![&*self.webview, _webProcessIdentifier] };
+        (pid > 0).then_some(pid)
+    }
+
     fn view(&self) -> Retained<NSView> {
         Retained::into_super(self.webview.clone())
     }
+}
+
+/// Pesan error JavaScript, termasuk pesan exception kalau WebKit menyertakannya.
+fn javascript_error(error: &NSError) -> String {
+    let message = error
+        .userInfo()
+        .objectForKey(&NSString::from_str("WKJavaScriptExceptionMessage"))
+        .and_then(|m| m.downcast::<NSString>().ok())
+        .map(|m| m.to_string());
+    match message {
+        Some(m) => m,
+        None => error.localizedDescription().to_string(),
+    }
+}
+
+fn jpeg(image: &NSImage) -> Option<Vec<u8>> {
+    let tiff = image.TIFFRepresentation()?;
+    let rep = NSBitmapImageRep::imageRepWithData(&tiff)?;
+    let quality = NSNumber::new_f64(0.7);
+    let value: &AnyObject = quality.as_ref();
+    let properties = NSDictionary::<NSString, AnyObject>::from_slices(&[unsafe { NSImageCompressionFactor }], &[value]);
+    let data = unsafe { rep.representationUsingType_properties(NSBitmapImageFileType::JPEG, &properties) }?;
+    Some(data.to_vec())
 }
 
 impl Drop for WebKitPage {

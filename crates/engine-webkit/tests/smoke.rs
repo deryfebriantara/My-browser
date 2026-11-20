@@ -101,6 +101,72 @@ fn youtube_ad_skip(engine: &WebKitEngine) {
     println!("ok: skip iklan ikut pengecualian pemblokir");
 }
 
+fn evaluate(page: &engine_webkit::WebKitPage, script: &str) -> Result<String, String> {
+    let slot: Rc<RefCell<Option<Result<String, String>>>> = Rc::default();
+    let sink = slot.clone();
+    page.evaluate(script, Box::new(move |r| *sink.borrow_mut() = Some(r)));
+    assert!(slot.borrow().is_none(), "balasan evaluate tidak boleh sinkron");
+    assert!(spin_until(Duration::from_secs(5), || slot.borrow().is_some()), "evaluate tidak dibalas");
+    slot.borrow_mut().take().unwrap()
+}
+
+fn json(page: &engine_webkit::WebKitPage, script: &str) -> serde_json::Value {
+    let text = evaluate(page, script).expect("script berhasil");
+    serde_json::from_str(&text).unwrap_or_else(|e| panic!("bukan JSON ({e}): {text}"))
+}
+
+/// Script kontrol Claude di halaman sungguhan: baca teks, daftar elemen,
+/// ketik, klik, run_js, error JS, screenshot, dan pid proses halaman.
+fn page_scripts(engine: &WebKitEngine) {
+    use browser_core::page_scripts as js;
+    let events: Rc<RefCell<Vec<PageEvent>>> = Rc::default();
+    let sink = events.clone();
+    let page = engine.create_page(Box::new(move |e| sink.borrow_mut().push(e)));
+    let html = r#"<title>form</title><p>Halo dunia</p>
+        <input id="q" placeholder="Cari"><input type="password" value="rahasia">
+        <button onclick="document.title='klik:'+document.getElementById('q').value">Kirim</button>
+        <a href="https://example.com/x">Tautan</a><div style="display:none"><button>Tersembunyi</button></div>"#;
+    load_and_wait(&page, &events, html, "https://example.com/");
+
+    let read = json(&page, &js::read_page(5));
+    assert_eq!(read["title"], "form");
+    assert_eq!(read["text"], "Halo ");
+    assert_eq!(read["truncated"], true);
+    println!("ok: read_page");
+
+    let list = json(&page, js::LIST_ELEMENTS);
+    assert_eq!(list["count"], 4, "{list}");
+    assert!(!list.to_string().contains("rahasia"), "nilai password tidak boleh dikirim: {list}");
+    assert!(!list.to_string().contains("Tersembunyi"));
+    assert_eq!(list["elements"][2]["text"], "Kirim");
+    println!("ok: list_elements (tanpa nilai password dan elemen tersembunyi)");
+
+    assert_eq!(json(&page, &js::type_text(1, "kopi \"susu\"", false))["typed"], 1);
+    assert_eq!(json(&page, &js::click(3))["clicked"], 3);
+    assert!(title_becomes(&events, "klik:kopi \"susu\"", Duration::from_secs(3)), "klik tidak menjalankan onclick");
+    assert!(json(&page, &js::click(99))["error"].is_string());
+    println!("ok: type_text dan click");
+
+    assert_eq!(json(&page, &js::run_js("document.title.length"))["result"], 16);
+    assert!(json(&page, &js::run_js("nggak_ada()"))["error"].as_str().unwrap().contains("ReferenceError"));
+    let err = evaluate(&page, "(function(){throw new Error('rusak')})()").unwrap_err();
+    assert!(err.contains("rusak"), "{err}");
+    println!("ok: run_js dan error JavaScript");
+
+    let pid = page.process_id();
+    assert!(pid.is_some_and(|p| p > 0), "pid proses halaman: {pid:?}");
+    println!("ok: process_id");
+
+    page.view().setFrameSize(objc2_foundation::NSSize::new(800.0, 600.0));
+    let shot: Rc<RefCell<Option<Result<Vec<u8>, String>>>> = Rc::default();
+    let sink = shot.clone();
+    page.snapshot(400.0, Box::new(move |r| *sink.borrow_mut() = Some(r)));
+    assert!(spin_until(Duration::from_secs(10), || shot.borrow().is_some()), "snapshot tidak dibalas");
+    let bytes = shot.borrow_mut().take().unwrap().expect("snapshot berhasil");
+    assert_eq!(&bytes[..2], &[0xFF, 0xD8], "bukan JPEG");
+    println!("ok: snapshot JPEG {} byte", bytes.len());
+}
+
 fn main() {
     let mtm = MainThreadMarker::new().expect("smoke test harus di main thread");
     let _app = NSApplication::sharedApplication(mtm);
@@ -190,6 +256,7 @@ fn main() {
     drop(page_a);
 
     youtube_ad_skip(&engine);
+    page_scripts(&engine);
 
     // Daftar aturan yang isinya berubah (mis. setelah update-filters.sh)
     // membuat daftar lama di penyimpanan WebKit usang dan dihapus. WebKit

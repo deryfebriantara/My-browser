@@ -82,6 +82,27 @@ impl<E: Engine> Browser<E> {
         self.pages.get(&self.tabs.active()).map(Page::view)
     }
 
+    /// Page milik tab yang sedang bangun.
+    pub fn page(&self, id: TabId) -> Option<&E::Page> {
+        self.pages.get(&id)
+    }
+
+    /// Membuka tab baru berisi input (URL atau kata pencarian) tepat setelah
+    /// tab aktif. Tab latar langsung dimuat. None kalau input kosong.
+    pub fn open_tab(&mut self, input: &str, activate: bool, now: Instant) -> Option<TabId> {
+        let url = parse_input(input, &self.settings.search_template)?;
+        let id = self.tabs.open(Some(url), now, false);
+        if activate {
+            self.activate(id, now);
+        } else {
+            self.wake(id);
+            self.tick(now, Pressure::Normal);
+        }
+        self.dirty = true;
+        self.change(UiChange::Tabs);
+        Some(id)
+    }
+
     pub fn new_tab(&mut self, now: Instant) {
         let id = self.tabs.open(None, now, false);
         self.activate(id, now);
@@ -135,14 +156,18 @@ impl<E: Engine> Browser<E> {
 
     /// Memuat input address bar di tab aktif. `false` kalau input kosong.
     pub fn navigate(&mut self, input: &str, now: Instant) -> bool {
-        let Some(url) = parse_input(input, &self.settings.search_template) else { return false };
         let id = self.tabs.active();
-        if let Some(tab) = self.tabs.get_mut(id) {
-            tab.url = Some(url.clone());
-            tab.scroll_y = 0.0;
-            tab.restore_scroll = false;
-            tab.video_time = None;
-        }
+        self.navigate_tab(id, input, now)
+    }
+
+    /// Memuat input di tab tertentu. `false` kalau input kosong atau tab tidak ada.
+    pub fn navigate_tab(&mut self, id: TabId, input: &str, now: Instant) -> bool {
+        let Some(url) = parse_input(input, &self.settings.search_template) else { return false };
+        let Some(tab) = self.tabs.get_mut(id) else { return false };
+        tab.url = Some(url.clone());
+        tab.scroll_y = 0.0;
+        tab.restore_scroll = false;
+        tab.video_time = None;
         match self.pages.get(&id) {
             Some(page) => page.load(&url),
             None => {
@@ -157,14 +182,28 @@ impl<E: Engine> Browser<E> {
     }
 
     pub fn go_back(&mut self) {
-        if let Some(page) = self.pages.get(&self.tabs.active()) {
+        self.go_back_in(self.tabs.active());
+    }
+
+    pub fn go_forward(&mut self) {
+        self.go_forward_in(self.tabs.active());
+    }
+
+    pub fn go_back_in(&mut self, id: TabId) {
+        if let Some(page) = self.pages.get(&id) {
             page.go_back();
         }
     }
 
-    pub fn go_forward(&mut self) {
-        if let Some(page) = self.pages.get(&self.tabs.active()) {
+    pub fn go_forward_in(&mut self, id: TabId) {
+        if let Some(page) = self.pages.get(&id) {
             page.go_forward();
+        }
+    }
+
+    pub fn reload_in(&mut self, id: TabId) {
+        if let Some(page) = self.pages.get(&id) {
+            page.reload();
         }
     }
 
@@ -191,17 +230,36 @@ impl<E: Engine> Browser<E> {
         let background: Vec<TabId> =
             self.tabs.iter().filter(|t| t.id != active && self.pages.contains_key(&t.id)).map(|t| t.id).collect();
         for id in background {
-            let youtube = self.tabs.get(id).is_some_and(|t| t.url.as_ref().is_some_and(is_youtube_watch));
-            let page = &self.pages[&id];
-            // Posisi video diminta lebih dulu; tab YouTube baru ditidurkan setelah
-            // balasannya datang (lihat sleep_if_ready).
-            if youtube {
-                page.request_number(JsTag::VideoTime, VIDEO_TIME_JS);
-            }
-            page.request_media_state();
-            if let Some(tab) = self.tabs.get_mut(id) {
-                tab.awaiting_video_time |= youtube;
-            }
+            self.check_media(id);
+        }
+    }
+
+    /// Meminta tab latar yang sedang bangun untuk tidur. Tab tetap bangun
+    /// kalau ternyata sedang memutar media. `false` kalau tab aktif atau
+    /// sudah tidur.
+    pub fn request_sleep(&mut self, id: TabId) -> bool {
+        if id == self.tabs.active() || !self.pages.contains_key(&id) {
+            return false;
+        }
+        if let Some(tab) = self.tabs.get_mut(id) {
+            tab.sleep_pending = true;
+        }
+        self.check_media(id);
+        true
+    }
+
+    /// Meminta status media (dan posisi video untuk YouTube) tab latar.
+    fn check_media(&mut self, id: TabId) {
+        let Some(page) = self.pages.get(&id) else { return };
+        let youtube = self.tabs.get(id).is_some_and(|t| t.url.as_ref().is_some_and(is_youtube_watch));
+        // Posisi video diminta lebih dulu; tab YouTube baru ditidurkan setelah
+        // balasannya datang (lihat sleep_if_ready).
+        if youtube {
+            page.request_number(JsTag::VideoTime, VIDEO_TIME_JS);
+        }
+        page.request_media_state();
+        if let Some(tab) = self.tabs.get_mut(id) {
+            tab.awaiting_video_time |= youtube;
         }
     }
 
@@ -248,6 +306,7 @@ impl<E: Engine> Browser<E> {
             }
             PageEvent::LoadFinished => {
                 tab.committed_url = tab.url.clone();
+                tab.loads += 1;
                 if tab.restore_scroll {
                     tab.restore_scroll = false;
                     let script = format!("window.scrollTo(0, {})", tab.scroll_y.round() as i64);
@@ -488,6 +547,11 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         fn request_media_state(&self) { self.0.borrow_mut().calls.push(Call::MediaState); }
         fn request_number(&self, tag: JsTag, _script: &str) { self.0.borrow_mut().calls.push(Call::Number(tag)); }
         fn run_script(&self, script: &str) { self.0.borrow_mut().calls.push(Call::Script(script.into())); }
+        fn evaluate(&self, script: &str, _reply: Box<dyn FnOnce(Result<String, String>)>) {
+            self.0.borrow_mut().calls.push(Call::Script(script.into()));
+        }
+        fn snapshot(&self, _max_width: f64, _reply: Box<dyn FnOnce(Result<Vec<u8>, String>)>) {}
+        fn process_id(&self) -> Option<i32> { None }
         fn view(&self) {}
     }
 
@@ -861,5 +925,78 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         let (_b, log, _t0) = setup(Some(&s));
         assert_eq!(log.borrow().live, 1);
         assert_eq!(log.borrow().calls, vec![Call::Load("https://b.com/".into())]);
+    }
+
+    #[test]
+    fn open_tab_in_background_loads_without_activating() {
+        let (mut b, log, t0) = setup(None);
+        let first = b.tabs().active();
+        let id = b.open_tab("example.com", false, t0).expect("tab dibuat");
+        assert_eq!(b.tabs().active(), first);
+        assert!(b.page(id).is_some(), "tab latar langsung dimuat");
+        assert!(has(&log, Call::Load("https://example.com/".into())));
+        assert!(b.open_tab("   ", true, t0).is_none());
+    }
+
+    #[test]
+    fn open_tab_activated_becomes_active() {
+        let (mut b, _log, t0) = setup(None);
+        let id = b.open_tab("example.com", true, t0).unwrap();
+        assert_eq!(b.tabs().active(), id);
+        assert!(b.page(id).is_some());
+    }
+
+    #[test]
+    fn navigate_tab_loads_in_given_background_tab() {
+        let (mut b, log, t0) = setup(None);
+        let (a, active) = two_tabs(&mut b, t0);
+        assert!(b.navigate_tab(a, "c.com", t0));
+        assert_eq!(b.tabs().active(), active);
+        assert_eq!(b.tabs().get(a).unwrap().url.as_ref().unwrap().as_str(), "https://c.com/");
+        assert!(has(&log, Call::Load("https://c.com/".into())));
+        assert!(!b.navigate_tab(TabId(999), "c.com", t0));
+    }
+
+    #[test]
+    fn load_finished_counts_loads_per_tab() {
+        let (mut b, _log, t0) = setup(None);
+        let (a, _) = two_tabs(&mut b, t0);
+        assert_eq!(b.tabs().get(a).unwrap().loads, 0);
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        assert_eq!(b.tabs().get(a).unwrap().loads, 2);
+    }
+
+    #[test]
+    fn request_sleep_sleeps_background_tab_once_media_is_clear() {
+        let (mut b, log, t0) = setup(None);
+        let (a, active) = two_tabs(&mut b, t0);
+        assert!(!b.request_sleep(active), "tab aktif tidak boleh ditidurkan");
+        assert!(b.request_sleep(a));
+        assert!(has(&log, Call::MediaState));
+        b.handle_event(a, PageEvent::MediaState(false), t0);
+        assert!(b.page(a).is_none());
+        assert!(!b.tabs().get(a).unwrap().awake);
+        assert!(!b.request_sleep(a), "tab yang sudah tidur");
+    }
+
+    #[test]
+    fn request_sleep_keeps_tab_playing_media() {
+        let (mut b, _log, t0) = setup(None);
+        let (a, _) = two_tabs(&mut b, t0);
+        assert!(b.request_sleep(a));
+        b.handle_event(a, PageEvent::MediaState(true), t0);
+        assert!(b.page(a).is_some());
+    }
+
+    #[test]
+    fn tab_navigation_helpers_target_given_tab() {
+        let (mut b, log, t0) = setup(None);
+        let (a, _) = two_tabs(&mut b, t0);
+        log.borrow_mut().calls.clear();
+        b.go_back_in(a);
+        b.go_forward_in(a);
+        b.reload_in(a);
+        assert_eq!(log.borrow().calls, vec![Call::Back, Call::Forward, Call::Reload]);
     }
 }

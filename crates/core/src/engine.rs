@@ -47,6 +47,14 @@ pub trait Page {
     /// Dibalas dengan `PageEvent::Number`.
     fn request_number(&self, tag: JsTag, script: &str);
     fn run_script(&self, script: &str);
+    /// Menjalankan script yang menghasilkan string (biasanya JSON). Balasan
+    /// lewat `reply`, tidak pernah sinkron dari dalam pemanggilan ini.
+    fn evaluate(&self, script: &str, reply: Box<dyn FnOnce(Result<String, String>)>);
+    /// Gambar halaman yang sedang tampil sebagai JPEG, lebar paling besar
+    /// `max_width` poin. Balasan lewat `reply`, tidak pernah sinkron.
+    fn snapshot(&self, max_width: f64, reply: Box<dyn FnOnce(Result<Vec<u8>, String>)>);
+    /// Pid proses yang merender halaman ini, kalau mesin mengetahuinya.
+    fn process_id(&self) -> Option<i32>;
     fn view(&self) -> Self::View;
 }
 

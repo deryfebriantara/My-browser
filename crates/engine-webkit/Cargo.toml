@@ -19,3 +19,6 @@ url.workspace = true
 [[test]]
 name = "smoke"
 harness = false
+
+[dev-dependencies]
+serde_json.workspace = true
