@@ -24,19 +24,29 @@ thread_local! {
     static STATE: RefCell<Weak<AppState>> = const { RefCell::new(Weak::new()) };
 }
 
-/// Mulai mendengarkan di `path`. Socket lama (sisa browser yang tertutup
-/// tidak wajar) dihapus dulu.
+/// Membuat socket di `path`. Folder data dibuat dulu kalau belum ada
+/// (peluncuran pertama), dan socket lama (sisa browser yang tertutup tidak
+/// wajar) dihapus.
+fn bind(path: &Path) -> std::io::Result<UnixListener> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let _ = std::fs::remove_file(path);
+    let listener = UnixListener::bind(path)?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    Ok(listener)
+}
+
+/// Mulai mendengarkan di `path`.
 pub fn start(state: &Rc<AppState>, path: PathBuf) {
     STATE.with(|s| *s.borrow_mut() = Rc::downgrade(state));
-    let _ = std::fs::remove_file(&path);
-    let listener = match UnixListener::bind(&path) {
+    let listener = match bind(&path) {
         Ok(l) => l,
         Err(e) => {
             eprintln!("my-browser: socket kontrol {} tidak bisa dibuat: {e}", path.display());
             return;
         }
     };
-    let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
     std::thread::spawn(move || {
         for conn in listener.incoming().flatten() {
             if same_user(&conn) {
@@ -90,4 +100,22 @@ fn dispatch(request: ControlRequest) -> ControlResponse {
     });
     rx.recv_timeout(REQUEST_TIMEOUT)
         .unwrap_or_else(|_| ControlResponse::Error("my-browser tidak menjawab dalam 40 detik.".into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bind_creates_missing_data_dir_and_replaces_stale_socket() {
+        let base = std::env::temp_dir().join(format!("mb-sock-{}", std::process::id()));
+        let path = base.join("data").join("control.sock");
+        let _ = std::fs::remove_dir_all(&base);
+        let first = bind(&path).expect("folder data yang belum ada dibuat");
+        assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        drop(first);
+        let _second = bind(&path).expect("socket sisa dihapus lalu dibuat ulang");
+        assert!(UnixStream::connect(&path).is_ok());
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }
