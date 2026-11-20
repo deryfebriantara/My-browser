@@ -77,3 +77,15 @@ Sudah diverifikasi otomatis (folder Downloads sementara): dua download bersamaan
 - [ ] Membuka `localhost:59999` (server mati): muncul "Gagal memuat halaman: ..." di kanan nav bar
 - [ ] Mulai download lalu langsung tutup tabnya: pemberitahuan "Selesai diunduh" tetap muncul
 - [ ] Pengecualian pemblokir dari subdomain (mis. aktifkan di www.detik.com, buka news.detik.com, matikan lagi): pemblokir benar-benar aktif kembali
+
+## MCP Claude
+
+Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`), lalu mulai sesi Claude Code baru.
+
+- [ ] `/mcp` di Claude Code menampilkan my-browser terhubung
+- [ ] Minta Claude "buka youtube.com di tab baru": tab terbuka di browser
+- [ ] Minta Claude membaca halaman aktif dan membuat screenshot
+- [ ] Minta Claude mengklik sesuatu: ditolak dengan pesan untuk menyalakan izin
+- [ ] Nyalakan Claude > Izinkan Claude Berinteraksi: judul window berpenanda, klik berhasil, pemberitahuan "Claude: klik elemen ..." muncul
+- [ ] Matikan lagi: klik ditolak lagi
+- [ ] Tutup browser (⌘Q), lalu minta Claude melihat daftar tab: browser terbuka otomatis
