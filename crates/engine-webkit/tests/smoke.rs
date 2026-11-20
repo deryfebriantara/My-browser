@@ -11,6 +11,9 @@ use std::rc::Rc;
 use std::time::{Duration, Instant};
 use url::Url;
 
+/// Tempat balasan gambar dari callback mesin.
+type ImageSlot = Rc<RefCell<Option<Result<Vec<u8>, String>>>>;
+
 const PAGE: &str = "data:text/html,%3Ctitle%3Ehalo%3C/title%3E%3Cp%3Ex%3C/p%3E";
 
 fn spin_until(timeout: Duration, mut done: impl FnMut() -> bool) -> bool {
@@ -255,13 +258,164 @@ fn page_scripts(engine: &WebKitEngine) {
     println!("ok: process_id");
 
     page.view().setFrameSize(objc2_foundation::NSSize::new(800.0, 600.0));
-    let shot: Rc<RefCell<Option<Result<Vec<u8>, String>>>> = Rc::default();
+    let shot: ImageSlot = Rc::default();
     let sink = shot.clone();
     page.snapshot(400.0, Box::new(move |r| *sink.borrow_mut() = Some(r)));
     assert!(spin_until(Duration::from_secs(10), || shot.borrow().is_some()), "snapshot tidak dibalas");
     let bytes = shot.borrow_mut().take().unwrap().expect("snapshot berhasil");
     assert_eq!(&bytes[..2], &[0xFF, 0xD8], "bukan JPEG");
     println!("ok: snapshot JPEG {} byte", bytes.len());
+}
+
+fn capture(page: &engine_webkit::WebKitPage, area: browser_core::engine::Rect, scale: f64) -> Vec<u8> {
+    let shot: ImageSlot = Rc::default();
+    let sink = shot.clone();
+    page.capture(area, scale, Box::new(move |r| *sink.borrow_mut() = Some(r)));
+    assert!(shot.borrow().is_none(), "balasan capture tidak boleh sinkron");
+    assert!(spin_until(Duration::from_secs(10), || shot.borrow().is_some()), "capture tidak dibalas");
+    shot.borrow_mut().take().unwrap().expect("capture berhasil")
+}
+
+/// Ukuran (piksel) dan warna satu piksel JPEG, dibulatkan ke 0/255 per kanal.
+fn decode(jpeg: &[u8]) -> objc2::rc::Retained<objc2_app_kit::NSBitmapImageRep> {
+    assert_eq!(&jpeg[..2], &[0xFF, 0xD8], "bukan JPEG");
+    let data = objc2_foundation::NSData::with_bytes(jpeg);
+    objc2_app_kit::NSBitmapImageRep::imageRepWithData(&data).expect("JPEG bisa dibaca")
+}
+
+fn size(jpeg: &[u8]) -> (isize, isize) {
+    let rep = decode(jpeg);
+    (rep.pixelsWide(), rep.pixelsHigh())
+}
+
+fn color(jpeg: &[u8], x: isize, y: isize) -> &'static str {
+    let rep = decode(jpeg);
+    let space = objc2_app_kit::NSColorSpace::deviceRGBColorSpace();
+    let c = rep.colorAtX_y(x, y).and_then(|c| c.colorUsingColorSpace(&space)).expect("warna piksel");
+    let bit = |v: f64| v > 0.5;
+    match (bit(c.redComponent()), bit(c.greenComponent()), bit(c.blueComponent())) {
+        (true, false, false) => "merah",
+        (true, true, false) => "kuning",
+        (false, true, false) => "hijau",
+        (false, false, true) => "biru",
+        (true, false, true) => "magenta",
+        (true, true, true) => "putih",
+        (false, false, false) => "hitam",
+        _ => "lain",
+    }
+}
+
+fn mouse(page: &engine_webkit::WebKitPage, kind: &str, x: f64, y: f64) {
+    let js = format!(
+        "document.elementFromPoint({x},{y}).dispatchEvent(new MouseEvent('{kind}',{{bubbles:true,cancelable:true,clientX:{x},clientY:{y}}}));'ok'"
+    );
+    evaluate(page, &js).expect("event mouse terkirim");
+}
+
+/// Alat visual: screenshot halaman penuh dan elemen (termasuk di luar
+/// layar), mode gelap/terang, user agent HP, dan mode Tunjuk Elemen.
+fn visual_tools(engine: &WebKitEngine) {
+    use browser_core::capture;
+    use browser_core::engine::{ColorScheme, Rect};
+    use browser_core::page_scripts as js;
+    let events: Rc<RefCell<Vec<PageEvent>>> = Rc::default();
+    let sink = events.clone();
+    let page = engine.create_page(Box::new(move |e| sink.borrow_mut().push(e)));
+    page.view().setFrameSize(objc2_foundation::NSSize::new(800.0, 600.0));
+    let html = r#"<title>warna</title><style>body{margin:0}div{height:600px}</style>
+        <div style="height:300px;background:#f00"></div><div style="height:300px;background:#ff0"></div>
+        <div style="background:#0f0"></div><div style="background:#00f;position:relative">
+        <span id="tombol" style="position:absolute;left:100px;top:300px;width:120px;height:40px;background:#f0f"></span></div>"#;
+    load_and_wait(&page, &events, html, "http://localhost:8000/");
+
+    let doc = json(&page, &js::document_size());
+    assert_eq!((doc["width"].as_f64(), doc["height"].as_f64()), (Some(800.0), Some(1800.0)), "{doc}");
+    let plan = capture::full_page(800.0, 1800.0);
+    assert_eq!(plan.tiles.len(), 2);
+    let first = capture(&page, plan.tiles[0], plan.scale);
+    let second = capture(&page, plan.tiles[1], plan.scale);
+    assert_eq!(size(&first), (800, 1600));
+    assert_eq!(size(&second), (800, 200));
+    assert_eq!(
+        [color(&first, 10, 10), color(&first, 10, 450), color(&first, 10, 1000), color(&second, 10, 100)],
+        ["merah", "kuning", "hijau", "biru"],
+        "isi potongan halaman penuh (termasuk di luar layar) salah"
+    );
+    println!("ok: screenshot halaman penuh dipotong per 1600 px, bagian di luar layar ikut tergambar");
+
+    let b = json(&page, &js::element_box("#tombol"));
+    let area = Rect {
+        x: b["x"].as_f64().unwrap(),
+        y: b["y"].as_f64().unwrap(),
+        width: b["width"].as_f64().unwrap(),
+        height: b["height"].as_f64().unwrap(),
+    };
+    assert_eq!(area, Rect { x: 100.0, y: 1500.0, width: 120.0, height: 40.0 });
+    let plan = capture::element(area);
+    let shot = capture(&page, plan.tiles[0], plan.scale);
+    assert_eq!(size(&shot), (272, 112), "elemen kecil diperbesar 2x plus padding");
+    assert_eq!((color(&shot, 136, 56), color(&shot, 4, 4)), ("magenta", "biru"));
+    assert!(json(&page, &js::element_box("#tidak-ada"))["error"].is_string());
+    println!("ok: screenshot elemen di luar layar, diperbesar 2x");
+
+    let dark = "String(matchMedia('(prefers-color-scheme: dark)').matches)";
+    let system = evaluate(&page, dark).unwrap();
+    page.set_color_scheme(ColorScheme::Light);
+    assert!(spin_until(Duration::from_secs(2), || evaluate(&page, dark).unwrap() == "false"), "mode terang");
+    page.set_color_scheme(ColorScheme::Dark);
+    assert!(spin_until(Duration::from_secs(2), || evaluate(&page, dark).unwrap() == "true"), "mode gelap");
+    page.set_color_scheme(ColorScheme::System);
+    assert!(spin_until(Duration::from_secs(2), || evaluate(&page, dark).unwrap() == system), "kembali ke sistem");
+    println!("ok: prefers-color-scheme terang/gelap/sistem per tab");
+
+    page.set_mobile_user_agent(true);
+    let agent = evaluate(&page, "navigator.userAgent").unwrap();
+    assert!(agent.contains("iPhone") && agent.contains("Mobile/"), "{agent}");
+    page.set_mobile_user_agent(false);
+    assert!(evaluate(&page, "navigator.userAgent").unwrap().contains("Macintosh"));
+    println!("ok: user agent Safari iPhone bisa dipasang dan dilepas");
+
+    let menu = r#"<title>menu</title><style>body{margin:0}a{display:block;height:40px}</style>
+        <ul class="menu"><li><a class="item" href="javascript:void 0">Satu</a></li>
+        <li><a class="item" href="javascript:void 0" onclick="document.title='diklik'">Dua</a></li></ul>"#;
+    load_and_wait(&page, &events, menu, "http://localhost:8000/");
+    let target = json(&page, "JSON.stringify(document.querySelectorAll('a.item')[1].getBoundingClientRect())");
+    let (x, y) = (target["x"].as_f64().unwrap() + 5.0, target["y"].as_f64().unwrap() + 5.0);
+    assert!(json(&page, &js::picked_element(None))["error"].as_str().unwrap().contains("Tunjuk Elemen"));
+
+    page.run_script(js::ELEMENT_PICKER);
+    spin_until(Duration::from_millis(200), || false);
+    mouse(&page, "mousemove", x, y);
+    mouse(&page, "mousedown", x, y);
+    mouse(&page, "click", x, y);
+    let overlay = "String(!!document.querySelector('[data-mb-overlay]'))";
+    assert_eq!(evaluate(&page, overlay).unwrap(), "true", "tanda Terpilih tampil sebentar setelah memilih");
+    let picked = json(&page, &js::picked_element(None));
+    assert_eq!(evaluate(&page, overlay).unwrap(), "false", "tanda Terpilih harus dibuang sebelum elemen difoto");
+    let selector = picked["selector"].as_str().expect("selector").to_string();
+    assert_eq!(picked["text"], "Dua", "{picked}");
+    assert!(picked["document_box"]["width"].as_f64().unwrap() > 0.0);
+    let same = format!("String(document.querySelector({:?})===document.querySelectorAll('a.item')[1])", selector);
+    assert_eq!(evaluate(&page, &same).unwrap(), "true", "selector {selector} tidak menunjuk elemen yang dipilih");
+    assert!(!title_becomes(&events, "diklik", Duration::from_millis(300)), "klik saat memilih tidak boleh sampai ke halaman");
+    println!("ok: Tunjuk Elemen: elemen terpilih, selector unik ({selector}), klik tidak sampai ke halaman");
+
+    page.run_script("var li=document.querySelectorAll('li')[1];li.innerHTML=li.innerHTML;");
+    assert_eq!(json(&page, &js::picked_element(None))["text"], "Dua", "elemen yang dirender ulang dicari lewat selector");
+
+    page.run_script(js::ELEMENT_PICKER);
+    spin_until(Duration::from_millis(200), || false);
+    mouse(&page, "click", x, y);
+    assert!(spin_until(Duration::from_secs(3), || evaluate(&page, overlay).unwrap() == "false"), "tanda Terpilih tidak hilang sendiri");
+
+    page.run_script(js::ELEMENT_PICKER);
+    spin_until(Duration::from_millis(200), || false);
+    page.run_script("dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}))");
+    spin_until(Duration::from_millis(200), || false);
+    mouse(&page, "click", x, y);
+    assert!(title_becomes(&events, "diklik", Duration::from_secs(2)), "setelah Esc, klik harus sampai ke halaman lagi");
+    assert_eq!(evaluate(&page, "String(!document.querySelector('[data-mb-overlay]'))").unwrap(), "true");
+    println!("ok: Esc membatalkan mode Tunjuk Elemen");
 }
 
 fn main() {
@@ -355,6 +509,7 @@ fn main() {
     youtube_ad_skip(&engine);
     page_scripts(&engine);
     developer_tools(&engine);
+    visual_tools(&engine);
 
     // Daftar aturan yang isinya berubah (mis. setelah update-filters.sh)
     // membuat daftar lama di penyimpanan WebKit usang dan dihapus. WebKit

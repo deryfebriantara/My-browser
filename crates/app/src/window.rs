@@ -62,16 +62,50 @@ impl Ui {
         Ui { window, nav, tabs, content, target, shown: RefCell::new(None) }
     }
 
-    /// Mengganti view di area konten. `None` untuk tab kosong.
-    pub fn show_content(&self, view: Option<Retained<NSView>>) {
+    /// Mengganti view di area konten. `None` untuk tab kosong. `viewport`
+    /// adalah ukuran emulasi perangkat tab itu (None: memenuhi area konten).
+    pub fn show_content(&self, view: Option<Retained<NSView>>, viewport: Option<(f64, f64)>) {
         if let Some(old) = self.shown.borrow_mut().take() {
             old.removeFromSuperview();
         }
         if let Some(view) = view {
-            view.setFrame(self.content.bounds());
             self.content.addSubview(&view);
             *self.shown.borrow_mut() = Some(view);
         }
+        self.layout_content(viewport);
+    }
+
+    /// Menata view konten: memenuhi area konten, atau seukuran viewport
+    /// emulasi di tengah atas. Viewport yang lebih besar dari area konten
+    /// terpotong di layar, tetapi halaman tetap di-layout seukuran itu.
+    pub fn layout_content(&self, viewport: Option<(f64, f64)>) {
+        let Some(view) = self.shown.borrow().clone() else { return };
+        match viewport {
+            None => {
+                view.setFrame(self.content.bounds());
+                view.setAutoresizingMask(
+                    NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
+                );
+            }
+            Some((width, height)) => {
+                let area = self.content.bounds().size;
+                let x = ((area.width - width) / 2.0).max(0.0).round();
+                // Area konten tidak flipped (titik nol di kiri bawah).
+                let y = area.height - height;
+                view.setFrame(NSRect::new(NSPoint::new(x, y), NSSize::new(width, height)));
+                view.setAutoresizingMask(
+                    NSAutoresizingMaskOptions::ViewMinXMargin
+                        | NSAutoresizingMaskOptions::ViewMaxXMargin
+                        | NSAutoresizingMaskOptions::ViewMinYMargin,
+                );
+            }
+        }
+    }
+
+    /// Ukuran area konten (poin).
+    pub fn content_size(&self) -> (f64, f64) {
+        let size = self.content.bounds().size;
+        (size.width, size.height)
     }
 
     pub fn shown_view(&self) -> Option<Retained<NSView>> {

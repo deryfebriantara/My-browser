@@ -95,7 +95,11 @@ pub fn build(mtm: MainThreadMarker, target: &ActionTarget) -> Retained<NSMenu> {
     main.addItem(&submenu(
         mtm,
         "Claude",
-        &[it("Izinkan Claude Berinteraksi", sel!(toggleClaudeInteract:), "", cmd, t, 0)],
+        &[
+            it("Tunjuk Elemen ke Claude", sel!(pickElement:), "e", cmd_shift, t, 0),
+            it("Kembalikan Tampilan Normal", sel!(resetEmulation:), "", cmd, t, 0),
+            it("Izinkan Claude Berinteraksi", sel!(toggleClaudeInteract:), "", cmd, t, 0),
+        ],
     ));
 
     let mut window_items = vec![

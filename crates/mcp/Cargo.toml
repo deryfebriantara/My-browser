@@ -9,4 +9,5 @@ name = "browser_mcp"
 
 [dependencies]
 my-browser-core.workspace = true
+serde.workspace = true
 serde_json.workspace = true

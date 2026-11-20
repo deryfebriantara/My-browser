@@ -98,8 +98,43 @@ pub fn list() -> Vec<Value> {
         ),
         tool(
             "screenshot",
-            "Gambar tab aktif (JPEG). Tab lain harus diaktifkan dulu.",
+            "Gambar halaman (JPEG). Tanpa opsi: yang terlihat di layar tab aktif. full_page: seluruh halaman, dipotong menjadi beberapa gambar setinggi 1600 px. selector: satu elemen saja (elemen kecil diperbesar 2x). full_page dan selector juga berlaku untuk tab latar.",
+            json!({
+                "full_page": {"type": "boolean", "description": "Seluruh halaman dari atas sampai bawah (maks 6 gambar)."},
+                "selector": {"type": "string", "description": "Selector CSS elemen yang ingin difoto."},
+                "tab_id": tab_id(),
+            }),
+            &[],
+        ),
+        tool(
+            "emulate",
+            "Meniru perangkat lain di tab: ukuran layar (viewport), user agent HP, dan mode gelap/terang (prefers-color-scheme). Berlaku sampai direset, termasuk setelah navigasi. Pengguna melihat perubahannya di jendela. Kembalikan dengan device=reset setelah selesai.",
+            json!({
+                "device": {"type": "string", "enum": ["mobile", "tablet", "desktop", "reset"], "description": "mobile = iPhone 390x844 + user agent HP (halaman dimuat ulang), tablet = 820x1180, desktop = 1440x900, reset = kembali normal."},
+                "width": {"type": "integer", "description": "Lebar viewport khusus (200-3840)."},
+                "height": {"type": "integer", "description": "Tinggi viewport khusus (200-3840)."},
+                "color_scheme": {"type": "string", "enum": ["dark", "light", "system"]},
+                "tab_id": tab_id(),
+            }),
+            &[],
+        ),
+        tool(
+            "get_selection",
+            "Elemen yang ditunjuk pengguna lewat menu Claude > Tunjuk Elemen ke Claude (Cmd+Shift+E): selector unik, teks, posisi, computed style, outerHTML, dan gambar elemennya. Panggil ini kalau pengguna menyebut \"elemen yang saya pilih/tunjuk\".",
             json!({"tab_id": tab_id()}),
+            &[],
+        ),
+        tool(
+            "check_page",
+            "Cek cepat setelah mengubah kode website: memuat ulang tab (atau membuka url), menunggu selesai dimuat, lalu mengembalikan error dan peringatan console, request yang gagal, dan screenshot dalam satu panggilan.",
+            json!({
+                "url": {"type": "string", "description": "Buka URL ini dulu. Tanpa ini: muat ulang tab."},
+                "wait_for": {"type": "string", "description": "Selector CSS yang ditunggu sampai terlihat (maks 5 detik) sebelum dicek."},
+                "settle_ms": {"type": "integer", "description": "Jeda setelah dimuat supaya request awal selesai (bawaan 500, maks 5000)."},
+                "screenshot": {"type": "boolean", "description": "Sertakan screenshot (bawaan: true)."},
+                "full_page": {"type": "boolean", "description": "Screenshot seluruh halaman, bukan hanya layar."},
+                "tab_id": tab_id(),
+            }),
             &[],
         ),
         tool(

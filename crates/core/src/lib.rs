@@ -13,3 +13,4 @@ pub mod blocking;
 pub mod downloads;
 pub mod control;
 pub mod page_scripts;
+pub mod capture;

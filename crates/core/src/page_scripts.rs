@@ -204,32 +204,91 @@ const DEFAULT_STYLES: &[&str] = &[
     "align-items", "gap", "grid-template-columns",
 ];
 
-pub fn inspect_element(selector: Option<&str>, element: Option<u32>, styles: Option<&[String]>) -> String {
-    let query = match (selector, element) {
-        (Some(sel), _) => js_string(sel),
-        (None, Some(n)) => js_string(&format!("[data-mb-ref=\"{n}\"]")),
-        (None, None) => return "JSON.stringify({error:'inspect_element butuh selector atau element.'})".into(),
-    };
+/// Fungsi JavaScript `inspect(e)` yang menghasilkan detail satu elemen.
+/// Disisipkan di akhir script; deklarasi fungsi di-hoist.
+fn inspect_fn(styles: Option<&[String]>) -> String {
     let names: Vec<String> = match styles {
         Some(list) => list.iter().filter(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')).cloned().collect(),
         None => DEFAULT_STYLES.iter().map(|s| s.to_string()).collect(),
     };
     let names = serde_json::to_string(&names).expect("daftar string selalu bisa diserialisasi");
     format!(
-        "(function(){{var q={query},e,count;try{{e=document.querySelector(q);count=document.querySelectorAll(q).length;}}\
-         catch(x){{return JSON.stringify({{error:'Selector tidak valid: '+x.message}});}}\
-         if(!e)return JSON.stringify({{error:'Elemen tidak ditemukan: '+q}});\
-         var r=e.getBoundingClientRect(),s=getComputedStyle(e),styles={{}};\
+        "function inspect(e){{var r=e.getBoundingClientRect(),s=getComputedStyle(e),styles={{}};\
          {names}.forEach(function(p){{styles[p]=s.getPropertyValue(p);}});\
          function name(x){{if(!x)return null;var n=x.tagName.toLowerCase();if(x.id)n+='#'+x.id;\
          if(typeof x.className==='string'&&x.className.trim())n+='.'+x.className.trim().split(/\\s+/).join('.');return n;}}\
          var html=e.outerHTML,t=(e.innerText||'').trim();\
-         return JSON.stringify({{element:name(e),matches:count,parent:name(e.parentElement),children:e.children.length,\
+         return {{element:name(e),parent:name(e.parentElement),children:e.children.length,\
          text:t.length>300?t.slice(0,300)+'…':t,\
          box:{{x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height)}},\
          visible:r.width>0&&r.height>0&&s.visibility!=='hidden'&&s.display!=='none',\
          in_viewport:r.bottom>0&&r.right>0&&r.top<innerHeight&&r.left<innerWidth,\
-         styles:styles,outer_html:html.length>3000?html.slice(0,3000)+'…':html}});}})()"
+         styles:styles,outer_html:html.length>3000?html.slice(0,3000)+'…':html}};}}"
+    )
+}
+
+pub fn inspect_element(selector: Option<&str>, element: Option<u32>, styles: Option<&[String]>) -> String {
+    let query = match (selector, element) {
+        (Some(sel), _) => js_string(sel),
+        (None, Some(n)) => js_string(&format!("[data-mb-ref=\"{n}\"]")),
+        (None, None) => return "JSON.stringify({error:'inspect_element butuh selector atau element.'})".into(),
+    };
+    format!(
+        "(function(){{var q={query},e,count;try{{e=document.querySelector(q);count=document.querySelectorAll(q).length;}}\
+         catch(x){{return JSON.stringify({{error:'Selector tidak valid: '+x.message}});}}\
+         if(!e)return JSON.stringify({{error:'Elemen tidak ditemukan: '+q}});\
+         var o=inspect(e);o.matches=count;return JSON.stringify(o);{inspect}}})()",
+        inspect = inspect_fn(styles)
+    )
+}
+
+/// Mode "Tunjuk Elemen ke Claude" (lihat `element_picker.js`).
+pub const ELEMENT_PICKER: &str = include_str!("element_picker.js");
+
+/// Membuang tanda "Terpilih" dari mode Tunjuk Elemen (tampil sebentar setelah
+/// memilih) supaya tidak ikut terfoto. Overlay mode pilih yang masih aktif
+/// dibiarkan.
+const CLEAR_PICK_OVERLAY: &str =
+    "if(!window.__mbPicker)document.querySelectorAll('[data-mb-overlay]').forEach(function(h){h.remove();});";
+
+/// Detail elemen yang terakhir ditunjuk pengguna, plus selector unik dan
+/// posisinya di dokumen (untuk dipotret).
+pub fn picked_element(styles: Option<&[String]>) -> String {
+    format!(
+        "(function(){{{CLEAR_PICK_OVERLAY}var p=window.__mbPicked;\
+         if(!p)return JSON.stringify({{error:'Belum ada elemen yang ditunjuk di tab ini. Minta pengguna memilih menu \
+         Claude > Tunjuk Elemen ke Claude (Cmd+Shift+E) di my-browser, lalu klik elemennya.'}});\
+         var e=p.el&&p.el.isConnected?p.el:null;\
+         if(!e){{try{{e=document.querySelector(p.selector);}}catch(x){{}}}}\
+         if(!e)return JSON.stringify({{error:'Elemen yang ditunjuk sudah tidak ada di halaman (halaman berubah). \
+         Minta pengguna menunjuk lagi.'}});\
+         var o=inspect(e),r=e.getBoundingClientRect();\
+         o.selector=p.selector;o.url=location.href;o.picked_seconds_ago=Math.round((Date.now()-p.at)/1000);\
+         o.document_box={{x:r.left+scrollX,y:r.top+scrollY,width:r.width,height:r.height}};\
+         return JSON.stringify(o);{inspect}}})()",
+        inspect = inspect_fn(styles)
+    )
+}
+
+/// Posisi dan ukuran elemen di dokumen (poin CSS), untuk screenshot elemen.
+pub fn element_box(selector: &str) -> String {
+    format!(
+        "(function(){{{CLEAR_PICK_OVERLAY}var q={q},e;try{{e=document.querySelector(q);}}\
+         catch(x){{return JSON.stringify({{error:'Selector tidak valid: '+x.message}});}}\
+         if(!e)return JSON.stringify({{error:'Elemen tidak ditemukan: '+q}});\
+         var r=e.getBoundingClientRect();\
+         if(r.width===0||r.height===0)return JSON.stringify({{error:'Elemen tidak terlihat (ukurannya nol): '+q}});\
+         return JSON.stringify({{x:r.left+scrollX,y:r.top+scrollY,width:r.width,height:r.height}});}})()",
+        q = js_string(selector)
+    )
+}
+
+/// Ukuran seluruh dokumen (poin CSS), untuk screenshot halaman penuh.
+pub fn document_size() -> String {
+    format!(
+        "(function(){{{CLEAR_PICK_OVERLAY}var d=document.documentElement,b=document.body;\
+         return JSON.stringify({{width:Math.max(d.scrollWidth,b?b.scrollWidth:0)||innerWidth,\
+         height:Math.max(d.scrollHeight,b?b.scrollHeight:0)||innerHeight}});}})()"
     )
 }
 
@@ -270,6 +329,19 @@ mod tests {
         assert!(js.contains(r#"["color"].forEach"#), "properti CSS yang aneh dibuang: {js}");
         assert!(console_logs(LogLevel::Error, 5, 20).contains(">=2&&e.seq>5"));
         assert!(network_log(true, Some("api/'x"), false, 10).contains(r#"var c="api/'x""#));
+    }
+
+    #[test]
+    fn selection_scripts_share_inspect_and_escape_selectors() {
+        let picked = picked_element(None);
+        assert!(picked.contains("window.__mbPicked") && picked.contains("function inspect(e)"));
+        assert!(picked.contains("Cmd+Shift+E"));
+        for script in [picked, element_box("#a"), document_size()] {
+            assert!(script.starts_with("(function(){if(!window.__mbPicker)"), "tanda Terpilih dibuang dulu: {script}");
+        }
+        let boxed = element_box("a'b\"c");
+        assert!(boxed.contains(r#"var q="a'b\"c""#), "{boxed}");
+        assert!(inspect_element(Some("#x"), None, None).contains("o.matches=count"));
     }
 
     #[test]

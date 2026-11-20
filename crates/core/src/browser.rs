@@ -3,7 +3,7 @@
 //! pemanggilan dan menggambar ulang.
 
 use crate::blocking::{host_matches, normalize_host};
-use crate::engine::{Engine, JsTag, Page, PageEvent};
+use crate::engine::{ColorScheme, Emulation, Engine, JsTag, Page, PageEvent};
 use crate::omnibox::parse_input;
 use crate::session::SessionFile;
 use crate::settings::Settings;
@@ -37,6 +37,8 @@ pub enum UiChange {
     Tabs,
     /// Tab aktif berganti; view konten perlu diganti.
     Active,
+    /// Ukuran viewport emulasi tab aktif berubah; view konten perlu ditata ulang.
+    Layout,
     /// URL, status loading, atau back/forward tab aktif berubah.
     Nav,
     /// Pengaturan berubah dan perlu disimpan.
@@ -85,6 +87,34 @@ impl<E: Engine> Browser<E> {
     /// Page milik tab yang sedang bangun.
     pub fn page(&self, id: TabId) -> Option<&E::Page> {
         self.pages.get(&id)
+    }
+
+    /// Ukuran viewport emulasi tab aktif. None: seukuran area konten.
+    pub fn active_viewport(&self) -> Option<(f64, f64)> {
+        self.tabs.get(self.tabs.active()).and_then(|t| t.emulation.viewport)
+    }
+
+    /// Mengganti emulasi perangkat tab. Page yang bangun langsung mengikuti;
+    /// kalau user agent berganti, halaman dimuat ulang supaya situs ikut
+    /// menyajikan versi HP atau desktop. true kalau halaman dimuat ulang.
+    pub fn set_emulation(&mut self, id: TabId, emulation: Emulation) -> bool {
+        let Some(tab) = self.tabs.get_mut(id) else { return false };
+        let old = std::mem::replace(&mut tab.emulation, emulation);
+        let mut reloaded = false;
+        if let Some(page) = self.pages.get(&id) {
+            if old.color_scheme != emulation.color_scheme {
+                page.set_color_scheme(emulation.color_scheme);
+            }
+            if old.mobile != emulation.mobile {
+                page.set_mobile_user_agent(emulation.mobile);
+                page.reload();
+                reloaded = true;
+            }
+        }
+        if old.viewport != emulation.viewport && id == self.tabs.active() {
+            self.change(UiChange::Layout);
+        }
+        reloaded
     }
 
     /// Membuka tab baru berisi input (URL atau kata pencarian) tepat setelah
@@ -474,8 +504,17 @@ impl<E: Engine> Browser<E> {
         if self.pages.contains_key(&id) {
             return;
         }
-        let Some(url) = self.tabs.get(id).and_then(|t| t.url.clone()) else { return };
+        let Some(tab) = self.tabs.get(id) else { return };
+        let (Some(url), emulation) = (tab.url.clone(), tab.emulation) else { return };
         let page = self.engine.create_page((self.sinks)(id));
+        // Emulasi dipasang sebelum memuat, supaya request pertama sudah
+        // memakai user agent yang benar.
+        if emulation.mobile {
+            page.set_mobile_user_agent(true);
+        }
+        if emulation.color_scheme != ColorScheme::System {
+            page.set_color_scheme(emulation.color_scheme);
+        }
         page.load(&url);
         self.pages.insert(id, page);
         if let Some(tab) = self.tabs.get_mut(id) {
@@ -493,10 +532,10 @@ impl<E: Engine> Browser<E> {
     fn sleep(&mut self, id: TabId) {
         self.pages.remove(&id);
         if let Some(tab) = self.tabs.get_mut(id) {
-            if let (Some(url), Some(t)) = (&tab.url, tab.video_time) {
-                if is_youtube_watch(url) {
-                    tab.url = Some(with_resume_time(url, t));
-                }
+            if let (Some(url), Some(t)) = (&tab.url, tab.video_time)
+                && is_youtube_watch(url)
+            {
+                tab.url = Some(with_resume_time(url, t));
             }
             tab.awake = false;
             tab.sleep_pending = false;
@@ -519,12 +558,13 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
     use crate::settings::Settings;
     use crate::sleep::Pressure;
     use crate::tabs::{TabId, Url};
+    use crate::engine::Rect;
     use std::cell::RefCell;
     use std::rc::Rc;
     use std::time::{Duration, Instant};
 
     #[derive(Debug, Clone, PartialEq)]
-    enum Call { Load(String), Reload, Stop, Back, Forward, MediaState, Number(JsTag), Script(String) }
+    enum Call { Load(String), Reload, Stop, Back, Forward, MediaState, Number(JsTag), Script(String), MobileUa(bool), Scheme(ColorScheme) }
 
     #[derive(Default)]
     struct Log { calls: Vec<Call>, live: usize, exceptions: Vec<String> }
@@ -554,6 +594,9 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
             self.0.borrow_mut().calls.push(Call::Script(body.into()));
         }
         fn snapshot(&self, _max_width: f64, _reply: Box<dyn FnOnce(Result<Vec<u8>, String>)>) {}
+        fn capture(&self, _area: Rect, _scale: f64, _reply: Box<dyn FnOnce(Result<Vec<u8>, String>)>) {}
+        fn set_mobile_user_agent(&self, mobile: bool) { self.0.borrow_mut().calls.push(Call::MobileUa(mobile)); }
+        fn set_color_scheme(&self, scheme: ColorScheme) { self.0.borrow_mut().calls.push(Call::Scheme(scheme)); }
         fn process_id(&self) -> Option<i32> { None }
         fn view(&self) {}
     }
@@ -1001,5 +1044,64 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         b.go_forward_in(a);
         b.reload_in(a);
         assert_eq!(log.borrow().calls, vec![Call::Back, Call::Forward, Call::Reload]);
+    }
+
+    fn phone() -> Emulation {
+        Emulation { viewport: Some((390.0, 844.0)), mobile: true, color_scheme: ColorScheme::Dark }
+    }
+
+    #[test]
+    fn emulation_applies_to_awake_page_and_reloads_when_user_agent_changes() {
+        let (mut b, log, t0) = setup(None);
+        let (_, active) = two_tabs(&mut b, t0);
+        b.take_changes();
+        log.borrow_mut().calls.clear();
+        assert!(b.set_emulation(active, phone()), "ganti user agent harus memuat ulang");
+        assert_eq!(log.borrow().calls, vec![Call::Scheme(ColorScheme::Dark), Call::MobileUa(true), Call::Reload]);
+        assert!(b.take_changes().contains(&UiChange::Layout));
+        assert_eq!(b.active_viewport(), Some((390.0, 844.0)));
+
+        log.borrow_mut().calls.clear();
+        let light = Emulation { color_scheme: ColorScheme::Light, ..phone() };
+        assert!(!b.set_emulation(active, light), "hanya warna yang berubah: tanpa muat ulang");
+        assert_eq!(log.borrow().calls, vec![Call::Scheme(ColorScheme::Light)]);
+        assert!(!b.take_changes().contains(&UiChange::Layout), "viewport tidak berubah");
+    }
+
+    #[test]
+    fn emulation_of_background_tab_does_not_relayout_the_window() {
+        let (mut b, _log, t0) = setup(None);
+        let (a, _) = two_tabs(&mut b, t0);
+        b.take_changes();
+        b.set_emulation(a, phone());
+        assert!(!b.take_changes().contains(&UiChange::Layout));
+        assert_eq!(b.active_viewport(), None);
+        b.activate(a, t0);
+        assert_eq!(b.active_viewport(), Some((390.0, 844.0)));
+    }
+
+    #[test]
+    fn emulation_survives_sleep_and_is_applied_before_loading() {
+        let (mut b, log, t0) = setup(None);
+        let (a, active) = two_tabs(&mut b, t0);
+        b.set_emulation(a, phone());
+        assert!(b.request_sleep(a));
+        b.handle_event(a, PageEvent::MediaState(false), t0);
+        assert!(b.page(a).is_none());
+        log.borrow_mut().calls.clear();
+        b.activate(a, t0);
+        let calls = log.borrow().calls.clone();
+        let load = calls.iter().position(|c| matches!(c, Call::Load(_))).expect("tab dimuat ulang");
+        let ua = calls.iter().position(|c| *c == Call::MobileUa(true)).expect("user agent HP dipasang lagi");
+        let scheme = calls.iter().position(|c| *c == Call::Scheme(ColorScheme::Dark)).expect("mode gelap dipasang lagi");
+        assert!(ua < load && scheme < load, "emulasi harus dipasang sebelum memuat: {calls:?}");
+        let _ = active;
+    }
+
+    #[test]
+    fn default_emulation_adds_no_engine_calls_on_wake() {
+        let (mut b, log, t0) = setup(None);
+        assert!(b.navigate("a.com", t0));
+        assert!(!log.borrow().calls.iter().any(|c| matches!(c, Call::MobileUa(_) | Call::Scheme(_))));
     }
 }

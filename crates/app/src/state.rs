@@ -9,6 +9,8 @@ use crate::persistence;
 use crate::tab_strip::TabInfo;
 use crate::window::Ui;
 use browser_core::browser::{Browser, SinkFactory, UiChange};
+use browser_core::engine::{Emulation, Page};
+use browser_core::page_scripts::ELEMENT_PICKER;
 use browser_core::session::SessionFile;
 use browser_core::settings::Settings;
 use browser_core::sleep::Pressure;
@@ -34,6 +36,8 @@ pub struct AppState {
     /// Claude boleh klik, mengetik, dan menjalankan JavaScript lewat MCP.
     /// Selalu mati saat aplikasi dibuka.
     pub claude_interact: Cell<bool>,
+    /// Tab tempat pengguna terakhir memakai Tunjuk Elemen ke Claude.
+    pub picked_tab: Cell<Option<TabId>>,
 }
 
 struct NavInfo {
@@ -105,6 +109,7 @@ impl AppState {
                 ui,
                 tabs_layout_pending: Cell::new(false),
                 claude_interact: Cell::new(false),
+                picked_tab: Cell::new(None),
             }
         })
     }
@@ -149,11 +154,17 @@ impl AppState {
             self.update_window_title(&nav.title);
         }
         if has(UiChange::Active) {
-            let view = self.browser.borrow().active_view();
-            self.ui.show_content(view);
+            let (view, viewport) = {
+                let b = self.browser.borrow();
+                (b.active_view(), b.active_viewport())
+            };
+            self.ui.show_content(view, viewport);
             if nav.blank {
                 self.focus_address();
             }
+        } else if has(UiChange::Layout) {
+            let viewport = self.browser.borrow().active_viewport();
+            self.ui.layout_content(viewport);
         }
         if has(UiChange::Nav) || has(UiChange::Active) {
             self.ui.nav.update(nav.can_back, nav.can_forward, nav.loading, &nav.url);
@@ -189,6 +200,36 @@ impl AppState {
         } else {
             "Interaksi Claude dimatikan"
         });
+    }
+
+    /// Mode Tunjuk Elemen di tab aktif: pengguna mengklik satu elemen, lalu
+    /// Claude membacanya lewat get_selection.
+    pub fn start_pick(&self) {
+        let id = self.browser.borrow().tabs().active();
+        let started = self.browser.borrow().page(id).map(|page| page.run_script(ELEMENT_PICKER)).is_some();
+        if !started {
+            self.ui.nav.show_notice("Buka halaman dulu untuk menunjuk elemen");
+            return;
+        }
+        self.picked_tab.set(Some(id));
+        // Fokus ke halaman supaya Esc sampai ke mode pilih, bukan ke address bar.
+        if let Some(view) = self.ui.shown_view() {
+            self.ui.window.makeFirstResponder(Some(&view));
+        }
+        self.ui.nav.show_notice("Klik elemen yang ingin ditunjukkan ke Claude (Esc untuk batal)");
+    }
+
+    /// Tab aktif sedang memakai emulasi perangkat dari Claude.
+    pub fn active_emulated(&self) -> bool {
+        let b = self.browser.borrow();
+        b.tabs().get(b.tabs().active()).is_some_and(|t| t.emulation != Emulation::default())
+    }
+
+    pub fn reset_emulation(&self) {
+        let id = self.browser.borrow().tabs().active();
+        self.browser.borrow_mut().set_emulation(id, Emulation::default());
+        self.refresh();
+        self.ui.nav.show_notice("Tampilan kembali normal");
     }
 
     /// Menjadwalkan penggambaran ulang tab strip di putaran run loop berikutnya.
@@ -316,10 +357,8 @@ impl AppState {
         let text = self.ui.nav.address.stringValue().to_string();
         let ok = self.browser.borrow_mut().navigate(&text, Instant::now());
         self.refresh();
-        if ok {
-            if let Some(view) = self.ui.shown_view() {
-                self.ui.window.makeFirstResponder(Some(&view));
-            }
+        if ok && let Some(view) = self.ui.shown_view() {
+            self.ui.window.makeFirstResponder(Some(&view));
         }
     }
 

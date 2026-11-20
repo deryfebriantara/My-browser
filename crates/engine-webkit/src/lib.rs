@@ -24,6 +24,7 @@ pub use page::{WebKitPage, dropped_webviews_alive};
 pub struct WebKitEngine {
     mtm: MainThreadMarker,
     app_name: Retained<NSString>,
+    mobile_user_agent: Retained<NSString>,
     blocker: Rc<Blocker>,
     downloads: Retained<DownloadCenter>,
 }
@@ -35,6 +36,7 @@ impl WebKitEngine {
         Self {
             mtm,
             app_name: NSString::from_str(&user_agent::safari_application_name(&version)),
+            mobile_user_agent: NSString::from_str(&user_agent::iphone_user_agent(&version)),
             blocker: Rc::default(),
             downloads: DownloadCenter::new(mtm),
         }
@@ -51,7 +53,14 @@ impl Engine for WebKitEngine {
     type Page = WebKitPage;
 
     fn create_page(&self, on_event: Box<dyn Fn(PageEvent)>) -> WebKitPage {
-        WebKitPage::new(self.mtm, &self.app_name, self.blocker.clone(), self.downloads.clone(), on_event)
+        WebKitPage::new(
+            self.mtm,
+            &self.app_name,
+            self.mobile_user_agent.clone(),
+            self.blocker.clone(),
+            self.downloads.clone(),
+            on_event,
+        )
     }
 
     fn set_blocker_exceptions(&self, hosts: &[String]) {

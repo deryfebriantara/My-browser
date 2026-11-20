@@ -5,6 +5,7 @@
 //! `Engine` atau `Page`. Mesin selalu menjadwalkannya ke putaran run loop
 //! berikutnya, supaya pemanggil boleh memegang borrow saat memanggil method.
 
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use url::Url;
 
@@ -12,6 +13,37 @@ use url::Url;
 pub enum JsTag {
     ScrollY,
     VideoTime,
+}
+
+/// Persegi dalam poin CSS, relatif terhadap pojok kiri atas dokumen.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rect {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+
+/// Skema warna yang dilaporkan ke halaman lewat `prefers-color-scheme`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ColorScheme {
+    /// Mengikuti macOS.
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
+/// Emulasi perangkat satu tab. Bawaan: seukuran area konten, user agent
+/// desktop, dan warna mengikuti macOS.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Emulation {
+    /// Ukuran viewport (lebar, tinggi) dalam poin CSS.
+    pub viewport: Option<(f64, f64)>,
+    /// User agent Safari iPhone, supaya situs menyajikan versi HP.
+    pub mobile: bool,
+    pub color_scheme: ColorScheme,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -54,8 +86,16 @@ pub trait Page {
     /// (boleh `await`); nilai yang di-`return` (string) menjadi balasan.
     fn evaluate_async(&self, function_body: &str, reply: Box<dyn FnOnce(Result<String, String>)>);
     /// Gambar halaman yang sedang tampil sebagai JPEG, lebar paling besar
-    /// `max_width` poin. Balasan lewat `reply`, tidak pernah sinkron.
+    /// `max_width` piksel. Balasan lewat `reply`, tidak pernah sinkron.
     fn snapshot(&self, max_width: f64, reply: Box<dyn FnOnce(Result<Vec<u8>, String>)>);
+    /// Gambar bagian dokumen `area` (boleh di luar layar) sebagai JPEG,
+    /// `scale` piksel per poin CSS. Halaman dirender ulang, bukan difoto,
+    /// jadi video dan canvas WebGL bisa kosong. Balasan tidak pernah sinkron.
+    fn capture(&self, area: Rect, scale: f64, reply: Box<dyn FnOnce(Result<Vec<u8>, String>)>);
+    /// User agent Safari iPhone (`true`) atau bawaan. Berlaku untuk request
+    /// berikutnya; halaman perlu dimuat ulang supaya situs ikut berubah.
+    fn set_mobile_user_agent(&self, mobile: bool);
+    fn set_color_scheme(&self, scheme: ColorScheme);
     /// Pid proses yang merender halaman ini, kalau mesin mengetahuinya.
     fn process_id(&self) -> Option<i32>;
     fn view(&self) -> Self::View;

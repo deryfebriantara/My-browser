@@ -1,12 +1,13 @@
 //! Menjalankan permintaan kontrol dari server MCP di main thread.
 
 use crate::state::{AppState, display_title};
-use browser_core::control::{ControlRequest as R, ControlResponse, LogLevel, TabInfo, WaitState};
-use browser_core::engine::Page;
+use browser_core::capture::{self, Plan};
+use browser_core::control::{ControlRequest as R, ControlResponse, Device, LogLevel, TabInfo, WaitState, emulation_for};
+use browser_core::engine::{ColorScheme, Emulation, Page, Rect};
 use browser_core::page_scripts as js;
 use browser_core::tabs::TabId;
 use serde_json::{Value, json};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::time::Instant;
 
 pub type Reply = Box<dyn FnOnce(ControlResponse)>;
@@ -184,7 +185,15 @@ pub fn handle(state: &Rc<AppState>, request: R, reply: Reply) {
         R::ListElements { tab_id } => run_on_page(state, tab_id, js::LIST_ELEMENTS.into(), reply),
         R::Scroll { direction, tab_id } => run_on_page(state, tab_id, js::scroll(direction), reply),
         R::Youtube { action, value, tab_id } => run_on_page(state, tab_id, js::youtube(action, value), reply),
-        R::Screenshot { tab_id } => screenshot(state, tab_id, reply),
+        R::Screenshot { tab_id, full_page, selector } => match selector {
+            Some(selector) => screenshot_element(state, tab_id, &selector, reply),
+            None if full_page => screenshot_full_page(state, tab_id, reply),
+            None => screenshot(state, tab_id, reply),
+        },
+        R::Emulate { device, width, height, color_scheme, tab_id } => {
+            emulate(state, tab_id, device, width, height, color_scheme, reply)
+        }
+        R::GetSelection { tab_id } => get_selection(state, tab_id, reply),
         R::Click { element, tab_id } => {
             notice(state, &format!("Claude: klik elemen {element}"));
             run_on_page(state, tab_id, js::click(element), reply)
@@ -253,6 +262,259 @@ fn screenshot(state: &AppState, tab_id: Option<u64>, reply: Reply) {
     }
 }
 
+const RERENDER_NOTE: &str = "Gambar dirender ulang dari halaman (bukan foto layar): video dan canvas WebGL bisa kosong.";
+
+type Tiles = Box<dyn FnOnce(Result<Vec<String>, String>)>;
+
+/// Memotret potongan `plan` satu per satu (tidak sekaligus, supaya memory
+/// tetap kecil), lalu memanggil `finish` dengan gambar base64.
+fn capture_tiles(state: Weak<AppState>, id: TabId, plan: Rc<Plan>, mut images: Vec<String>, finish: Tiles) {
+    let Some(&area) = plan.tiles.get(images.len()) else { return finish(Ok(images)) };
+    let Some(state) = state.upgrade() else { return finish(Err("Browser sedang ditutup.".into())) };
+    let b = state.browser.borrow();
+    let Some(page) = b.page(id) else {
+        drop(b);
+        return finish(Err(format!("Tab {} ditutup atau tidur saat difoto.", id.0)));
+    };
+    let weak = Rc::downgrade(&state);
+    page.capture(
+        area,
+        plan.scale,
+        Box::new(move |result| match result {
+            Err(e) => finish(Err(format!("Screenshot gagal: {e}"))),
+            Ok(jpeg) => {
+                images.push(base64(&jpeg));
+                capture_tiles(weak, id, plan, images, finish)
+            }
+        }),
+    );
+}
+
+fn rect_of(value: &Value) -> Option<Rect> {
+    let n = |k: &str| value.get(k).and_then(Value::as_f64);
+    Some(Rect { x: n("x")?, y: n("y")?, width: n("width")?, height: n("height")? })
+}
+
+/// Menjalankan script yang menghasilkan JSON di tab tujuan, lalu meneruskan
+/// datanya (atau error) ke `then` bersama id tab.
+fn with_page_json(state: &Rc<AppState>, tab_id: Option<u64>, script: &str, then: impl FnOnce(TabId, Value) + 'static, reply: Reply) {
+    let id = match target(state, tab_id) {
+        Ok(id) => id,
+        Err(e) => return reply(e),
+    };
+    let b = state.browser.borrow();
+    let Some(page) = b.page(id) else {
+        drop(b);
+        return reply(err(format!("Tab {} sedang tidur atau kosong. Panggil activate_tab atau navigate dulu.", id.0)));
+    };
+    page.evaluate(
+        script,
+        Box::new(move |result| match script_result(result) {
+            ControlResponse::Ok(value) => then(id, value),
+            error => reply(error),
+        }),
+    );
+}
+
+fn screenshot_full_page(state: &Rc<AppState>, tab_id: Option<u64>, reply: Reply) {
+    let weak = Rc::downgrade(state);
+    let (reply, fail) = split_reply(reply);
+    with_page_json(
+        state,
+        tab_id,
+        &js::document_size(),
+        move |id, size| {
+            let (width, height) = (size["width"].as_f64().unwrap_or(0.0), size["height"].as_f64().unwrap_or(0.0));
+            if width <= 0.0 || height <= 0.0 {
+                return reply(err("Halaman kosong (ukuran dokumen nol)."));
+            }
+            let plan = Rc::new(capture::full_page(width, height));
+            let covered = plan.tiles.iter().map(|t| t.height).sum::<f64>().round();
+            let truncated = plan.truncated;
+            capture_tiles(
+                weak,
+                id,
+                plan,
+                Vec::new(),
+                Box::new(move |result| {
+                    reply(match result {
+                        Err(e) => err(e),
+                        Ok(images) => {
+                            let mut out = json!({
+                                "images_base64": images,
+                                "document": {"width": width, "height": height},
+                                "note": RERENDER_NOTE,
+                            });
+                            if truncated {
+                                out["truncated"] = json!(format!(
+                                    "Halaman setinggi {height} poin; hanya {covered} poin pertama yang difoto. \
+                                     Pakai screenshot dengan selector untuk bagian bawah."
+                                ));
+                            }
+                            ok(out)
+                        }
+                    })
+                }),
+            );
+        },
+        fail,
+    );
+}
+
+fn screenshot_element(state: &Rc<AppState>, tab_id: Option<u64>, selector: &str, reply: Reply) {
+    let weak = Rc::downgrade(state);
+    let (reply, fail) = split_reply(reply);
+    with_page_json(
+        state,
+        tab_id,
+        &js::element_box(selector),
+        move |id, value| {
+            let Some(area) = rect_of(&value) else { return reply(err("Posisi elemen tidak terbaca.")) };
+            let plan = Rc::new(capture::element(area));
+            let truncated = plan.truncated;
+            capture_tiles(
+                weak,
+                id,
+                plan,
+                Vec::new(),
+                Box::new(move |result| {
+                    reply(match result {
+                        Err(e) => err(e),
+                        Ok(images) => {
+                            let mut out = json!({"images_base64": images, "box": value, "note": RERENDER_NOTE});
+                            if truncated {
+                                out["truncated"] = json!("Elemen sangat tinggi; hanya bagian atasnya yang difoto.");
+                            }
+                            ok(out)
+                        }
+                    })
+                }),
+            );
+        },
+        fail,
+    );
+}
+
+/// Elemen yang terakhir ditunjuk pengguna: detail plus potongan gambarnya.
+/// Tanpa tab_id: tab tempat pengguna menunjuk, kalau tab itu masih ada.
+fn get_selection(state: &Rc<AppState>, tab_id: Option<u64>, reply: Reply) {
+    let picked = state.picked_tab.get().filter(|id| state.browser.borrow().tabs().get(*id).is_some());
+    let tab_id = tab_id.or(picked.map(|id| id.0));
+    let weak = Rc::downgrade(state);
+    let (reply, fail) = split_reply(reply);
+    with_page_json(
+        state,
+        tab_id,
+        &js::picked_element(None),
+        move |id, mut info| {
+            info["tab_id"] = json!(id.0);
+            let Some(area) = info.get("document_box").and_then(rect_of).filter(|r| r.width > 0.0 && r.height > 0.0) else {
+                info["image_note"] = json!("Elemen tidak terlihat (ukurannya nol), jadi tanpa gambar.");
+                return reply(ok(info));
+            };
+            let mut plan = capture::element(area);
+            let truncated = plan.tiles.len() > 1;
+            plan.tiles.truncate(1);
+            capture_tiles(
+                weak,
+                id,
+                Rc::new(plan),
+                Vec::new(),
+                Box::new(move |result| {
+                    match result {
+                        Ok(images) => info["images_base64"] = json!(images),
+                        Err(e) => info["image_note"] = json!(e),
+                    }
+                    if truncated {
+                        info["image_note"] = json!("Elemen tinggi; gambar hanya bagian atasnya. Pakai screenshot dengan selector untuk seluruhnya.");
+                    }
+                    reply(ok(info))
+                }),
+            );
+        },
+        fail,
+    );
+}
+
+/// Satu balasan untuk dua jalur (sukses lewat closure, error lewat
+/// `with_page_json`); siapa pun yang duluan, balasan hanya terkirim sekali.
+fn split_reply(reply: Reply) -> (Reply, Reply) {
+    let slot = Rc::new(std::cell::RefCell::new(Some(reply)));
+    let other = slot.clone();
+    let send = move |slot: &std::cell::RefCell<Option<Reply>>, response| {
+        if let Some(reply) = slot.borrow_mut().take() {
+            reply(response)
+        }
+    };
+    (Box::new(move |r| send(&slot, r)), Box::new(move |r| send(&other, r)))
+}
+
+fn describe_emulation(e: &Emulation) -> String {
+    if *e == Emulation::default() {
+        return "tampilan normal".into();
+    }
+    let mut parts = Vec::new();
+    match e.viewport {
+        Some((w, h)) => parts.push(format!("{}{}×{}", if e.mobile { "HP " } else { "" }, w, h)),
+        None if e.mobile => parts.push("user agent HP".into()),
+        None => {}
+    }
+    match e.color_scheme {
+        ColorScheme::Dark => parts.push("mode gelap".into()),
+        ColorScheme::Light => parts.push("mode terang".into()),
+        ColorScheme::System => {}
+    }
+    parts.join(", ")
+}
+
+fn emulate(
+    state: &Rc<AppState>,
+    tab_id: Option<u64>,
+    device: Option<Device>,
+    width: Option<u32>,
+    height: Option<u32>,
+    color_scheme: Option<ColorScheme>,
+    reply: Reply,
+) {
+    let id = match target(state, tab_id) {
+        Ok(id) => id,
+        Err(e) => return reply(e),
+    };
+    let current = state.browser.borrow().tabs().get(id).map(|t| t.emulation).unwrap_or_default();
+    let next = match emulation_for(current, device, width, height, color_scheme) {
+        Ok(next) => next,
+        Err(e) => return reply(err(e)),
+    };
+    let reloaded = state.browser.borrow_mut().set_emulation(id, next);
+    state.refresh();
+    notice(state, &format!("Claude: {}", describe_emulation(&next)));
+    let viewport = match next.viewport {
+        Some((w, h)) => json!({"width": w, "height": h}),
+        None => json!("seukuran jendela"),
+    };
+    let mut out = json!({
+        "tab_id": id.0,
+        "viewport": viewport,
+        "mobile_user_agent": next.mobile,
+        "color_scheme": next.color_scheme,
+        "reloaded": reloaded,
+    });
+    let (area_w, area_h) = state.ui.content_size();
+    if let Some((w, h)) = next.viewport
+        && (w > area_w || h > area_h)
+    {
+        out["note"] = json!(format!(
+            "Viewport lebih besar dari area jendela ({}×{}); pengguna hanya melihat sebagian, tetapi halaman dan screenshot tetap seukuran viewport.",
+            area_w.round(),
+            area_h.round()
+        ));
+    }
+    if next != Emulation::default() {
+        out["reset_hint"] = json!("Kembalikan dengan emulate device=reset setelah selesai.");
+    }
+    reply(ok(out))
+}
+
 fn megabytes(bytes: u64) -> f64 {
     (bytes as f64 / 1_048_576.0 * 10.0).round() / 10.0
 }
@@ -317,6 +579,25 @@ mod tests {
         for (input, expected) in cases {
             assert_eq!(base64(input.as_bytes()), expected, "{input}");
         }
+    }
+
+    #[test]
+    fn emulation_is_described_in_plain_words() {
+        let phone = Emulation { viewport: Some((390.0, 844.0)), mobile: true, color_scheme: ColorScheme::Dark };
+        assert_eq!(describe_emulation(&phone), "HP 390×844, mode gelap");
+        assert_eq!(describe_emulation(&Emulation::default()), "tampilan normal");
+        let light = Emulation { color_scheme: ColorScheme::Light, ..Emulation::default() };
+        assert_eq!(describe_emulation(&light), "mode terang");
+    }
+
+    #[test]
+    fn split_reply_sends_only_once() {
+        let count = Rc::new(std::cell::Cell::new(0));
+        let c = count.clone();
+        let (a, b) = split_reply(Box::new(move |_| c.set(c.get() + 1)));
+        a(ok(json!(1)));
+        b(err("x"));
+        assert_eq!(count.get(), 1);
     }
 
     #[test]

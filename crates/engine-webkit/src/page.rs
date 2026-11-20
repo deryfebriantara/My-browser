@@ -6,20 +6,22 @@ use crate::downloads::DownloadCenter;
 use crate::emitter::Emitter;
 use crate::observer::{KEYS, Observer};
 use block2::RcBlock;
-use browser_core::engine::{JsTag, Page, PageEvent};
+use browser_core::engine::{ColorScheme, JsTag, Page, PageEvent, Rect};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::{MainThreadMarker, MainThreadOnly, msg_send, sel};
+use objc2::{AnyThread, MainThreadMarker, MainThreadOnly, msg_send, sel};
 use objc2_app_kit::{
-    NSAutoresizingMaskOptions, NSBitmapImageFileType, NSBitmapImageRep, NSImage, NSImageCompressionFactor, NSView,
+    NSAppearance, NSAppearanceCustomization, NSAppearanceNameAqua, NSAppearanceNameDarkAqua, NSAutoresizingMaskOptions,
+    NSBitmapImageFileType, NSBitmapImageRep, NSColor, NSDeviceRGBColorSpace, NSGraphicsContext, NSImage,
+    NSImageCompressionFactor, NSPDFImageRep, NSRectFill, NSView,
 };
 use objc2_foundation::{
-    NSDictionary, NSError, NSKeyValueObservingOptions, NSNumber, NSObjectNSKeyValueObserverRegistration, NSPoint, NSRect, NSSize, NSString, NSURL,
-    NSURLRequest,
+    NSData, NSDictionary, NSError, NSKeyValueObservingOptions, NSNumber, NSObjectNSKeyValueObserverRegistration, NSPoint, NSRect, NSSize,
+    NSString, NSURL, NSURLRequest,
 };
 use objc2_web_kit::{
-    WKContentWorld, WKMediaCaptureState, WKMediaPlaybackState, WKSnapshotConfiguration, WKUserContentController, WKWebView, WKWebViewConfiguration,
-    WKWebsiteDataStore,
+    WKContentWorld, WKMediaCaptureState, WKMediaPlaybackState, WKPDFConfiguration, WKSnapshotConfiguration, WKUserContentController,
+    WKWebView, WKWebViewConfiguration, WKWebsiteDataStore,
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -44,6 +46,8 @@ const INITIAL_HEIGHT: f64 = 720.0;
 
 pub struct WebKitPage {
     webview: Retained<WKWebView>,
+    /// User agent Safari iPhone untuk emulasi HP.
+    mobile_user_agent: Retained<NSString>,
     observer: Retained<Observer>,
     _delegate: Retained<Delegate>,
     emitter: Emitter,
@@ -55,6 +59,7 @@ impl WebKitPage {
     pub(crate) fn new(
         mtm: MainThreadMarker,
         app_name: &NSString,
+        mobile_user_agent: Retained<NSString>,
         blocker: Rc<Blocker>,
         downloads: Retained<DownloadCenter>,
         on_event: Box<dyn Fn(PageEvent)>,
@@ -102,7 +107,7 @@ impl WebKitPage {
             }
         }
 
-        Self { webview, observer, _delegate: delegate, emitter, busy }
+        Self { webview, mobile_user_agent, observer, _delegate: delegate, emitter, busy }
     }
 
     /// Memuat HTML dengan alamat dasar tertentu, seolah-olah halaman dari
@@ -214,6 +219,43 @@ impl Page for WebKitPage {
         unsafe { self.webview.takeSnapshotWithConfiguration_completionHandler(Some(&config), &block) };
     }
 
+    fn capture(&self, area: Rect, scale: f64, reply: Box<dyn FnOnce(Result<Vec<u8>, String>)>) {
+        let mtm = MainThreadMarker::from(&*self.webview);
+        // PDF dirender dari pohon render halaman dalam koordinat dokumen, jadi
+        // bagian di luar layar ikut tergambar (snapshot biasa hanya viewport).
+        let config = unsafe { WKPDFConfiguration::new(mtm) };
+        unsafe { config.setRect(NSRect::new(NSPoint::new(area.x, area.y), NSSize::new(area.width, area.height))) };
+        let reply = RefCell::new(Some(reply));
+        let block = RcBlock::new(move |data: *mut NSData, error: *mut NSError| {
+            let Some(reply) = reply.borrow_mut().take() else { return };
+            objc2::rc::autoreleasepool(|_| {
+                let result = match (unsafe { data.as_ref() }, unsafe { error.as_ref() }) {
+                    (Some(data), _) => rasterize(data, scale).ok_or_else(|| "PDF halaman tidak bisa diubah menjadi gambar".to_string()),
+                    (None, Some(error)) => Err(error.localizedDescription().to_string()),
+                    (None, None) => Err("hasil render kosong".to_string()),
+                };
+                reply(result);
+            });
+        });
+        unsafe { self.webview.createPDFWithConfiguration_completionHandler(Some(&config), &block) };
+    }
+
+    fn set_mobile_user_agent(&self, mobile: bool) {
+        let agent = mobile.then_some(&*self.mobile_user_agent);
+        unsafe { self.webview.setCustomUserAgent(agent) };
+    }
+
+    /// `prefers-color-scheme` di WKWebView mengikuti appearance view-nya.
+    fn set_color_scheme(&self, scheme: ColorScheme) {
+        let name = match scheme {
+            ColorScheme::System => None,
+            ColorScheme::Light => Some(unsafe { NSAppearanceNameAqua }),
+            ColorScheme::Dark => Some(unsafe { NSAppearanceNameDarkAqua }),
+        };
+        let appearance = name.and_then(NSAppearance::appearanceNamed);
+        self.webview.setAppearance(appearance.as_deref());
+    }
+
     /// Memakai properti privat `_webProcessIdentifier` (hanya dibaca, dicek
     /// dulu keberadaannya) karena WebKit tidak punya API publik untuk pid.
     fn process_id(&self) -> Option<i32> {
@@ -266,6 +308,48 @@ fn javascript_error(error: &NSError) -> String {
 fn jpeg(image: &NSImage) -> Option<Vec<u8>> {
     let tiff = image.TIFFRepresentation()?;
     let rep = NSBitmapImageRep::imageRepWithData(&tiff)?;
+    encode_jpeg(&rep)
+}
+
+/// Menggambar PDF satu halaman ke bitmap `scale` piksel per poin (di atas
+/// latar putih), lalu mengubahnya menjadi JPEG.
+fn rasterize(pdf: &NSData, scale: f64) -> Option<Vec<u8>> {
+    let rep = NSPDFImageRep::imageRepWithData(pdf)?;
+    let size = rep.bounds().size;
+    let width = (size.width * scale).round().max(1.0);
+    let height = (size.height * scale).round().max(1.0);
+    // SAFETY: planes null meminta AppKit mengalokasikan buffernya sendiri;
+    // 8 bit x 4 sampel RGBA adalah format yang didukung NSGraphicsContext.
+    let bitmap = unsafe {
+        NSBitmapImageRep::initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel(
+            NSBitmapImageRep::alloc(),
+            std::ptr::null_mut(),
+            width as isize,
+            height as isize,
+            8,
+            4,
+            true,
+            false,
+            NSDeviceRGBColorSpace,
+            0,
+            0,
+        )
+    }?;
+    let context = NSGraphicsContext::graphicsContextWithBitmapImageRep(&bitmap)?;
+    let target = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(width, height));
+    NSGraphicsContext::saveGraphicsState_class();
+    NSGraphicsContext::setCurrentContext(Some(&context));
+    NSColor::whiteColor().setFill();
+    NSRectFill(target);
+    let drawn = rep.drawInRect(target);
+    NSGraphicsContext::restoreGraphicsState_class();
+    if !drawn {
+        return None;
+    }
+    encode_jpeg(&bitmap)
+}
+
+fn encode_jpeg(rep: &NSBitmapImageRep) -> Option<Vec<u8>> {
     let quality = NSNumber::new_f64(0.7);
     let value: &AnyObject = quality.as_ref();
     let properties = NSDictionary::<NSString, AnyObject>::from_slices(&[unsafe { NSImageCompressionFactor }], &[value]);

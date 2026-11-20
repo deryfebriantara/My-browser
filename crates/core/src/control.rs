@@ -2,6 +2,7 @@
 //! (`my-browser --mcp`). Satu baris JSON per permintaan dan per balasan,
 //! lewat file socket pribadi di folder data.
 
+use crate::engine::{ColorScheme, Emulation};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -44,6 +45,59 @@ pub enum WaitState {
     Visible,
     Present,
     Hidden,
+}
+
+/// Preset perangkat untuk `emulate`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Device {
+    /// iPhone 15: 390×844, user agent Safari iPhone.
+    Mobile,
+    /// iPad Air: 820×1180. iPadOS Safari memakai user agent desktop.
+    Tablet,
+    /// Laptop umum: 1440×900.
+    Desktop,
+    /// Kembali normal: seukuran jendela, user agent bawaan, warna sistem.
+    Reset,
+}
+
+/// Batas ukuran viewport `emulate`, dalam poin CSS.
+pub const VIEWPORT_RANGE: std::ops::RangeInclusive<u32> = 200..=3840;
+
+/// Emulasi baru dari argumen `emulate`, dimulai dari emulasi tab sekarang.
+pub fn emulation_for(
+    current: Emulation,
+    device: Option<Device>,
+    width: Option<u32>,
+    height: Option<u32>,
+    color_scheme: Option<ColorScheme>,
+) -> Result<Emulation, String> {
+    if device.is_none() && width.is_none() && height.is_none() && color_scheme.is_none() {
+        return Err("emulate butuh device, width/height, atau color_scheme.".into());
+    }
+    if let Some(bad) = [width, height].into_iter().flatten().find(|v| !VIEWPORT_RANGE.contains(v)) {
+        return Err(format!(
+            "Ukuran viewport {bad} di luar batas {}–{} poin.",
+            VIEWPORT_RANGE.start(),
+            VIEWPORT_RANGE.end()
+        ));
+    }
+    let mut next = current;
+    match device {
+        Some(Device::Mobile) => (next.viewport, next.mobile) = (Some((390.0, 844.0)), true),
+        Some(Device::Tablet) => (next.viewport, next.mobile) = (Some((820.0, 1180.0)), false),
+        Some(Device::Desktop) => (next.viewport, next.mobile) = (Some((1440.0, 900.0)), false),
+        Some(Device::Reset) => next = Emulation::default(),
+        None => {}
+    }
+    if width.is_some() || height.is_some() {
+        let (w, h) = next.viewport.unwrap_or((1440.0, 900.0));
+        next.viewport = Some((width.map_or(w, f64::from), height.map_or(h, f64::from)));
+    }
+    if let Some(scheme) = color_scheme {
+        next.color_scheme = scheme;
+    }
+    Ok(next)
 }
 
 fn yes() -> bool {
@@ -111,6 +165,29 @@ pub enum ControlRequest {
         tab_id: Option<u64>,
     },
     Screenshot {
+        #[serde(default)]
+        tab_id: Option<u64>,
+        /// Seluruh halaman, dipotong menjadi beberapa gambar.
+        #[serde(default)]
+        full_page: bool,
+        /// Hanya elemen ini (selector CSS).
+        #[serde(default)]
+        selector: Option<String>,
+    },
+    Emulate {
+        #[serde(default)]
+        device: Option<Device>,
+        #[serde(default)]
+        width: Option<u32>,
+        #[serde(default)]
+        height: Option<u32>,
+        #[serde(default)]
+        color_scheme: Option<ColorScheme>,
+        #[serde(default)]
+        tab_id: Option<u64>,
+    },
+    /// Elemen yang terakhir ditunjuk pengguna lewat menu Tunjuk Elemen.
+    GetSelection {
         #[serde(default)]
         tab_id: Option<u64>,
     },
@@ -197,7 +274,9 @@ impl ControlRequest {
             | Self::ListElements { tab_id }
             | Self::Scroll { tab_id, .. }
             | Self::Youtube { tab_id, .. }
-            | Self::Screenshot { tab_id }
+            | Self::Screenshot { tab_id, .. }
+            | Self::Emulate { tab_id, .. }
+            | Self::GetSelection { tab_id }
             | Self::Click { tab_id, .. }
             | Self::Type { tab_id, .. }
             | Self::RunJs { tab_id, .. }
@@ -292,6 +371,58 @@ mod tests {
     }
 
     #[test]
+    fn visual_tool_arguments_have_defaults() {
+        assert_eq!(
+            parse(json!({"cmd": "screenshot"})),
+            ControlRequest::Screenshot { tab_id: None, full_page: false, selector: None }
+        );
+        assert_eq!(
+            parse(json!({"cmd": "screenshot", "selector": ".hero"})),
+            ControlRequest::Screenshot { tab_id: None, full_page: false, selector: Some(".hero".into()) }
+        );
+        assert_eq!(
+            parse(json!({"cmd": "emulate", "device": "mobile", "color_scheme": "dark"})),
+            ControlRequest::Emulate {
+                device: Some(Device::Mobile),
+                width: None,
+                height: None,
+                color_scheme: Some(ColorScheme::Dark),
+                tab_id: None
+            }
+        );
+        assert_eq!(parse(json!({"cmd": "get_selection"})), ControlRequest::GetSelection { tab_id: None });
+    }
+
+    #[test]
+    fn emulation_presets_and_overrides() {
+        let none = Emulation::default();
+        let phone = emulation_for(none, Some(Device::Mobile), None, None, None).unwrap();
+        assert_eq!(phone, Emulation { viewport: Some((390.0, 844.0)), mobile: true, color_scheme: ColorScheme::System });
+        let dark = emulation_for(phone, None, None, None, Some(ColorScheme::Dark)).unwrap();
+        assert_eq!(dark, Emulation { color_scheme: ColorScheme::Dark, ..phone }, "warna saja: perangkat tetap");
+        let narrow = emulation_for(dark, None, Some(360), None, None).unwrap();
+        assert_eq!(narrow.viewport, Some((360.0, 844.0)), "lebar saja: tinggi tetap");
+        assert!(narrow.mobile);
+        let custom = emulation_for(none, None, Some(1024), Some(768), None).unwrap();
+        assert_eq!(custom, Emulation { viewport: Some((1024.0, 768.0)), mobile: false, color_scheme: ColorScheme::System });
+        let tablet = emulation_for(phone, Some(Device::Tablet), None, None, None).unwrap();
+        assert_eq!((tablet.viewport, tablet.mobile), (Some((820.0, 1180.0)), false));
+    }
+
+    #[test]
+    fn emulation_reset_and_invalid_input() {
+        let dark_phone = Emulation { viewport: Some((390.0, 844.0)), mobile: true, color_scheme: ColorScheme::Dark };
+        assert_eq!(emulation_for(dark_phone, Some(Device::Reset), None, None, None).unwrap(), Emulation::default());
+        assert_eq!(
+            emulation_for(dark_phone, Some(Device::Reset), None, None, Some(ColorScheme::Light)).unwrap().color_scheme,
+            ColorScheme::Light
+        );
+        assert!(emulation_for(dark_phone, None, None, None, None).is_err());
+        assert!(emulation_for(dark_phone, None, Some(50), None, None).unwrap_err().contains("50"));
+        assert!(emulation_for(dark_phone, None, None, Some(10_000), None).is_err());
+    }
+
+    #[test]
     fn unknown_or_invalid_arguments_are_rejected() {
         assert!(serde_json::from_value::<ControlRequest>(json!({"cmd": "navigate"})).is_err());
         assert!(serde_json::from_value::<ControlRequest>(json!({"cmd": "hapus_semua"})).is_err());
@@ -305,11 +436,12 @@ mod tests {
         assert!(parse(json!({"cmd": "run_js", "code": "1"})).needs_interaction());
         for cmd in [
             "list_tabs", "memory_usage", "read_page", "list_elements", "screenshot",
-            "console_logs", "network_log", "wait_for", "inspect_element",
+            "console_logs", "network_log", "wait_for", "inspect_element", "get_selection",
         ] {
             assert!(!parse(json!({"cmd": cmd})).needs_interaction(), "{cmd}");
         }
         assert!(!parse(json!({"cmd": "scroll", "direction": "down"})).needs_interaction());
+        assert!(!parse(json!({"cmd": "emulate", "device": "mobile"})).needs_interaction());
     }
 
     #[test]

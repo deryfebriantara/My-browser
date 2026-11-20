@@ -1,5 +1,6 @@
 //! Daftar tab, urutan, tab aktif, dan stack tab yang baru ditutup.
 
+use crate::engine::Emulation;
 use crate::sleep::TabSnapshot;
 use std::time::Instant;
 pub use url::Url;
@@ -34,6 +35,8 @@ pub struct Tab {
     /// Jumlah halaman yang selesai dimuat di tab ini (dipakai untuk menunggu
     /// navigasi selesai).
     pub loads: u64,
+    /// Emulasi perangkat dari Claude. Tidak disimpan ke sesi.
+    pub emulation: Emulation,
 }
 
 impl Tab {
@@ -57,6 +60,7 @@ impl Tab {
             can_forward: false,
             last_crash: None,
             loads: 0,
+            emulation: Emulation::default(),
         }
     }
 }
