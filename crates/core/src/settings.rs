@@ -28,6 +28,8 @@ pub struct Settings {
     pub password_lock_minutes: u64,
     /// Host yang tidak pernah ditawari simpan password.
     pub password_never_save: Vec<String>,
+    /// Lokasi program yang selalu diizinkan mengontrol browser lewat MCP.
+    pub mcp_allowed_clients: Vec<String>,
 }
 
 impl Default for Settings {
@@ -44,6 +46,7 @@ impl Default for Settings {
             password_offer_save: true,
             password_lock_minutes: 10,
             password_never_save: Vec::new(),
+            mcp_allowed_clients: Vec::new(),
         }
     }
 }

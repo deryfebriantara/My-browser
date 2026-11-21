@@ -111,6 +111,7 @@ pub fn build(mtm: MainThreadMarker, target: &ActionTarget) -> Retained<NSMenu> {
             it("Tunjuk Elemen ke Claude", sel!(pickElement:), "e", cmd_shift, t, 0),
             it("Kembalikan Tampilan Normal", sel!(resetEmulation:), "", cmd, t, 0),
             it("Izinkan Claude Berinteraksi", sel!(toggleClaudeInteract:), "", cmd, t, 0),
+            it("Cabut Izin Program MCP", sel!(revokeMcpClients:), "", cmd, t, 0),
         ],
     ));
 

@@ -126,3 +126,13 @@ Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
 - [ ] Kunci layar Mac (Ctrl+Cmd+Q) lalu buka lagi: password terkunci
 - [ ] Biarkan 10 menit tanpa memakai password: terkunci sendiri
 - [ ] Login Google dua langkah: ⌘\ di langkah email, lalu di langkah password
+
+## Izin program MCP
+
+Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
+
+- [ ] Mulai sesi Claude Code baru dan minta Claude melihat daftar tab: my-browser maju ke depan dengan dialog "Izinkan Claude Code mengontrol my-browser?" yang menampilkan folder proyek sesi itu
+- [ ] Selalu Izinkan: Claude langsung mendapat daftar tab; sesi Claude Code berikutnya tidak ditanya lagi
+- [ ] Claude > Cabut Izin Program MCP: permintaan berikutnya ditanya lagi
+- [ ] Tolak: Claude mendapat pesan penolakan; permintaan berikutnya langsung ditolak sampai browser dibuka ulang
+- [ ] Panel Tanya Claude tetap bisa membaca halaman tanpa dialog izin

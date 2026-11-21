@@ -131,6 +131,11 @@ define_class!(
             self.with(|s| s.passwords.lock(s, true));
         }
 
+        #[unsafe(method(revokeMcpClients:))]
+        fn revoke_mcp_clients(&self, _sender: Option<&AnyObject>) {
+            self.with(|s| s.mcp_access.revoke_all(s));
+        }
+
         #[unsafe(method(toggleChat:))]
         fn toggle_chat(&self, _sender: Option<&AnyObject>) {
             self.with(|s| s.chat.toggle(s));

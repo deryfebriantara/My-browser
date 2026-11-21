@@ -60,6 +60,20 @@ Screenshot biasa adalah foto layar tab aktif, termasuk video. `full_page`, `sele
 
 Pencatat console dan network terpasang di awal setiap halaman dan dibatasi jumlahnya (200 catatan console, 300 request). Isi respons hanya disimpan untuk situs lokal (`localhost`, IP lokal, `.local`, `.test`, `file:`), karena isi respons situs sungguhan bisa berisi data pribadi. Mesinnya WebKit, jadi hasilnya sekaligus menunjukkan perilaku di Safari.
 
+## Izin program (auth MCP)
+
+Socket kontrol hanya bisa dibuka oleh user macOS yang sama. Itu berarti program apa pun yang Anda jalankan, jadi setiap program juga harus diizinkan dulu.
+
+- Saat sebuah program tersambung pertama kali, my-browser maju ke depan dan bertanya: "Izinkan Claude Code mengontrol my-browser?". Dialog itu menampilkan lokasi program, pid, dan folder kerjanya, sehingga Anda bisa mengenali sesi Claude Code mana yang meminta. Pilihannya:
+  - **Selalu Izinkan:** lokasi program disimpan di `mcp_allowed_clients` di `settings.json`.
+  - **Izinkan Sekali:** berlaku sampai koneksi itu putus.
+  - **Tolak:** berlaku sampai browser ditutup.
+- Permintaan pertama menunggu jawaban Anda sampai 35 detik. Kalau Anda menjawab setelah itu, jawabannya tetap berlaku untuk permintaan berikutnya.
+- **Identitas dari kernel**, bukan dari pengakuan program. Pid peer socket menunjuk ke `my-browser --mcp`, dan yang dianggap meminta akses adalah induk proses itu (misalnya `claude`). Program asing yang menjalankan `my-browser --mcp` sendiri akan tampil dengan namanya sendiri.
+- **Panel Tanya Claude** dikenali dari silsilah proses (proses Claude-nya adalah anak browser ini), jadi tidak ditanya. Browser juga membatasinya ke perintah baca saja, sebagai lapisan kedua di atas daftar tool panel.
+- Menu **Claude > Cabut Izin Program MCP** menghapus semua izin; setiap program akan ditanya lagi.
+- Izin disimpan per lokasi program. Setelah Claude Code diperbarui ke lokasi lain (misalnya versi Node di nvm berganti), Anda akan ditanya sekali lagi.
+
 ## Izin interaksi
 
 `click`, `type`, dan `run_js` hanya berjalan setelah menu **Claude > Izinkan Claude Berinteraksi** dinyalakan. Izin ini selalu mati setiap browser dibuka. Selama menyala, judul window diberi penanda "Claude dapat berinteraksi" dan setiap aksi Claude tampil di kanan nav bar.

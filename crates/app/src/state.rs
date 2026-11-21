@@ -6,6 +6,7 @@
 
 use crate::actions::ActionTarget;
 use crate::chat::Chat;
+use crate::mcp_access::McpAccess;
 use crate::password_manager::PasswordManager;
 use crate::passwords::Passwords;
 use crate::persistence;
@@ -47,6 +48,8 @@ pub struct AppState {
     pub passwords: Passwords,
     /// Jendela Kelola Password.
     pub password_manager: PasswordManager,
+    /// Izin program untuk socket kontrol (MCP).
+    pub mcp_access: McpAccess,
 }
 
 struct NavInfo {
@@ -127,6 +130,7 @@ impl AppState {
                 chat: Chat::default(),
                 passwords: Passwords::default(),
                 password_manager: PasswordManager::default(),
+                mcp_access: McpAccess::default(),
             }
         })
     }
@@ -234,6 +238,10 @@ impl AppState {
             self.ui.window.makeFirstResponder(Some(&view));
         }
         self.ui.nav.show_notice("Klik elemen yang ingin ditunjukkan ke Claude (Esc untuk batal)");
+    }
+
+    pub fn mtm(&self) -> MainThreadMarker {
+        self.mtm
     }
 
     /// Jendela untuk dialog: jendela yang sedang aktif (mis. Kelola Password),

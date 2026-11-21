@@ -270,6 +270,22 @@ mod tests {
         assert!(resumed.windows(2).any(|w| w == ["--model", "sonnet"]));
     }
 
+    /// Daftar tool panel dan aturan baca-saja di socket harus sama persis.
+    #[test]
+    fn panel_tools_are_read_only_requests() {
+        use crate::control::ControlRequest;
+        for tool in READ_ONLY_TOOLS {
+            let mut v = json!({"cmd": tool});
+            match *tool {
+                "scroll" => v["direction"] = json!("down"),
+                "youtube" => v["action"] = json!("status"),
+                _ => {}
+            }
+            let request: ControlRequest = serde_json::from_value(v).unwrap_or_else(|e| panic!("{tool}: {e}"));
+            assert!(request.is_read_only(), "{tool} diizinkan di panel tetapi bukan baca-saja");
+        }
+    }
+
     #[test]
     fn question_carries_active_tab_context() {
         let tab = TabContext { id: 3, title: "Kopi Senja", url: Some("http://localhost:8766/"), picked: true };

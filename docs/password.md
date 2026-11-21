@@ -68,4 +68,4 @@ Touch ID yang benar-benar melindungi kunci (lewat Secure Enclave) butuh aplikasi
 - `crates/app/src/password_manager.rs` dan `.html`: jendela Kelola Password.
 - `crates/app/src/dialogs.rs`: dialog master password dan konfirmasi.
 
-Untuk pengujian, build debug punya pengait `MYBROWSER_PASSWORD_SELFTEST=<master>`, yang menjawab setiap dialog otomatis dengan master password itu. Pengait ini tidak ada di build release.
+Untuk pengujian, build debug punya pengait `MYBROWSER_DIALOG_SELFTEST=<master>`, yang menjawab setiap dialog otomatis dengan master password itu. Pengait ini tidak ada di build release.

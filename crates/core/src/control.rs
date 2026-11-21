@@ -262,6 +262,26 @@ impl ControlRequest {
         matches!(self, Self::Click { .. } | Self::Type { .. } | Self::RunJs { .. })
     }
 
+    /// Hanya membaca halaman atau keadaan browser. Panel Tanya Claude hanya
+    /// boleh mengirim permintaan seperti ini.
+    pub fn is_read_only(&self) -> bool {
+        matches!(
+            self,
+            Self::ListTabs
+                | Self::ReadPage { .. }
+                | Self::ListElements { .. }
+                | Self::Scroll { .. }
+                | Self::Screenshot { .. }
+                | Self::Youtube { .. }
+                | Self::MemoryUsage
+                | Self::ConsoleLogs { .. }
+                | Self::NetworkLog { .. }
+                | Self::WaitFor { .. }
+                | Self::InspectElement { .. }
+                | Self::GetSelection { .. }
+        )
+    }
+
     /// Tab yang dituju permintaan, kalau ada.
     pub fn tab_id(&self) -> Option<u64> {
         match self {
@@ -442,6 +462,23 @@ mod tests {
         }
         assert!(!parse(json!({"cmd": "scroll", "direction": "down"})).needs_interaction());
         assert!(!parse(json!({"cmd": "emulate", "device": "mobile"})).needs_interaction());
+    }
+
+    #[test]
+    fn navigation_and_interaction_are_not_read_only() {
+        for (cmd, extra) in [
+            ("navigate", json!({"url": "x"})),
+            ("open_tab", json!({"url": "x"})),
+            ("close_tab", json!({"tab_id": 1})),
+            ("click", json!({"element": 1})),
+            ("run_js", json!({"code": "1"})),
+            ("emulate", json!({"device": "mobile"})),
+            ("reload", json!({})),
+        ] {
+            let mut v = extra;
+            v["cmd"] = json!(cmd);
+            assert!(!parse(v).is_read_only(), "{cmd}");
+        }
     }
 
     #[test]

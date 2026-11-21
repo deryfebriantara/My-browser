@@ -32,12 +32,13 @@ fn alert(mtm: MainThreadMarker, title: &str, info: &str, buttons: &[&str]) -> Re
     alert
 }
 
-/// Uji otomatis, hanya di build debug: `MYBROWSER_PASSWORD_SELFTEST` berisi
-/// master password. Setiap dialog dijawab otomatis dengan tombol pertama
-/// (kolom rahasia diisi master password itu), dan judulnya dicatat ke stderr.
+/// Uji otomatis, hanya di build debug: `MYBROWSER_DIALOG_SELFTEST` berisi
+/// teks untuk kolom rahasia (mis. master password). Setiap dialog dijawab
+/// otomatis dengan tombol ke-`MYBROWSER_DIALOG_CHOICE` (bawaan 0), dan
+/// judulnya dicatat ke stderr.
 #[cfg(debug_assertions)]
 fn selftest(alert: &NSAlert) -> Option<String> {
-    let master = std::env::var("MYBROWSER_PASSWORD_SELFTEST").ok()?;
+    let master = std::env::var("MYBROWSER_DIALOG_SELFTEST").ok()?;
     eprintln!("[selftest] dialog: {} | {}", alert.messageText(), alert.informativeText().to_string().replace('\n', " "));
     Some(master)
 }
@@ -49,10 +50,11 @@ fn present(window: &NSWindow, alert: &NSAlert, done: impl FnOnce(usize) + 'stati
     }
     #[cfg(debug_assertions)]
     if selftest(alert).is_some() {
+        let choice = std::env::var("MYBROWSER_DIALOG_CHOICE").ok().and_then(|c| c.parse().ok()).unwrap_or(0);
         let done = std::cell::Cell::new(Some(done));
         let block = RcBlock::new(move || {
             if let Some(done) = done.take() {
-                done(0);
+                done(choice);
             }
         });
         unsafe { objc2_foundation::NSRunLoop::mainRunLoop().performBlock(&block) };
@@ -111,7 +113,7 @@ pub fn ask_secrets(
         alert.window().setInitialFirstResponder(Some(first));
     }
     #[cfg(debug_assertions)]
-    if let Ok(master) = std::env::var("MYBROWSER_PASSWORD_SELFTEST") {
+    if let Ok(master) = std::env::var("MYBROWSER_DIALOG_SELFTEST") {
         for field in &fields {
             field.setStringValue(&NSString::from_str(&master));
         }

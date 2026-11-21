@@ -4,6 +4,7 @@ use crate::state::{AppState, display_title};
 use browser_core::capture::{self, Plan};
 use browser_core::control::{ControlRequest as R, ControlResponse, Device, LogLevel, TabInfo, WaitState, emulation_for};
 use browser_core::engine::{ColorScheme, Emulation, Page, Rect};
+use browser_core::mcp_access::ClientKind;
 use browser_core::page_scripts as js;
 use browser_core::tabs::TabId;
 use serde_json::{Value, json};
@@ -110,7 +111,13 @@ fn notice(state: &AppState, message: &str) {
     state.ui.nav.show_notice(message);
 }
 
-pub fn handle(state: &Rc<AppState>, request: R, reply: Reply) {
+const PANEL_READ_ONLY: &str = "Panel Tanya Claude hanya boleh membaca halaman.";
+
+pub fn handle(state: &Rc<AppState>, request: R, kind: &ClientKind, reply: Reply) {
+    // Lapisan kedua di atas daftar tool panel: ditegakkan browser sendiri.
+    if *kind == ClientKind::Panel && !request.is_read_only() {
+        return reply(err(PANEL_READ_ONLY));
+    }
     if request.needs_interaction() && !state.claude_interact.get() {
         return reply(err(INTERACTION_OFF));
     }
