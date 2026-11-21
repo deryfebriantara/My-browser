@@ -75,6 +75,25 @@
     font: inherit; font-weight: 600; padding: 5px 12px; cursor: default;
   }
   .hint { color: var(--muted); font-size: 11px; margin-top: 6px; }
+  .account { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  .account #account-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  select { font: inherit; font-size: 12px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 2px 4px; }
+  .signin { margin: 14px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  .signin h2 { font-size: 15px; margin: 0 0 6px; }
+  .signin p { margin: 0 0 12px; color: var(--muted); }
+  .signin label { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; color: var(--muted); font-size: 12px; }
+  .signin .buttons { display: flex; flex-direction: column; gap: 8px; }
+  .btn { font: inherit; border-radius: 8px; padding: 7px 12px; cursor: default; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
+  .btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+  .signin .waiting { color: var(--text); display: flex; align-items: center; gap: 8px; margin: 0 0 10px; }
+  .signin details { margin: 6px 0 10px; color: var(--muted); }
+  .signin details input { width: 100%; margin: 8px 0 6px; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--text); }
+  .signin .message { margin: 10px 0 0; color: var(--error); white-space: pre-wrap; }
+  .signin .message:empty, .signin .note:empty { display: none; }
+  .signin .note { margin: 10px 0 0; color: var(--muted); white-space: pre-wrap; }
+  body.locked .empty { display: none; }
+  textarea:disabled { opacity: .5; }
+  [hidden] { display: none !important; }
 </style>
 </head>
 <body>
@@ -86,6 +105,31 @@
   <button class="icon-btn" id="new" title="Percakapan baru">Baru</button>
   <button class="icon-btn" id="close" title="Tutup panel (Cmd+J)">✕</button>
 </header>
+<div class="account" id="account" hidden>
+  <span id="account-text"></span>
+  <select id="profile" title="Profil Claude Code" hidden></select>
+  <button class="icon-btn" id="logout" hidden>Keluar</button>
+</div>
+<div class="signin" id="signin" hidden>
+  <h2>Masuk ke Claude</h2>
+  <p>Panel memakai akun Claude Code Anda dan kuota langganannya. Halaman login dibuka di tab baru my-browser.</p>
+  <label id="signin-profile-row">Profil <select id="signin-profile"></select></label>
+  <div class="buttons" id="signin-buttons">
+    <button class="btn primary" id="login-claude">Masuk dengan langganan Claude</button>
+    <button class="btn" id="login-console">Pakai API Console (bayar per pemakaian)</button>
+  </div>
+  <div id="signing" hidden>
+    <div class="waiting"><span class="dots"><span></span><span></span><span></span></span> Menunggu login selesai di tab baru…</div>
+    <details>
+      <summary>Halaman login menampilkan kode?</summary>
+      <input id="code" placeholder="Tempel kode di sini" autocomplete="off" spellcheck="false">
+      <button class="btn" id="send-code">Kirim kode</button>
+    </details>
+    <button class="btn" id="cancel-login">Batal</button>
+  </div>
+  <p class="note" id="signin-note"></p>
+  <p class="message" id="signin-message"></p>
+</div>
 <div id="log"></div>
 <footer>
   <div class="composer">
@@ -217,7 +261,7 @@
 
   function submit(text) {
     text = (text || '').trim();
-    if (!text || busy) return;
+    if (!text || busy || accountState === 'signed_out' || accountState === 'signing_in') return;
     post({ t: 'send', text: text });
     input.value = ''; grow();
   }
@@ -235,6 +279,50 @@
     var a = e.target.closest('a[data-url]');
     if (a) { e.preventDefault(); post({ t: 'open', url: a.getAttribute('data-url') }); }
   });
+
+  // --- Akun ---
+  var accountState = 'checking';
+  function fillProfiles(select, m) {
+    select.innerHTML = '';
+    (m.profiles || []).forEach(function (p) {
+      var o = document.createElement('option'); o.value = p.dir; o.textContent = p.label + ' (' + p.dir + ')';
+      if (p.dir === m.profile) o.selected = true;
+      select.appendChild(o);
+    });
+  }
+  function renderAccount(m) {
+    accountState = m.state;
+    var signedIn = m.state === 'signed_in', signing = m.state === 'signing_in', out = m.state === 'signed_out';
+    var many = (m.profiles || []).length > 1;
+    fillProfiles(document.getElementById('profile'), m);
+    fillProfiles(document.getElementById('signin-profile'), m);
+    document.getElementById('account').hidden = !(signedIn || m.state === 'checking');
+    document.getElementById('account-text').textContent = signedIn
+      ? (m.email || 'Masuk') + (m.plan ? ' · ' + m.plan : '') + (many ? '' : ' · ' + m.profile_label)
+      : 'Memeriksa akun ' + m.profile_label + '…';
+    document.getElementById('profile').hidden = !(signedIn && many);
+    document.getElementById('logout').hidden = !signedIn;
+    document.getElementById('signin').hidden = !(out || signing);
+    document.getElementById('signin-buttons').hidden = signing;
+    document.getElementById('signin-profile-row').hidden = signing || !many;
+    document.getElementById('signing').hidden = !signing;
+    document.getElementById('signin-message').textContent = m.message || '';
+    document.getElementById('signin-note').textContent = m.note || '';
+    var locked = out || signing;
+    document.body.classList.toggle('locked', locked);
+    input.disabled = locked;
+    input.placeholder = locked ? 'Masuk dulu untuk bertanya' : 'Tanya tentang halaman ini…';
+    if (!locked && !busy) input.focus();
+  }
+  document.getElementById('login-claude').onclick = function () { post({ t: 'login', method: 'claudeai' }); };
+  document.getElementById('login-console').onclick = function () { post({ t: 'login', method: 'console' }); };
+  document.getElementById('cancel-login').onclick = function () { post({ t: 'cancel_login' }); };
+  document.getElementById('logout').onclick = function () { post({ t: 'logout' }); };
+  document.getElementById('send-code').onclick = function () {
+    var c = document.getElementById('code'); if (c.value.trim()) { post({ t: 'login_code', code: c.value.trim() }); c.value = ''; }
+  };
+  document.getElementById('profile').onchange = function (e) { post({ t: 'profile', dir: e.target.value }); };
+  document.getElementById('signin-profile').onchange = function (e) { post({ t: 'profile', dir: e.target.value }); };
 
   // --- Pesan dari aplikasi ---
   window.mbReceive = function (m) {
@@ -269,6 +357,8 @@
       addError(m.text); scroll(true);
     } else if (m.t === 'focus') {
       input.focus();
+    } else if (m.t === 'account') {
+      renderAccount(m);
     }
   };
   post({ t: 'ready' });

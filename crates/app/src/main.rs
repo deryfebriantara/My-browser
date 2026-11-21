@@ -3,6 +3,7 @@
 mod actions;
 mod background;
 mod chat;
+mod chat_account;
 mod control;
 mod control_server;
 mod mcp_access;

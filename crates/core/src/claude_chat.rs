@@ -218,6 +218,60 @@ pub fn tool_label(name: &str) -> String {
     .to_string()
 }
 
+/// Akun Claude Code sebuah profil, dari `claude auth status --json`.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Account {
+    pub logged_in: bool,
+    pub email: Option<String>,
+    /// Paket untuk ditampilkan, mis. `Max`, `Pro`, atau `API Console`.
+    pub plan: Option<String>,
+}
+
+pub fn parse_auth_status(json: &str) -> Option<Account> {
+    let v: Value = serde_json::from_str(json).ok()?;
+    let text = |k: &str| v[k].as_str().filter(|s| !s.is_empty()).map(String::from);
+    let plan = match (text("subscriptionType"), text("authMethod")) {
+        (Some(sub), _) => {
+            let mut chars = sub.chars();
+            chars.next().map(|c| c.to_uppercase().collect::<String>() + chars.as_str())
+        }
+        (None, Some(method)) if method.contains("console") || method.contains("api") => Some("API Console".into()),
+        _ => None,
+    };
+    Some(Account { logged_in: v["loggedIn"] == true, email: text("email"), plan })
+}
+
+/// Profil Claude Code di folder home: `.claude` dan `.claude-<nama>`, urut
+/// dengan `.claude` lebih dulu. `names` adalah nama folder di home.
+pub fn profile_dirs(names: &[String]) -> Vec<String> {
+    let mut list: Vec<String> = names
+        .iter()
+        .filter(|n| {
+            *n == ".claude"
+                || n.strip_prefix(".claude-").is_some_and(|rest| {
+                    !rest.is_empty() && rest.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                })
+        })
+        .map(|n| format!("~/{n}"))
+        .collect();
+    list.sort_by_key(|n| (n != "~/.claude", n.clone()));
+    list
+}
+
+/// Nama pendek profil untuk ditampilkan: `~/.claude-work` → `work`.
+pub fn profile_label(dir: &str) -> String {
+    match dir.trim_end_matches('/').rsplit('/').next().unwrap_or(dir) {
+        ".claude" => "utama".into(),
+        name => name.strip_prefix(".claude-").unwrap_or(name).to_string(),
+    }
+}
+
+/// URL login OAuth di keluaran `claude auth login` (jalur cadangan kalau
+/// perintah `open` pengganti tidak dipanggil).
+pub fn find_login_url(text: &str) -> Option<String> {
+    text.split_whitespace().find(|w| w.starts_with("https://") && w.contains("/oauth/authorize")).map(String::from)
+}
+
 /// Petunjuk tambahan untuk error yang bisa diperbaiki pengguna.
 pub fn error_hint(error: &str, config_dir: &str) -> Option<String> {
     let lower = error.to_lowercase();
@@ -338,6 +392,36 @@ mod tests {
         assert!(error_hint("Rate limit", "~/.claude").is_none());
         assert_eq!(tool_label("mcp__my-browser__screenshot"), "Memotret halaman");
         assert_eq!(tool_label("mcp__lain__x"), "Memakai mcp__lain__x");
+    }
+
+    #[test]
+    fn auth_status_is_summarized_without_extra_fields() {
+        let max = r#"{"loggedIn":true,"authMethod":"claude.ai","email":"d@mail","subscriptionType":"max","orgName":"x"}"#;
+        assert_eq!(
+            parse_auth_status(max),
+            Some(Account { logged_in: true, email: Some("d@mail".into()), plan: Some("Max".into()) })
+        );
+        let console = r#"{"loggedIn":true,"authMethod":"console","email":"d@mail"}"#;
+        assert_eq!(parse_auth_status(console).unwrap().plan, Some("API Console".into()));
+        let out = r#"{"loggedIn":false,"authMethod":"none","loginExpiresAt":null}"#;
+        assert_eq!(parse_auth_status(out), Some(Account { logged_in: false, email: None, plan: None }));
+        assert_eq!(parse_auth_status("bukan json"), None);
+    }
+
+    #[test]
+    fn profiles_are_found_and_labelled() {
+        let names: Vec<String> =
+            [".claude-work", ".claude.json", ".claude", ".claude-flash", ".claude-", ".claudex", ".claude-a b"].map(String::from).to_vec();
+        assert_eq!(profile_dirs(&names), vec!["~/.claude", "~/.claude-flash", "~/.claude-work"]);
+        assert_eq!(profile_label("~/.claude"), "utama");
+        assert_eq!(profile_label("/Users/a/.claude-work"), "work");
+    }
+
+    #[test]
+    fn login_url_is_found_in_cli_output() {
+        let out = "Opening browser to sign in…\nIf the browser didn't open, visit:\nhttps://claude.ai/oauth/authorize?abc\nPaste code here if prompted > ";
+        assert_eq!(find_login_url(out), Some("https://claude.ai/oauth/authorize?abc".into()));
+        assert_eq!(find_login_url("tidak ada url https://example.com"), None);
     }
 
     #[test]

@@ -136,3 +136,7 @@ Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
 - [ ] Claude > Cabut Izin Program MCP: permintaan berikutnya ditanya lagi
 - [ ] Tolak: Claude mendapat pesan penolakan; permintaan berikutnya langsung ditolak sampai browser dibuka ulang
 - [ ] Panel Tanya Claude tetap bisa membaca halaman tanpa dialog izin
+- [ ] Panel menampilkan email, paket, dan profil di bawah judul; pilihan profil mengganti akun dan memulai percakapan baru
+- [ ] Pilih profil yang belum login (mis. ~/.claude-flash): muncul Masuk ke Claude; Masuk membuka halaman login di tab my-browser; setelah disetujui tab login tertutup sendiri dan panel siap dipakai
+- [ ] Batal saat menunggu login: kembali ke kartu Masuk
+- [ ] Keluar: diminta konfirmasi dengan peringatan bahwa Claude Code di Terminal dengan profil yang sama ikut keluar

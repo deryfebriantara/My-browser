@@ -6,6 +6,7 @@
 //! panel tertutup. Event dari proses dibaca di thread latar lalu diteruskan
 //! ke main thread lewat antrean utama GCD.
 
+use crate::chat_account::{ChatAccount, claude_command};
 use crate::persistence;
 use crate::state::{AppState, display_title};
 use browser_core::claude_chat::{self as cc, ChatEvent, Launch, TabContext};
@@ -16,8 +17,8 @@ use serde_json::{Value, json};
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
-use std::process::{Child, ChildStdin, Command, Stdio};
+use std::path::PathBuf;
+use std::process::{Child, ChildStdin, Stdio};
 use std::rc::{Rc, Weak};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -31,7 +32,7 @@ thread_local! {
     static STATE: RefCell<Weak<AppState>> = const { RefCell::new(Weak::new()) };
 }
 
-fn with_state(f: impl FnOnce(&Rc<AppState>)) {
+pub(crate) fn with_state(f: impl FnOnce(&Rc<AppState>)) {
     if let Some(state) = STATE.with(|s| s.borrow().upgrade()) {
         f(&state);
     }
@@ -77,6 +78,8 @@ pub struct Chat {
     /// Naik setiap proses diganti atau dihentikan, supaya event dari proses
     /// lama yang masih antre dibuang.
     generation: Cell<u64>,
+    /// Akun Claude (status, masuk, keluar, profil).
+    pub account: ChatAccount,
 }
 
 impl Chat {
@@ -124,7 +127,7 @@ impl Chat {
         self.process.borrow_mut().take();
     }
 
-    fn post(&self, message: Value) {
+    pub(crate) fn post(&self, message: Value) {
         if let Some(panel) = self.panel.borrow().as_ref() {
             panel.send(&message.to_string());
         }
@@ -136,17 +139,18 @@ impl Chat {
             Some("ready") => {
                 let items: Vec<Value> = self.items.borrow().iter().map(Item::to_json).collect();
                 self.post(json!({"t": "reset", "items": items, "busy": self.busy.get()}));
+                self.account.refresh(state);
                 #[cfg(debug_assertions)]
                 self.selftest(state, true);
             }
+            Some("login") => self.account.login(state, message["method"] == "console"),
+            Some("cancel_login") => self.account.cancel_login(state),
+            Some("login_code") => self.account.submit_code(message["code"].as_str().unwrap_or_default()),
+            Some("logout") => self.account.logout(state),
+            Some("profile") => self.account.switch_profile(state, message["dir"].as_str().unwrap_or_default()),
             Some("send") => self.send(state, message["text"].as_str().unwrap_or_default()),
             Some("stop") => self.stop(),
-            Some("new") => {
-                self.stop();
-                self.items.borrow_mut().clear();
-                *self.session.borrow_mut() = None;
-                self.post(json!({"t": "reset", "items": [], "busy": false}));
-            }
+            Some("new") => self.reset_conversation(),
             Some("close") => self.close(state),
             Some("open") => {
                 let url = message["url"].as_str().unwrap_or_default();
@@ -159,9 +163,21 @@ impl Chat {
         }
     }
 
+    /// Percakapan baru: proses dihentikan, riwayat dan sesi dilupakan.
+    pub(crate) fn reset_conversation(&self) {
+        self.stop();
+        self.items.borrow_mut().clear();
+        *self.session.borrow_mut() = None;
+        self.post(json!({"t": "reset", "items": [], "busy": false}));
+    }
+
     fn send(&self, state: &Rc<AppState>, text: &str) {
         let text = text.trim();
         if text.is_empty() || self.busy.get() {
+            return;
+        }
+        if self.account.signed_in() == Some(false) {
+            self.post(json!({"t": "error", "text": "Masuk dulu ke akun Claude untuk bertanya."}));
             return;
         }
         self.items.borrow_mut().push(Item::User(text.to_string()));
@@ -203,13 +219,6 @@ impl Chat {
 
     fn spawn(&self, state: &Rc<AppState>) -> Result<Process, String> {
         let settings = state.browser.borrow().settings().clone();
-        let home = PathBuf::from(std::env::var_os("HOME").unwrap_or_default());
-        let claude = find_claude(&home, settings.claude_path.as_deref()).ok_or_else(|| {
-            "Claude Code tidak ditemukan. Pasang dari https://claude.com/claude-code, atau isi claude_path \
-             di settings.json dengan lokasi binary claude."
-                .to_string()
-        })?;
-        let config_dir = settings.claude_config_dir.clone().unwrap_or_else(|| cc::DEFAULT_CONFIG_DIR.into());
         let data_dir = persistence::data_dir();
         let workdir = data_dir.join("claude-chat");
         std::fs::create_dir_all(&workdir).map_err(|e| format!("Folder kerja Claude tidak bisa dibuat: {e}"))?;
@@ -221,24 +230,9 @@ impl Chat {
             resume: session.as_deref(),
             model: settings.claude_model.as_deref(),
         });
-
-        let mut command = Command::new(&claude);
-        command
-            .args(&args)
-            .current_dir(&workdir)
-            .env("CLAUDE_CONFIG_DIR", cc::expand_home(&config_dir, &home))
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        // Kalau browser dibuka dari dalam sesi Claude Code, variabel sesi itu
-        // tidak boleh terbawa ke proses panel.
-        for (key, _) in std::env::vars_os() {
-            let key = key.to_string_lossy();
-            if key == "CLAUDECODE" || key.starts_with("CLAUDE_CODE_") {
-                command.env_remove(key.as_ref());
-            }
-        }
-        let mut child = command.spawn().map_err(|e| format!("Claude Code ({}) tidak bisa dijalankan: {e}", claude.display()))?;
+        let mut command = claude_command(state)?;
+        command.args(&args).current_dir(&workdir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        let mut child = command.spawn().map_err(|e| format!("Claude Code tidak bisa dijalankan: {e}"))?;
         let stdin = child.stdin.take().expect("stdin di-pipe");
         let stdout = child.stdout.take().expect("stdout di-pipe");
         let stderr = child.stderr.take().expect("stderr di-pipe");
@@ -294,6 +288,9 @@ impl Chat {
                     if !self.busy.replace(false) {
                         continue;
                     }
+                    if error.as_deref().is_some_and(|e| cc::error_hint(e, "").is_some()) {
+                        with_state(|s| s.chat.account.auth_failed(s));
+                    }
                     let error = error.map(|e| self.with_hint(e));
                     self.drop_empty_answer();
                     if let Some(e) = &error {
@@ -345,20 +342,27 @@ impl Chat {
 
     /// Uji otomatis, hanya di build debug: `MYBROWSER_CHAT_SELFTEST` menunjuk
     /// berkas berisi pertanyaan satu per baris. Setiap kali panel dibuka, satu
-    /// pertanyaan berikutnya dikirim; transkrip ditulis ke `<berkas>.out`
-    /// setiap panel siap dan setiap giliran selesai.
+    /// baris berikutnya dikirim (pertanyaan, atau pesan panel kalau diawali
+    /// `!`); transkrip ditulis ke `<berkas>.out` setiap panel siap dan setiap
+    /// giliran selesai.
     #[cfg(debug_assertions)]
     fn selftest(&self, state: &Rc<AppState>, ready: bool) {
+        thread_local! {
+            static NEXT: Cell<usize> = const { Cell::new(0) };
+        }
         let Some(path) = std::env::var_os("MYBROWSER_CHAT_SELFTEST").map(PathBuf::from) else { return };
         let items: Vec<Value> = self.items.borrow().iter().map(Item::to_json).collect();
         let _ = std::fs::write(path.with_extension("out"), Value::Array(items).to_string());
         if !ready || self.busy.get() {
             return;
         }
-        let asked = self.items.borrow().iter().filter(|i| matches!(i, Item::User(_))).count();
         let questions = std::fs::read_to_string(&path).unwrap_or_default();
-        if let Some(question) = questions.lines().filter(|l| !l.trim().is_empty()).nth(asked) {
-            self.send(state, question);
+        let index = NEXT.with(|n| n.replace(n.get() + 1));
+        // Baris diawali `!` dikirim sebagai pesan panel (mis. tombol Masuk).
+        match questions.lines().filter(|l| !l.trim().is_empty()).nth(index) {
+            Some(line) if line.starts_with('!') => self.handle_message(state, &line[1..]),
+            Some(question) => self.send(state, question),
+            None => {}
         }
     }
 
@@ -421,14 +425,6 @@ fn active_tab(state: &AppState) -> Option<ActiveTab> {
     })
 }
 
-/// Lokasi `claude` yang pertama ada.
-fn find_claude(home: &Path, configured: Option<&str>) -> Option<PathBuf> {
-    let versions: Vec<String> = std::fs::read_dir(home.join(".nvm/versions/node"))
-        .map(|dir| dir.filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().into_owned()).collect())
-        .unwrap_or_default();
-    cc::claude_candidates(home, configured, &versions).into_iter().find(|p| p.is_file())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -448,6 +444,8 @@ mod tests {
 
     #[test]
     fn find_claude_uses_configured_file_when_it_exists() {
+        use crate::chat_account::find_claude;
+        use std::path::Path;
         let dir = std::env::temp_dir().join(format!("mb-claude-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let fake = dir.join("claude");
