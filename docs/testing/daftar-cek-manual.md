@@ -40,14 +40,18 @@ Catatan: dicek pengguna pada 2026-11-15, semua lancar. GATE lulus.
 
 ## Task 9: Tab tidur, memory pressure, sesi
 
-Untuk uji manual, tutup browser dulu (⌘Q), set `"sleep_idle_secs": 20` di `~/Library/Application Support/my-browser/settings.json`, lalu buka lagi. Kembalikan ke 300 dengan cara yang sama setelah selesai.
+Untuk uji manual, tutup browser dulu (⌘Q), set `"sleep_idle_secs": 20` di `~/Library/Application Support/my-browser/settings.json`, lalu buka lagi. Kembalikan ke 1800 (bawaan, 30 menit) dengan cara yang sama setelah selesai.
 
 - [ ] (a) Buka 4 tab ber-URL, aktifkan satu, tunggu 60 detik: tab latar tampil tidur (redup, tooltip "Tidur, dimuat ulang saat dibuka")
 - [ ] (b) Video YouTube diputar di tab latar: tab itu tidak pernah tidur
 - [ ] (c) Video YouTube di-pause di menit ke-2, ditidurkan, lalu dibuka: lanjut dari sekitar menit ke-2
 - [ ] (d) Halaman yang di-scroll jauh, ditidurkan, lalu dibuka: posisi scroll kembali
-- [ ] (e) Pengguna menjalankan `sudo memory_pressure -S -l warn`: semua tab latar tidur dalam beberapa detik
+- [ ] (e) Pengguna menjalankan `sudo memory_pressure -S -l warn`: semua tab latar tidur dalam beberapa detik, kecuali tab yang punya teks belum dikirim
 - [ ] (f) ⌘Q lalu buka lagi: semua tab kembali, hanya tab aktif yang dimuat
+- [ ] (g) Ketik komentar di YouTube atau form mana pun tanpa mengirimnya, pindah tab, tunggu lewat batas tidur: tab itu tetap bangun dan komentarnya utuh (perbaikan 2026-11-21)
+- [ ] (h) Komentar dari (g) dikirim atau dihapus: tab itu tidur lagi di putaran berikutnya
+- [ ] (i) Ketik di kotak pencarian YouTube lalu pilih saran (tanpa Enter): tab tetap bisa tidur
+- [ ] (j) `sudo memory_pressure -S -l critical`: tab dari (g) ikut ditidurkan
 
 ## Task 10: Pemblokir iklan
 

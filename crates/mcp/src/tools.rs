@@ -52,7 +52,7 @@ pub fn list() -> Vec<Value> {
         tool("reload", "Memuat ulang tab.", json!({"tab_id": tab_id()}), &[]),
         tool(
             "sleep_tab",
-            "Menidurkan tab latar untuk membebaskan memory. Tab yang sedang memutar media tidak ditidurkan.",
+            "Menidurkan tab latar untuk membebaskan memory. Tab yang sedang memutar media atau berisi teks yang belum dikirim pengguna tidak ditidurkan.",
             json!({"tab_id": tab_id()}),
             &["tab_id"],
         ),

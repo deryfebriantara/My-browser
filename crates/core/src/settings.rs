@@ -74,7 +74,7 @@ mod tests {
     fn settings_defaults() {
         let s = Settings::default();
         assert_eq!(s.search_template, "https://www.google.com/search?q={}");
-        assert_eq!((s.sleep_idle_secs, s.max_awake), (300, 3));
+        assert_eq!((s.sleep_idle_secs, s.max_awake), (1800, 5));
         assert!(s.blocker_exceptions.is_empty());
         assert_eq!((s.claude_path, s.claude_config_dir, s.claude_model), (None, None, None));
         assert!(s.password_offer_save);
@@ -83,8 +83,8 @@ mod tests {
 
     #[test]
     fn settings_missing_fields_use_defaults() {
-        let s: Settings = serde_json::from_str(r#"{"max_awake":5}"#).unwrap();
-        assert_eq!((s.max_awake, s.sleep_idle_secs), (5, 300));
+        let s: Settings = serde_json::from_str(r#"{"max_awake":2}"#).unwrap();
+        assert_eq!((s.max_awake, s.sleep_idle_secs), (2, 1800));
     }
 
     #[test]

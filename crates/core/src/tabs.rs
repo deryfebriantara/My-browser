@@ -22,9 +22,15 @@ pub struct Tab {
     pub awake: bool,
     pub last_viewed: Instant,
     pub media_active: bool,
+    /// Ada teks yang sudah diketik pengguna tapi belum dikirim (dari balasan
+    /// `Activity` terakhir).
+    pub draft: bool,
     pub sleep_pending: bool,
-    /// Balasan MediaState(false) sudah datang selama `sleep_pending`.
-    pub media_clear: bool,
+    /// Tidur diminta karena memory kritis: teks yang belum dikirim tidak
+    /// lagi menahan tab.
+    pub sleep_forced: bool,
+    /// Balasan `Activity` yang aman untuk tidur sudah datang selama `sleep_pending`.
+    pub activity_clear: bool,
     /// Posisi video YouTube sudah diminta dan balasannya belum datang.
     pub awaiting_video_time: bool,
     pub restore_scroll: bool,
@@ -51,8 +57,10 @@ impl Tab {
             awake: false,
             last_viewed: now,
             media_active: false,
+            draft: false,
             sleep_pending: false,
-            media_clear: false,
+            sleep_forced: false,
+            activity_clear: false,
             awaiting_video_time: false,
             restore_scroll: false,
             loading: false,
@@ -158,7 +166,8 @@ impl TabList {
         if let Some(tab) = self.get_mut(id) {
             tab.last_viewed = now;
             tab.sleep_pending = false;
-            tab.media_clear = false;
+            tab.sleep_forced = false;
+            tab.activity_clear = false;
         }
     }
 
@@ -208,6 +217,7 @@ impl TabList {
                 active: t.id == self.active,
                 last_viewed: t.last_viewed,
                 media_active: t.media_active,
+                draft: t.draft,
             })
             .collect()
     }

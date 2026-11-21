@@ -518,6 +518,81 @@ fn password_scripts(engine: &WebKitEngine) {
 
 /// Panel HTML lokal: pesan dua arah, tidak bisa berpindah halaman, dan
 /// webview-nya bebas setelah panel dilepas.
+/// Jawaban `request_activity` berikutnya: (media, draft).
+fn activity(page: &engine_webkit::WebKitPage, events: &Rc<RefCell<Vec<PageEvent>>>) -> (bool, bool) {
+    events.borrow_mut().clear();
+    page.request_activity();
+    let replied = spin_until(Duration::from_secs(5), || events.borrow().iter().any(|e| matches!(e, PageEvent::Activity { .. })));
+    assert!(replied, "request_activity tidak dibalas");
+    events
+        .borrow()
+        .iter()
+        .find_map(|e| match e {
+            PageEvent::Activity { media, draft } => Some((*media, *draft)),
+            _ => None,
+        })
+        .unwrap()
+}
+
+/// Pelacak teks yang belum dikirim: hanya ketikan sungguhan yang dihitung,
+/// dan draft hilang setelah dikirim, dikosongkan, atau kolomnya dibuang.
+fn drafts(engine: &WebKitEngine) {
+    let events: Rc<RefCell<Vec<PageEvent>>> = Rc::default();
+    let sink = events.clone();
+    let page = engine.create_page(Box::new(move |e| sink.borrow_mut().push(e)));
+    let html = r#"<title>draft</title>
+        <form id="f" onsubmit="event.preventDefault()"><textarea id="komentar"></textarea><input id="cari" type="text"><input id="rahasia" type="password"></form>
+        <div id="editor" contenteditable="true"></div>"#;
+    load_and_wait(&page, &events, html, "http://localhost:8000/artikel");
+    let check = |what: &str, expected: bool| {
+        let (media, draft) = activity(&page, &events);
+        assert!(!media, "{what}: media seharusnya tidak aktif");
+        assert_eq!(draft, expected, "{what}");
+        println!("ok: draft {what} -> {draft}");
+    };
+    // execCommand('insertText') lewat jalur editing WebKit, jadi event input-nya
+    // isTrusted seperti ketikan keyboard.
+    let type_into = |id: &str, text: &str| {
+        let js = format!("document.getElementById('{id}').focus();document.execCommand('insertText',false,'{text}');'ok'");
+        evaluate(&page, &js).expect("mengetik");
+    };
+
+    check("halaman baru", false);
+    evaluate(&page, "const t=document.getElementById('komentar');t.value='diisi script';t.dispatchEvent(new Event('input',{bubbles:true}));'ok'").unwrap();
+    check("isian dari script halaman tidak dihitung", false);
+
+    evaluate(&page, "document.getElementById('komentar').value='';'ok'").unwrap();
+    type_into("komentar", "komentar panjang");
+    check("textarea yang diketik", true);
+    evaluate(&page, "document.getElementById('komentar').value='   ';'ok'").unwrap();
+    check("textarea dikosongkan", false);
+
+    type_into("rahasia", "hunter2");
+    check("password tidak dihitung", false);
+
+    type_into("komentar", "lagi");
+    evaluate(&page, "document.getElementById('f').requestSubmit();'ok'").unwrap();
+    check("form dikirim", false);
+
+    type_into("editor", "draft editor");
+    check("editor contenteditable", true);
+    evaluate(&page, "document.getElementById('editor').remove();'ok'").unwrap();
+    check("editor dibuang (pesan terkirim)", false);
+
+    type_into("cari", "lofi");
+    check("kolom satu baris", true);
+    evaluate(&page, "history.pushState({},'','/hasil?q=lofi');'ok'").unwrap();
+    check("kolom satu baris setelah halaman berpindah", false);
+
+    type_into("komentar", "ditinggal");
+    evaluate(&page, "history.pushState({},'','/lain');'ok'").unwrap();
+    check("textarea tetap dihitung setelah halaman berpindah", true);
+
+    let hidden = evaluate(&page, "typeof window.__mbDraft").unwrap();
+    assert_eq!(hidden, "undefined", "pelacak terlihat oleh script halaman");
+    println!("ok: pelacak draft tidak terlihat dari halaman");
+}
+
 fn panel_bridge(mtm: MainThreadMarker) {
     let html = r#"<script>
         function post(o){ webkit.messageHandlers.mb.postMessage(JSON.stringify(o)); }
@@ -580,10 +655,11 @@ fn main() {
     assert!(number, "request_number tidak dibalas Some(2.0)");
     println!("ok: request_number");
 
-    page.request_media_state();
-    let media = spin_until(Duration::from_secs(5), || events.borrow().contains(&PageEvent::MediaState(false)));
-    assert!(media, "request_media_state tidak dibalas MediaState(false)");
-    println!("ok: request_media_state");
+    page.request_activity();
+    let idle = PageEvent::Activity { media: false, draft: false };
+    let replied = spin_until(Duration::from_secs(5), || events.borrow().contains(&idle));
+    assert!(replied, "request_activity tidak dibalas Activity tanpa media dan draft");
+    println!("ok: request_activity");
     drop(page);
 
     for i in 0..3 {
@@ -623,7 +699,7 @@ fn main() {
             let slot_in = slot.clone();
             let b = engine_in.create_page(Box::new(move |e| match e {
                 PageEvent::LoadFinished => *flag.borrow_mut() = true,
-                PageEvent::MediaState(_) => drop(slot_in.borrow_mut().take()),
+                PageEvent::Activity { .. } => drop(slot_in.borrow_mut().take()),
                 _ => {}
             }));
             b.load(&Url::parse(PAGE).unwrap());
@@ -634,7 +710,7 @@ fn main() {
     });
     assert!(spin_until(Duration::from_secs(10), || *b_loaded.borrow()), "page B tidak selesai dimuat");
     let weak = objc2::rc::autoreleasepool(|_| objc2::rc::Weak::from(&*holder.borrow().as_ref().unwrap().view()));
-    objc2::rc::autoreleasepool(|_| holder.borrow().as_ref().unwrap().request_media_state());
+    objc2::rc::autoreleasepool(|_| holder.borrow().as_ref().unwrap().request_activity());
     let freed = spin_until(Duration::from_secs(5), || weak.load().is_none());
     assert!(freed, "WKWebView masih hidup setelah page dilepas (retain cycle?)");
     println!("ok: WKWebView dibebaskan setelah page dibuat dan dilepas di dalam callback");
@@ -646,6 +722,7 @@ fn main() {
     visual_tools(&engine);
     panel_bridge(mtm);
     password_scripts(&engine);
+    drafts(&engine);
 
     // Daftar aturan yang isinya berubah (mis. setelah update-filters.sh)
     // membuat daftar lama di penyimpanan WebKit usang dan dihapus. WebKit

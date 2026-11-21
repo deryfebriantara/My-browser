@@ -7,6 +7,7 @@ use crate::emitter::Emitter;
 use crate::observer::{KEYS, Observer};
 use crate::passwords::PasswordBridge;
 use block2::RcBlock;
+use browser_core::drafts::{CHECK as DRAFT_CHECK, DRAFT_WORLD};
 use browser_core::engine::{ColorScheme, JsTag, Page, PageEvent, Rect, Secret};
 use browser_core::password_scripts::{FILL, PASSWORD_HANDLER, PASSWORD_WORLD};
 use objc2::rc::Retained;
@@ -57,6 +58,23 @@ pub struct WebKitPage {
     emitter: Emitter,
     /// Download aktif atau dialog JavaScript yang sedang terbuka dari page ini.
     busy: Rc<Cell<usize>>,
+}
+
+/// Jawaban `request_activity` yang sudah datang.
+struct ActivityReplies {
+    media: Option<bool>,
+    draft: Option<bool>,
+    emitter: Emitter,
+}
+
+impl ActivityReplies {
+    fn finish(cell: &RefCell<Self>) {
+        let mut replies = cell.borrow_mut();
+        if let (Some(media), Some(draft)) = (replies.media, replies.draft) {
+            replies.media = None;
+            replies.emitter.emit(PageEvent::Activity { media, draft });
+        }
+    }
 }
 
 impl WebKitPage {
@@ -166,17 +184,37 @@ impl Page for WebKitPage {
         unsafe { self.webview.stopLoading() };
     }
 
-    fn request_media_state(&self) {
+    fn request_activity(&self) {
         let busy = self.busy.get() > 0
             || unsafe {
                 self.webview.cameraCaptureState() == WKMediaCaptureState::Active
                     || self.webview.microphoneCaptureState() == WKMediaCaptureState::Active
             };
-        let emitter = self.emitter.clone();
-        let block = RcBlock::new(move |state: WKMediaPlaybackState| {
-            emitter.emit(PageEvent::MediaState(busy || state == WKMediaPlaybackState::Playing));
+        // Dua pertanyaan berjalan bersamaan; event dikirim saat jawaban kedua datang.
+        let replies = Rc::new(RefCell::new(ActivityReplies { media: None, draft: None, emitter: self.emitter.clone() }));
+        let media_replies = replies.clone();
+        let media = RcBlock::new(move |state: WKMediaPlaybackState| {
+            media_replies.borrow_mut().media = Some(busy || state == WKMediaPlaybackState::Playing);
+            ActivityReplies::finish(&media_replies);
         });
-        unsafe { self.webview.requestMediaPlaybackStateWithCompletionHandler(&block) };
+        let draft = RcBlock::new(move |result: *mut AnyObject, _error: *mut NSError| {
+            // Halaman tanpa pelacak (about:blank, gagal dimuat) dianggap tanpa draft.
+            let pending = unsafe { result.as_ref() }
+                .and_then(|obj| obj.downcast_ref::<NSNumber>())
+                .is_some_and(|n| n.boolValue());
+            replies.borrow_mut().draft = Some(pending);
+            ActivityReplies::finish(&replies);
+        });
+        let mtm = MainThreadMarker::from(&*self.webview);
+        unsafe {
+            self.webview.requestMediaPlaybackStateWithCompletionHandler(&media);
+            self.webview.evaluateJavaScript_inFrame_inContentWorld_completionHandler(
+                &NSString::from_str(DRAFT_CHECK),
+                None,
+                &WKContentWorld::worldWithName(&NSString::from_str(DRAFT_WORLD), mtm),
+                Some(&draft),
+            );
+        }
     }
 
     fn request_number(&self, tag: JsTag, script: &str) {

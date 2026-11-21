@@ -179,7 +179,7 @@ pub fn handle(state: &Rc<AppState>, request: R, kind: &ClientKind, reply: Reply)
                 let requested = state.browser.borrow_mut().request_sleep(id);
                 state.refresh();
                 reply(if requested {
-                    ok(json!({"requested": true, "note": "Tab ditidurkan dalam sekejap kalau tidak sedang memutar media."}))
+                    ok(json!({"requested": true, "note": "Tab ditidurkan dalam sekejap kalau tidak sedang memutar media dan tidak berisi teks yang belum dikirim pengguna. Cek dengan list_tabs."}))
                 } else {
                     err("Tab aktif, tab kosong, atau tab yang sudah tidur tidak bisa ditidurkan.")
                 })

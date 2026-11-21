@@ -75,8 +75,10 @@ pub enum PageEvent {
     LoadFinished,
     NavState { can_back: bool, can_forward: bool },
     OpenInNewTab(Url),
-    /// `true`: memutar media, memakai kamera/mikrofon, atau sedang download.
-    MediaState(bool),
+    /// Balasan `request_activity`. `media`: memutar media, memakai
+    /// kamera/mikrofon, atau sedang download. `draft`: ada teks yang sudah
+    /// diketik pengguna di frame utama tapi belum dikirim.
+    Activity { media: bool, draft: bool },
     Number { tag: JsTag, value: Option<f64> },
     /// Navigasi terakhir berubah menjadi download; halaman tidak berganti.
     DownloadStarted,
@@ -98,8 +100,8 @@ pub trait Page {
     fn go_forward(&self);
     fn reload(&self);
     fn stop(&self);
-    /// Dibalas dengan `PageEvent::MediaState`.
-    fn request_media_state(&self);
+    /// Dibalas dengan `PageEvent::Activity`.
+    fn request_activity(&self);
     /// Dibalas dengan `PageEvent::Number`.
     fn request_number(&self, tag: JsTag, script: &str);
     fn run_script(&self, script: &str);

@@ -11,6 +11,8 @@ pub struct TabSnapshot {
     pub active: bool,
     pub last_viewed: Instant,
     pub media_active: bool,
+    /// Ada teks yang sudah diketik pengguna tapi belum dikirim.
+    pub draft: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,7 +25,7 @@ pub struct SleepPolicy {
 
 impl Default for SleepPolicy {
     fn default() -> Self {
-        Self { idle_after: Duration::from_secs(300), max_awake: 3 }
+        Self { idle_after: Duration::from_secs(30 * 60), max_awake: 5 }
     }
 }
 
@@ -36,10 +38,13 @@ pub enum Pressure {
 }
 
 /// Tab yang harus ditidurkan sekarang, paling lama tidak dilihat lebih dulu.
-/// Tab aktif dan tab yang sedang memakai media tidak pernah dipilih.
+/// Tab aktif dan tab yang sedang memakai media tidak pernah dipilih. Tab
+/// dengan teks yang belum dikirim baru dipilih saat memory kritis.
 pub fn tabs_to_sleep(tabs: &[TabSnapshot], now: Instant, policy: &SleepPolicy, pressure: Pressure) -> Vec<TabId> {
-    let mut candidates: Vec<&TabSnapshot> =
-        tabs.iter().filter(|t| t.awake && !t.active && !t.media_active).collect();
+    let mut candidates: Vec<&TabSnapshot> = tabs
+        .iter()
+        .filter(|t| t.awake && !t.active && !t.media_active && (!t.draft || pressure == Pressure::Critical))
+        .collect();
     candidates.sort_by_key(|t| t.last_viewed);
 
     if pressure != Pressure::Normal {
@@ -68,16 +73,42 @@ mod tests {
     use std::time::{Duration, Instant};
 
     fn snap(id: u64, awake: bool, active: bool, idle_s: u64, media: bool, now: Instant) -> TabSnapshot {
-        TabSnapshot { id: TabId(id), awake, active, last_viewed: now - Duration::from_secs(idle_s), media_active: media }
+        TabSnapshot { id: TabId(id), awake, active, last_viewed: now - Duration::from_secs(idle_s), media_active: media, draft: false }
     }
+    fn drafted(t: TabSnapshot) -> TabSnapshot {
+        TabSnapshot { draft: true, ..t }
+    }
+    /// Kebijakan kecil supaya angka di test mudah dibaca.
+    const POLICY: SleepPolicy = SleepPolicy { idle_after: Duration::from_secs(300), max_awake: 3 };
     fn run(tabs: &[TabSnapshot], now: Instant, p: Pressure) -> Vec<TabId> {
-        tabs_to_sleep(tabs, now, &SleepPolicy::default(), p)
+        tabs_to_sleep(tabs, now, &POLICY, p)
     }
 
     #[test]
-    fn default_policy_is_300s_and_3_tabs() {
+    fn default_policy_is_30_minutes_and_5_tabs() {
         let p = SleepPolicy::default();
-        assert_eq!((p.idle_after, p.max_awake), (Duration::from_secs(300), 3));
+        assert_eq!((p.idle_after, p.max_awake), (Duration::from_secs(1800), 5));
+    }
+
+    #[test]
+    fn draft_tab_kept_until_memory_is_critical() {
+        let n = Instant::now() + Duration::from_secs(10_000);
+        let t = [snap(1, true, true, 0, false, n), drafted(snap(2, true, false, 9_000, false, n))];
+        assert!(run(&t, n, Pressure::Normal).is_empty());
+        assert!(run(&t, n, Pressure::Warning).is_empty());
+        assert_eq!(run(&t, n, Pressure::Critical), vec![TabId(2)]);
+    }
+
+    #[test]
+    fn draft_tabs_count_toward_cap_but_are_skipped() {
+        let n = Instant::now() + Duration::from_secs(10_000);
+        let t = [
+            snap(1, true, true, 0, false, n),
+            drafted(snap(2, true, false, 100, false, n)),
+            snap(3, true, false, 50, false, n),
+            snap(4, true, false, 10, false, n),
+        ];
+        assert_eq!(run(&t, n, Pressure::Normal), vec![TabId(3)]);
     }
 
     #[test]

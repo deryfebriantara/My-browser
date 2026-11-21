@@ -1,11 +1,13 @@
 //! Script pengguna yang dipasang di setiap page:
 //! - pencatat console dan network untuk alat developer, selalu;
 //! - skip iklan YouTube, hanya selama pemblokir aktif untuk page itu;
-//! - penangkap login untuk pengelola password, di content world terpisah.
+//! - penangkap login untuk pengelola password dan pelacak teks yang belum
+//!   dikirim, di content world terpisah.
 //!
 //! WKUserContentController tidak punya API publik untuk melepas satu script,
 //! jadi setiap perubahan memasang ulang seluruh set.
 
+use browser_core::drafts::{DRAFT_WORLD, TRACKER};
 use browser_core::page_scripts::DEV_CAPTURE;
 use browser_core::password_scripts::{CAPTURE, PASSWORD_WORLD};
 use browser_core::youtube::AD_SKIP_JS;
@@ -49,6 +51,7 @@ pub(crate) fn install(controller: &WKUserContentController, ad_skip: bool) {
     unsafe { controller.removeAllUserScripts() };
     add(controller, DEV_CAPTURE, WKUserScriptInjectionTime::AtDocumentStart, true);
     add_isolated(controller, CAPTURE, PASSWORD_WORLD);
+    add_isolated(controller, TRACKER, DRAFT_WORLD);
     if ad_skip {
         add(controller, AD_SKIP_JS, WKUserScriptInjectionTime::AtDocumentEnd, false);
     }

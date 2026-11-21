@@ -247,26 +247,27 @@ impl<E: Engine> Browser<E> {
         }
     }
 
-    /// Menandai tab yang layak tidur, lalu meminta status media terbaru. Tab
-    /// benar-benar ditidurkan saat balasan `MediaState(false)` datang.
+    /// Menandai tab yang layak tidur, lalu meminta status aktivitas terbaru.
+    /// Tab benar-benar ditidurkan saat balasan `Activity` menyatakan aman.
     pub fn tick(&mut self, now: Instant, pressure: Pressure) {
         let policy = self.settings.sleep_policy();
         for id in tabs_to_sleep(&self.tabs.snapshots(), now, &policy, pressure) {
             if let Some(tab) = self.tabs.get_mut(id) {
                 tab.sleep_pending = true;
+                tab.sleep_forced |= pressure == Pressure::Critical;
             }
         }
         let active = self.tabs.active();
         let background: Vec<TabId> =
             self.tabs.iter().filter(|t| t.id != active && self.pages.contains_key(&t.id)).map(|t| t.id).collect();
         for id in background {
-            self.check_media(id);
+            self.check_activity(id);
         }
     }
 
     /// Meminta tab latar yang sedang bangun untuk tidur. Tab tetap bangun
-    /// kalau ternyata sedang memutar media. `false` kalau tab aktif atau
-    /// sudah tidur.
+    /// kalau ternyata sedang memutar media atau ada teks yang belum dikirim.
+    /// `false` kalau tab aktif atau sudah tidur.
     pub fn request_sleep(&mut self, id: TabId) -> bool {
         if id == self.tabs.active() || !self.pages.contains_key(&id) {
             return false;
@@ -274,12 +275,13 @@ impl<E: Engine> Browser<E> {
         if let Some(tab) = self.tabs.get_mut(id) {
             tab.sleep_pending = true;
         }
-        self.check_media(id);
+        self.check_activity(id);
         true
     }
 
-    /// Meminta status media (dan posisi video untuk YouTube) tab latar.
-    fn check_media(&mut self, id: TabId) {
+    /// Meminta status media dan teks yang belum dikirim (dan posisi video
+    /// untuk YouTube) tab latar.
+    fn check_activity(&mut self, id: TabId) {
         let Some(page) = self.pages.get(&id) else { return };
         let youtube = self.tabs.get(id).is_some_and(|t| t.url.as_ref().is_some_and(is_youtube_watch));
         // Posisi video diminta lebih dulu; tab YouTube baru ditidurkan setelah
@@ -287,20 +289,20 @@ impl<E: Engine> Browser<E> {
         if youtube {
             page.request_number(JsTag::VideoTime, VIDEO_TIME_JS);
         }
-        page.request_media_state();
+        page.request_activity();
         if let Some(tab) = self.tabs.get_mut(id) {
             tab.awaiting_video_time |= youtube;
         }
     }
 
-    /// Menidurkan tab yang menunggu tidur kalau status media sudah aman dan
-    /// posisi video (khusus YouTube) sudah diterima.
+    /// Menidurkan tab yang menunggu tidur kalau status aktivitas sudah aman
+    /// dan posisi video (khusus YouTube) sudah diterima.
     fn sleep_if_ready(&mut self, id: TabId) {
         let active = self.tabs.active();
         let ready = self
             .tabs
             .get(id)
-            .is_some_and(|t| t.id != active && t.sleep_pending && t.media_clear && !t.awaiting_video_time);
+            .is_some_and(|t| t.id != active && t.sleep_pending && t.activity_clear && !t.awaiting_video_time);
         if ready {
             self.sleep(id);
         }
@@ -355,14 +357,16 @@ impl<E: Engine> Browser<E> {
                 self.activate(new, now);
                 self.dirty = true;
             }
-            PageEvent::MediaState(active_media) => {
-                tab.media_active = active_media;
+            PageEvent::Activity { media, draft } => {
+                tab.media_active = media;
+                tab.draft = draft;
                 if tab.sleep_pending {
-                    if active_media || is_active {
+                    if media || is_active || (draft && !tab.sleep_forced) {
                         tab.sleep_pending = false;
-                        tab.media_clear = false;
+                        tab.sleep_forced = false;
+                        tab.activity_clear = false;
                     } else {
-                        tab.media_clear = true;
+                        tab.activity_clear = true;
                         self.sleep_if_ready(id);
                     }
                 }
@@ -547,9 +551,11 @@ impl<E: Engine> Browser<E> {
             }
             tab.awake = false;
             tab.sleep_pending = false;
-            tab.media_clear = false;
+            tab.sleep_forced = false;
+            tab.activity_clear = false;
             tab.awaiting_video_time = false;
             tab.media_active = false;
+            tab.draft = false;
             tab.loading = false;
             tab.restore_scroll = tab.scroll_y > 0.0;
         }
@@ -572,7 +578,7 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
     use std::time::{Duration, Instant};
 
     #[derive(Debug, Clone, PartialEq)]
-    enum Call { Load(String), Reload, Stop, Back, Forward, MediaState, Number(JsTag), Script(String), MobileUa(bool), Scheme(ColorScheme) }
+    enum Call { Load(String), Reload, Stop, Back, Forward, Activity, Number(JsTag), Script(String), MobileUa(bool), Scheme(ColorScheme) }
 
     #[derive(Default)]
     struct Log { calls: Vec<Call>, live: usize, exceptions: Vec<String> }
@@ -592,7 +598,7 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         fn go_forward(&self) { self.0.borrow_mut().calls.push(Call::Forward); }
         fn reload(&self) { self.0.borrow_mut().calls.push(Call::Reload); }
         fn stop(&self) { self.0.borrow_mut().calls.push(Call::Stop); }
-        fn request_media_state(&self) { self.0.borrow_mut().calls.push(Call::MediaState); }
+        fn request_activity(&self) { self.0.borrow_mut().calls.push(Call::Activity); }
         fn request_number(&self, tag: JsTag, _script: &str) { self.0.borrow_mut().calls.push(Call::Number(tag)); }
         fn run_script(&self, script: &str) { self.0.borrow_mut().calls.push(Call::Script(script.into())); }
         fn evaluate(&self, script: &str, _reply: Box<dyn FnOnce(Result<String, String>)>) {
@@ -623,10 +629,13 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
     fn u(s: &str) -> Url { Url::parse(s).unwrap() }
     fn secs(n: u64) -> Duration { Duration::from_secs(n) }
 
+    /// Tab latar tidur setelah 300 detik, paling banyak 3 tab bangun (angka
+    /// kecil supaya test mudah dibaca; bawaannya lebih longgar).
     fn setup(session: Option<&SessionFile>) -> (Browser<FakeEngine>, Shared, Instant) {
         let log = Shared::default();
         let t0 = Instant::now();
-        let b = Browser::new(FakeEngine(log.clone()), Settings::default(), session, Box::new(|_| Box::new(|_| {})), t0);
+        let settings = Settings { sleep_idle_secs: 300, max_awake: 3, ..Settings::default() };
+        let b = Browser::new(FakeEngine(log.clone()), settings, session, Box::new(|_| Box::new(|_| {})), t0);
         (b, log, t0)
     }
 
@@ -683,8 +692,8 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         let (a, _) = two_tabs(&mut b, t0);
         let t = t0 + secs(301);
         b.tick(t, Pressure::Normal);
-        assert!(has(&log, Call::MediaState));
-        b.handle_event(a, PageEvent::MediaState(false), t);
+        assert!(has(&log, Call::Activity));
+        b.handle_event(a, PageEvent::Activity { media: false, draft: false }, t);
         assert_eq!(log.borrow().live, 1);
         assert!(!b.tabs().get(a).unwrap().awake);
     }
@@ -695,10 +704,53 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         let (a, _) = two_tabs(&mut b, t0);
         let t = t0 + secs(301);
         b.tick(t, Pressure::Normal);
-        b.handle_event(a, PageEvent::MediaState(true), t);
+        b.handle_event(a, PageEvent::Activity { media: true, draft: false }, t);
         assert_eq!(log.borrow().live, 2);
         let tab = b.tabs().get(a).unwrap();
         assert!(tab.awake && !tab.sleep_pending);
+    }
+
+    #[test]
+    fn unsent_text_keeps_tab_awake() {
+        let (mut b, log, t0) = setup(None);
+        let (a, _) = two_tabs(&mut b, t0);
+        let t = t0 + secs(301);
+        b.tick(t, Pressure::Normal);
+        b.handle_event(a, PageEvent::Activity { media: false, draft: true }, t);
+        let tab = b.tabs().get(a).unwrap();
+        assert!(tab.awake && tab.draft && !tab.sleep_pending);
+        assert_eq!(log.borrow().live, 2);
+        // Tick berikutnya tidak memilihnya lagi selama draft masih ada.
+        b.tick(t + secs(30), Pressure::Normal);
+        assert!(!b.tabs().get(a).unwrap().sleep_pending);
+        // Teksnya sudah dikirim: tab boleh tidur lagi.
+        b.handle_event(a, PageEvent::Activity { media: false, draft: false }, t + secs(30));
+        b.tick(t + secs(60), Pressure::Normal);
+        b.handle_event(a, PageEvent::Activity { media: false, draft: false }, t + secs(60));
+        assert!(!b.tabs().get(a).unwrap().awake);
+    }
+
+    #[test]
+    fn request_sleep_respects_unsent_text() {
+        let (mut b, log, t0) = setup(None);
+        let (a, _) = two_tabs(&mut b, t0);
+        assert!(b.request_sleep(a));
+        b.handle_event(a, PageEvent::Activity { media: false, draft: true }, t0);
+        assert!(b.tabs().get(a).unwrap().awake);
+        assert_eq!(log.borrow().live, 2);
+    }
+
+    #[test]
+    fn critical_memory_sleeps_tab_despite_unsent_text() {
+        let (mut b, log, t0) = setup(None);
+        let (a, _) = two_tabs(&mut b, t0);
+        b.handle_event(a, PageEvent::Activity { media: false, draft: true }, t0);
+        b.tick(t0 + secs(5), Pressure::Warning);
+        assert!(!b.tabs().get(a).unwrap().sleep_pending, "draft masih ditahan saat memory baru menipis");
+        b.tick(t0 + secs(5), Pressure::Critical);
+        b.handle_event(a, PageEvent::Activity { media: false, draft: true }, t0 + secs(5));
+        assert!(!b.tabs().get(a).unwrap().awake);
+        assert_eq!(log.borrow().live, 1);
     }
 
     #[test]
@@ -708,7 +760,7 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         b.handle_event(a, PageEvent::Number { tag: JsTag::ScrollY, value: Some(640.0) }, t0);
         let t = t0 + secs(301);
         b.tick(t, Pressure::Normal);
-        b.handle_event(a, PageEvent::MediaState(false), t);
+        b.handle_event(a, PageEvent::Activity { media: false, draft: false }, t);
         log.borrow_mut().calls.clear();
         b.activate(a, t);
         assert!(has(&log, Call::Load("https://a.com/".into())));
@@ -727,7 +779,7 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         b.tick(t, Pressure::Normal);
         assert!(has(&log, Call::Number(JsTag::VideoTime)));
         b.handle_event(yt, PageEvent::Number { tag: JsTag::VideoTime, value: Some(125.7) }, t);
-        b.handle_event(yt, PageEvent::MediaState(false), t);
+        b.handle_event(yt, PageEvent::Activity { media: false, draft: false }, t);
         assert_eq!(b.tabs().get(yt).unwrap().url.as_ref().unwrap().as_str(), "https://www.youtube.com/watch?v=abc&t=125s");
     }
 
@@ -771,7 +823,7 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         let (a, bb) = two_tabs(&mut b, t0);
         b.close_tab(a, t0);
         b.handle_event(a, PageEvent::TitleChanged("x".into()), t0);
-        b.handle_event(a, PageEvent::MediaState(false), t0);
+        b.handle_event(a, PageEvent::Activity { media: false, draft: false }, t0);
         assert_eq!(b.tabs().iter().count(), 1);
         assert_eq!(log.borrow().live, 1);
 
@@ -888,7 +940,7 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         assert!(b.navigate("b.com", t0));
         let t = t0 + secs(301);
         b.tick(t, Pressure::Normal);
-        b.handle_event(yt, PageEvent::MediaState(false), t);
+        b.handle_event(yt, PageEvent::Activity { media: false, draft: false }, t);
         assert!(b.tabs().get(yt).unwrap().awake, "harus menunggu posisi video dulu");
         b.handle_event(yt, PageEvent::Number { tag: JsTag::VideoTime, value: Some(125.7) }, t);
         let tab = b.tabs().get(yt).unwrap();
@@ -905,7 +957,7 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         assert!(b.navigate("b.com", t0));
         let t = t0 + secs(301);
         b.tick(t, Pressure::Normal);
-        b.handle_event(yt, PageEvent::MediaState(false), t);
+        b.handle_event(yt, PageEvent::Activity { media: false, draft: false }, t);
         b.handle_event(yt, PageEvent::Number { tag: JsTag::VideoTime, value: None }, t);
         let tab = b.tabs().get(yt).unwrap();
         assert!(!tab.awake);
@@ -931,7 +983,7 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
             assert!(b.navigate(site, t0 + secs(i as u64 + 1)));
         }
         assert_eq!(log.borrow().live, 4);
-        b.handle_event(a, PageEvent::MediaState(false), t0 + secs(4));
+        b.handle_event(a, PageEvent::Activity { media: false, draft: false }, t0 + secs(4));
         assert!(!b.tabs().get(a).unwrap().awake);
         assert_eq!(log.borrow().live, 3);
     }
@@ -1028,8 +1080,8 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         let (a, active) = two_tabs(&mut b, t0);
         assert!(!b.request_sleep(active), "tab aktif tidak boleh ditidurkan");
         assert!(b.request_sleep(a));
-        assert!(has(&log, Call::MediaState));
-        b.handle_event(a, PageEvent::MediaState(false), t0);
+        assert!(has(&log, Call::Activity));
+        b.handle_event(a, PageEvent::Activity { media: false, draft: false }, t0);
         assert!(b.page(a).is_none());
         assert!(!b.tabs().get(a).unwrap().awake);
         assert!(!b.request_sleep(a), "tab yang sudah tidur");
@@ -1040,7 +1092,7 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         let (mut b, _log, t0) = setup(None);
         let (a, _) = two_tabs(&mut b, t0);
         assert!(b.request_sleep(a));
-        b.handle_event(a, PageEvent::MediaState(true), t0);
+        b.handle_event(a, PageEvent::Activity { media: true, draft: false }, t0);
         assert!(b.page(a).is_some());
     }
 
@@ -1095,7 +1147,7 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         let (a, active) = two_tabs(&mut b, t0);
         b.set_emulation(a, phone());
         assert!(b.request_sleep(a));
-        b.handle_event(a, PageEvent::MediaState(false), t0);
+        b.handle_event(a, PageEvent::Activity { media: false, draft: false }, t0);
         assert!(b.page(a).is_none());
         log.borrow_mut().calls.clear();
         b.activate(a, t0);
