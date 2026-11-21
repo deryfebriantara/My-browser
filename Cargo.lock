@@ -458,12 +458,14 @@ dependencies = [
  "memtool",
  "my-browser-core",
  "my-browser-mcp",
+ "my-browser-vault",
  "objc2",
  "objc2-app-kit",
  "objc2-foundation",
  "objc2-web-kit",
  "serde_json",
  "url",
+ "zeroize",
 ]
 
 [[package]]

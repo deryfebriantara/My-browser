@@ -437,6 +437,12 @@ impl<E: Engine> Browser<E> {
     /// Menyalakan/mematikan pengecualian pemblokir untuk host tab aktif, lalu
     /// memuat ulang tab itu. Mengembalikan status pengecualian yang baru, atau
     /// `None` kalau tab aktif tidak punya host.
+    /// Mengubah pengaturan; perubahannya disimpan oleh UI (`UiChange::Settings`).
+    pub fn update_settings(&mut self, change: impl FnOnce(&mut Settings)) {
+        change(&mut self.settings);
+        self.change(UiChange::Settings);
+    }
+
     pub fn toggle_blocker_exception(&mut self) -> Option<bool> {
         let host = self.active_host()?;
         let list = &mut self.settings.blocker_exceptions;

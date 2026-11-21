@@ -109,3 +109,20 @@ Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
 - [ ] Monitor Aktivitas: proses `claude` hanya ada selama panel terbuka dan sudah dipakai
 - [ ] Klik link di jawaban Claude: terbuka di tab baru
 - [ ] Mode terang dan gelap macOS: panel ikut berganti warna
+
+## Pengelola password
+
+Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
+
+- [ ] Login di sebuah situs: muncul "Simpan password untuk …?"; Simpan meminta membuat master password (ditolak kalau < 10 karakter atau kedua isian beda)
+- [ ] Keluar lalu buka halaman login lagi, tekan ⌘\: username dan password terisi, situs bisa dipakai login
+- [ ] Password > Kunci Password, lalu ⌘\: diminta master password; master password salah ditolak dengan pesan, yang benar langsung mengisi
+- [ ] Login dengan password berbeda: muncul "Perbarui password untuk …?"
+- [ ] "Jangan untuk Situs Ini": login berikutnya di situs itu tidak ditanya lagi
+- [ ] Kelola Password: cari, Lihat (tersembunyi lagi setelah 20 detik), Salin (clipboard kosong lagi setelah 30 detik), Edit, Hapus (minta konfirmasi), Tambah dengan Buat acak
+- [ ] Impor CSV dari Chrome atau app Passwords: jumlah yang diimpor sesuai, muncul pengingat untuk menghapus berkas CSV
+- [ ] Ekspor CSV: meminta master password lagi; master password salah membatalkan ekspor
+- [ ] Ganti master password: master password lama salah ditolak; setelah diganti, kunci lalu buka dengan yang baru berhasil dan yang lama ditolak
+- [ ] Kunci layar Mac (Ctrl+Cmd+Q) lalu buka lagi: password terkunci
+- [ ] Biarkan 10 menit tanpa memakai password: terkunci sendiri
+- [ ] Login Google dua langkah: ⌘\ di langkah email, lalu di langkah password

@@ -111,6 +111,26 @@ define_class!(
             self.with(|s| s.toggle_blocker());
         }
 
+        #[unsafe(method(fillPassword:))]
+        fn fill_password(&self, _sender: Option<&AnyObject>) {
+            self.with(|s| s.passwords.fill_active(s));
+        }
+
+        #[unsafe(method(openPasswordManager:))]
+        fn open_password_manager(&self, _sender: Option<&AnyObject>) {
+            self.with(|s| s.password_manager.open(s));
+        }
+
+        #[unsafe(method(copyGeneratedPassword:))]
+        fn copy_generated_password(&self, _sender: Option<&AnyObject>) {
+            self.with(|s| s.passwords.copy_generated(s));
+        }
+
+        #[unsafe(method(lockPasswords:))]
+        fn lock_passwords(&self, _sender: Option<&AnyObject>) {
+            self.with(|s| s.passwords.lock(s, true));
+        }
+
         #[unsafe(method(toggleChat:))]
         fn toggle_chat(&self, _sender: Option<&AnyObject>) {
             self.with(|s| s.chat.toggle(s));
@@ -140,6 +160,9 @@ define_class!(
                 let on = self.ivars().state.upgrade().is_some_and(|s| s.claude_interact.get());
                 item.setState(if on { NSControlStateValueOn } else { NSControlStateValueOff });
                 return Bool::YES;
+            }
+            if item.action() == Some(sel!(lockPasswords:)) {
+                return Bool::new(self.ivars().state.upgrade().is_some_and(|s| s.passwords.is_unlocked()));
             }
             if item.action() == Some(sel!(toggleChat:)) {
                 let open = self.ivars().state.upgrade().is_some_and(|s| s.chat.is_open());
@@ -177,6 +200,12 @@ define_class!(
         #[unsafe(method(windowDidResize:))]
         fn window_did_resize(&self, _notification: &NSNotification) {
             self.with(|s| s.layout_tabs());
+        }
+
+        #[unsafe(method(windowWillClose:))]
+        fn window_will_close(&self, notification: &NSNotification) {
+            let window = notification.object().map_or(std::ptr::null(), |o| Retained::as_ptr(&o).cast());
+            self.with(|s| s.password_manager.window_will_close(s, window));
         }
     }
 );

@@ -26,6 +26,13 @@ serde_json = "1"
 tempfile = "3"
 adblock = { version = "0.13", default-features = false, features = ["content-blocking", "full-regex-handling"] }
 
+# Argon2id di build debug tanpa optimasi butuh belasan detik per buka kunci.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
 [profile.release]
 lto = "thin"
 codegen-units = 1

@@ -92,6 +92,17 @@ pub fn build(mtm: MainThreadMarker, target: &ActionTarget) -> Retained<NSMenu> {
         &[it("Mundur", sel!(goBack:), "[", cmd, t, 0), it("Maju", sel!(goForward:), "]", cmd, t, 0)],
     ));
 
+    let opt_cmd = NSEventModifierFlags::Option | NSEventModifierFlags::Command;
+    main.addItem(&submenu(
+        mtm,
+        "Password",
+        &[
+            it("Isi Password", sel!(fillPassword:), "\\", cmd, t, 0),
+            it("Kelola Password…", sel!(openPasswordManager:), "p", opt_cmd, t, 0),
+            it("Salin Password Acak", sel!(copyGeneratedPassword:), "", cmd, t, 0),
+            it("Kunci Password", sel!(lockPasswords:), "", cmd, t, 0),
+        ],
+    ));
     main.addItem(&submenu(
         mtm,
         "Claude",

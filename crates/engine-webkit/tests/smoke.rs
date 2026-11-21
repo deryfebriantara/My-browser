@@ -246,6 +246,10 @@ fn page_scripts(engine: &WebKitEngine) {
     assert!(json(&page, &js::click(99))["error"].is_string());
     println!("ok: type_text dan click");
 
+    let blocked = json_async(&page, &js::run_js("document.querySelector('input[type=password]').value"));
+    assert!(blocked["error"].as_str().unwrap().contains("password"), "run_js harus diblokir selama password terisi: {blocked}");
+    page.run_script("document.querySelector('input[type=password]').value = ''");
+    println!("ok: run_js diblokir di halaman dengan kolom password terisi");
     assert_eq!(json_async(&page, &js::run_js("document.title.length"))["result"], 16);
     assert_eq!(json_async(&page, &js::run_js("Promise.resolve(41 + 1)"))["result"], 42, "Promise harus ditunggu");
     assert!(json_async(&page, &js::run_js("nggak_ada()"))["error"].as_str().unwrap().contains("ReferenceError"));

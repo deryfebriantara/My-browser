@@ -22,6 +22,12 @@ pub struct Settings {
     pub claude_config_dir: Option<String>,
     /// Model untuk panel (mis. `sonnet`). Kosong: model bawaan Claude Code.
     pub claude_model: Option<String>,
+    /// Tawarkan simpan password setelah login.
+    pub password_offer_save: bool,
+    /// Vault password dikunci setelah sekian menit tidak dipakai.
+    pub password_lock_minutes: u64,
+    /// Host yang tidak pernah ditawari simpan password.
+    pub password_never_save: Vec<String>,
 }
 
 impl Default for Settings {
@@ -35,6 +41,9 @@ impl Default for Settings {
             claude_path: None,
             claude_config_dir: None,
             claude_model: None,
+            password_offer_save: true,
+            password_lock_minutes: 10,
+            password_never_save: Vec::new(),
         }
     }
 }
@@ -65,6 +74,8 @@ mod tests {
         assert_eq!((s.sleep_idle_secs, s.max_awake), (300, 3));
         assert!(s.blocker_exceptions.is_empty());
         assert_eq!((s.claude_path, s.claude_config_dir, s.claude_model), (None, None, None));
+        assert!(s.password_offer_save);
+        assert_eq!(s.password_lock_minutes, 10);
     }
 
     #[test]

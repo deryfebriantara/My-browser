@@ -22,3 +22,5 @@ my-browser-mcp.workspace = true
 memtool.workspace = true
 serde_json.workspace = true
 libc.workspace = true
+my-browser-vault.workspace = true
+zeroize = "1.8"

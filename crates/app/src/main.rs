@@ -1,12 +1,16 @@
 //! my-browser: browser macOS hemat memory di atas WebKit.
 
 mod actions;
+mod background;
 mod chat;
 mod control;
 mod control_server;
+mod dialogs;
 mod memory_pressure;
 mod menu;
 mod nav_bar;
+mod password_manager;
+mod passwords;
 mod persistence;
 mod state;
 mod tab_strip;
@@ -98,6 +102,7 @@ fn main() {
             state.open_urls(&urls);
         }
         control_server::start(&state, socket_path());
+        state.passwords.install_lock_observers(&state);
         let timer = timer::start(&state);
         let pressure = memory_pressure::start(&state);
         state.ui.window.makeKeyAndOrderFront(None);

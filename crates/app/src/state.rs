@@ -6,6 +6,8 @@
 
 use crate::actions::ActionTarget;
 use crate::chat::Chat;
+use crate::password_manager::PasswordManager;
+use crate::passwords::Passwords;
 use crate::persistence;
 use crate::tab_strip::TabInfo;
 use crate::window::Ui;
@@ -41,6 +43,10 @@ pub struct AppState {
     pub picked_tab: Cell<Option<TabId>>,
     /// Panel Tanya Claude.
     pub chat: Chat,
+    /// Vault password dan tawaran simpan/isi login.
+    pub passwords: Passwords,
+    /// Jendela Kelola Password.
+    pub password_manager: PasswordManager,
 }
 
 struct NavInfo {
@@ -79,10 +85,15 @@ fn sink_factory(weak: Weak<AppState>) -> SinkFactory {
             if debug_enabled() {
                 eprintln!("[debug] tab {} event {:?}", id.0, event);
             }
-            if let Some(state) = weak.upgrade() {
-                state.browser.borrow_mut().handle_event(id, event, Instant::now());
-                state.refresh();
+            let Some(state) = weak.upgrade() else { return };
+            // Password tidak pernah masuk ke Browser (core): langsung ke
+            // pengelola password.
+            if let browser_core::engine::PageEvent::CredentialSubmitted { origin, username, password } = event {
+                state.passwords.on_credential(&state, origin, username, password);
+                return;
             }
+            state.browser.borrow_mut().handle_event(id, event, Instant::now());
+            state.refresh();
         })
     })
 }
@@ -114,6 +125,8 @@ impl AppState {
                 claude_interact: Cell::new(false),
                 picked_tab: Cell::new(None),
                 chat: Chat::default(),
+                passwords: Passwords::default(),
+                password_manager: PasswordManager::default(),
             }
         })
     }
@@ -223,6 +236,12 @@ impl AppState {
         self.ui.nav.show_notice("Klik elemen yang ingin ditunjukkan ke Claude (Esc untuk batal)");
     }
 
+    /// Jendela untuk dialog: jendela yang sedang aktif (mis. Kelola Password),
+    /// kalau tidak ada, jendela browser.
+    pub fn dialog_window(&self) -> objc2::rc::Retained<objc2_app_kit::NSWindow> {
+        objc2_app_kit::NSApplication::sharedApplication(self.mtm).keyWindow().unwrap_or_else(|| self.ui.window.clone())
+    }
+
     /// Tab aktif sedang memakai emulasi perangkat dari Claude.
     pub fn active_emulated(&self) -> bool {
         let b = self.browser.borrow();
@@ -258,6 +277,7 @@ impl AppState {
     /// Dipanggil timer (Normal) dan sinyal memory pressure (Warning/Critical).
     pub fn tick(&self, pressure: Pressure) {
         self.browser.borrow_mut().tick(Instant::now(), pressure);
+        self.passwords.tick(self);
         if debug_enabled() {
             eprintln!("[debug] WKWebView terlepas yang masih hidup: {}", engine_webkit::dropped_webviews_alive());
             let b = self.browser.borrow();

@@ -126,9 +126,14 @@ pub fn youtube(action: YoutubeAction, value: Option<f64>) -> String {
 }
 
 /// Badan fungsi async: hasil ekspresi terakhir `code`; Promise ditunggu.
+/// Ditolak di halaman yang kolom password-nya terisi, supaya password yang
+/// baru diketik atau diisi pengelola password tidak bisa dibaca lewat run_js.
 pub fn run_js(code: &str) -> String {
     format!(
-        "var r;try{{r=(0,eval)({code});if(r&&typeof r.then==='function')r=await r;}}\
+        "if(Array.prototype.some.call(document.querySelectorAll('input[type=password]'),function(e){{return e.value;}}))\
+         return JSON.stringify({{error:'Halaman ini punya kolom password yang terisi, jadi run_js diblokir supaya \
+         password tidak terbaca. Kosongkan kolom password atau muat ulang halaman, lalu coba lagi.'}});\
+         var r;try{{r=(0,eval)({code});if(r&&typeof r.then==='function')r=await r;}}\
          catch(e){{return JSON.stringify({{error:String(e)}});}}\
          try{{return JSON.stringify({{result:r===undefined?null:r}});}}catch(e){{return JSON.stringify({{result:String(r)}});}}",
         code = js_string(code)
@@ -304,6 +309,7 @@ mod tests {
         let js = run_js("document.title = \"x\"");
         assert!(js.contains(r#"(0,eval)("document.title = \"x\"")"#), "{js}");
         assert!(js.contains("await r"));
+        assert!(js.starts_with("if(Array.prototype.some.call(document.querySelectorAll('input[type=password]')"), "pengaman password dulu");
     }
 
     #[test]
