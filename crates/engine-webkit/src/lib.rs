@@ -9,6 +9,7 @@ mod observer;
 mod scripts;
 mod page;
 mod panel;
+mod passwords;
 pub mod user_agent;
 
 use browser_core::engine::{Engine, PageEvent};

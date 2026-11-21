@@ -419,6 +419,8 @@ impl<E: Engine> Browser<E> {
                     self.change(UiChange::Notice(format!("Gagal memuat halaman: {message}")));
                 }
             }
+            // Ditangani aplikasi (pengelola password) sebelum sampai ke sini.
+            PageEvent::CredentialSubmitted { .. } => {}
         }
     }
 
@@ -597,6 +599,7 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         fn capture(&self, _area: Rect, _scale: f64, _reply: Box<dyn FnOnce(Result<Vec<u8>, String>)>) {}
         fn set_mobile_user_agent(&self, mobile: bool) { self.0.borrow_mut().calls.push(Call::MobileUa(mobile)); }
         fn set_color_scheme(&self, scheme: ColorScheme) { self.0.borrow_mut().calls.push(Call::Scheme(scheme)); }
+        fn fill_login(&self, _origin: &str, _username: &str, _password: &crate::engine::Secret, _reply: Box<dyn FnOnce(Result<String, String>)>) {}
         fn process_id(&self) -> Option<i32> { None }
         fn view(&self) {}
     }

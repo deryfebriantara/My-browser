@@ -5,8 +5,10 @@ use crate::delegates::Delegate;
 use crate::downloads::DownloadCenter;
 use crate::emitter::Emitter;
 use crate::observer::{KEYS, Observer};
+use crate::passwords::PasswordBridge;
 use block2::RcBlock;
-use browser_core::engine::{ColorScheme, JsTag, Page, PageEvent, Rect};
+use browser_core::engine::{ColorScheme, JsTag, Page, PageEvent, Rect, Secret};
+use browser_core::password_scripts::{FILL, PASSWORD_HANDLER, PASSWORD_WORLD};
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
 use objc2::{AnyThread, MainThreadMarker, MainThreadOnly, msg_send, sel};
@@ -50,6 +52,8 @@ pub struct WebKitPage {
     mobile_user_agent: Retained<NSString>,
     observer: Retained<Observer>,
     _delegate: Retained<Delegate>,
+    controller: Retained<WKUserContentController>,
+    _password_bridge: Retained<PasswordBridge>,
     emitter: Emitter,
     /// Download aktif atau dialog JavaScript yang sedang terbuka dari page ini.
     busy: Rc<Cell<usize>>,
@@ -74,6 +78,14 @@ impl WebKitPage {
         let controller = unsafe { WKUserContentController::new(mtm) };
         unsafe { config.setUserContentController(&controller) };
         let blocking = blocker.register(&controller);
+        let password_bridge = PasswordBridge::new(mtm, emitter.clone());
+        unsafe {
+            controller.addScriptMessageHandler_contentWorld_name(
+                ProtocolObject::from_ref(&*password_bridge),
+                &WKContentWorld::worldWithName(&NSString::from_str(PASSWORD_WORLD), mtm),
+                &NSString::from_str(PASSWORD_HANDLER),
+            );
+        }
         // Ukuran awal seukuran jendela bawaan. Tab latar yang belum pernah
         // tampil tetap di-layout seperti desktop (bukan lebar nol), jadi
         // halaman tidak berubah tata letak saat dibuka dan elemen bisa dibaca
@@ -89,7 +101,7 @@ impl WebKitPage {
         };
 
         let busy: Rc<Cell<usize>> = Rc::default();
-        let delegate = Delegate::new(mtm, emitter.clone(), blocker, controller, blocking, downloads, busy.clone());
+        let delegate = Delegate::new(mtm, emitter.clone(), blocker, controller.clone(), blocking, downloads, busy.clone());
         unsafe {
             webview.setNavigationDelegate(Some(ProtocolObject::from_ref(&*delegate)));
             webview.setUIDelegate(Some(ProtocolObject::from_ref(&*delegate)));
@@ -107,7 +119,16 @@ impl WebKitPage {
             }
         }
 
-        Self { webview, mobile_user_agent, observer, _delegate: delegate, emitter, busy }
+        Self {
+            webview,
+            mobile_user_agent,
+            observer,
+            _delegate: delegate,
+            controller,
+            _password_bridge: password_bridge,
+            emitter,
+            busy,
+        }
     }
 
     /// Memuat HTML dengan alamat dasar tertentu, seolah-olah halaman dari
@@ -256,6 +277,27 @@ impl Page for WebKitPage {
         self.webview.setAppearance(appearance.as_deref());
     }
 
+    fn fill_login(&self, origin: &str, username: &str, password: &Secret, reply: Box<dyn FnOnce(Result<String, String>)>) {
+        let mtm = MainThreadMarker::from(&*self.webview);
+        let world = unsafe { WKContentWorld::worldWithName(&NSString::from_str(PASSWORD_WORLD), mtm) };
+        // Nilai dikirim sebagai argumen fungsi, bukan disisipkan ke teks script.
+        let keys = [NSString::from_str("origin"), NSString::from_str("username"), NSString::from_str("password")];
+        let values = [NSString::from_str(origin), NSString::from_str(username), NSString::from_str(password.expose())];
+        let key_refs: Vec<&NSString> = keys.iter().map(|k| &**k).collect();
+        let value_refs: Vec<&AnyObject> = values.iter().map(|v| v.as_ref()).collect();
+        let arguments = NSDictionary::<NSString, AnyObject>::from_slices(&key_refs, &value_refs);
+        let block = string_reply(reply);
+        unsafe {
+            self.webview.callAsyncJavaScript_arguments_inFrame_inContentWorld_completionHandler(
+                &NSString::from_str(FILL),
+                Some(&arguments),
+                None,
+                &world,
+                Some(&block),
+            );
+        }
+    }
+
     /// Memakai properti privat `_webProcessIdentifier` (hanya dibaca, dicek
     /// dulu keberadaannya) karena WebKit tidak punya API publik untuk pid.
     fn process_id(&self) -> Option<i32> {
@@ -371,6 +413,8 @@ impl Drop for WebKitPage {
             }
             self.webview.setNavigationDelegate(None);
             self.webview.setUIDelegate(None);
+            let world = WKContentWorld::worldWithName(&NSString::from_str(PASSWORD_WORLD), MainThreadMarker::from(&*self.webview));
+            self.controller.removeScriptMessageHandlerForName_contentWorld(&NSString::from_str(PASSWORD_HANDLER), &world);
         }
         self.webview.removeFromSuperview();
         DROPPED.with(|d| d.borrow_mut().push(objc2::rc::Weak::from(&*self.webview)));

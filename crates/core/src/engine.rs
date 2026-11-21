@@ -15,6 +15,27 @@ pub enum JsTag {
     VideoTime,
 }
 
+/// Teks rahasia (password). Tidak pernah ikut tercetak lewat `Debug` (log
+/// debug mencetak event), dan isinya dihapus dari memory saat dilepas.
+#[derive(Clone, PartialEq, Eq, zeroize::Zeroize, zeroize::ZeroizeOnDrop)]
+pub struct Secret(String);
+
+impl Secret {
+    pub fn new(text: String) -> Self {
+        Self(text)
+    }
+
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Secret(<disembunyikan>)")
+    }
+}
+
 /// Persegi dalam poin CSS, relatif terhadap pojok kiri atas dokumen.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Rect {
@@ -64,6 +85,9 @@ pub enum PageEvent {
     /// Halaman gagal dimuat (DNS, server mati, offline). Berisi pesan yang bisa dibaca pengguna.
     LoadFailed(String),
     ProcessCrashed,
+    /// Pengguna mengirim form login di frame utama. `origin` berasal dari
+    /// frame pengirim (bukan dari halaman), jadi tidak bisa dipalsukan.
+    CredentialSubmitted { origin: String, username: String, password: Secret },
 }
 
 /// Satu halaman. Melepas (`Drop`) page berarti melepas halaman dan memory-nya.
@@ -96,6 +120,11 @@ pub trait Page {
     /// berikutnya; halaman perlu dimuat ulang supaya situs ikut berubah.
     fn set_mobile_user_agent(&self, mobile: bool);
     fn set_color_scheme(&self, scheme: ColorScheme);
+    /// Mengisi form login di frame utama, hanya kalau origin halaman masih
+    /// `origin`. Dijalankan di dunia script terpisah yang tidak terlihat
+    /// oleh script halaman. Balasan JSON (`filled_password`,
+    /// `filled_username`) atau `{"error": ...}`; tidak pernah sinkron.
+    fn fill_login(&self, origin: &str, username: &str, password: &Secret, reply: Box<dyn FnOnce(Result<String, String>)>);
     /// Pid proses yang merender halaman ini, kalau mesin mengetahuinya.
     fn process_id(&self) -> Option<i32>;
     fn view(&self) -> Self::View;

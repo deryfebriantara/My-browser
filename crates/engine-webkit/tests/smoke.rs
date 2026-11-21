@@ -358,6 +358,21 @@ fn visual_tools(engine: &WebKitEngine) {
     assert!(json(&page, &js::element_box("#tidak-ada"))["error"].is_string());
     println!("ok: screenshot elemen di luar layar, diperbesar 2x");
 
+    // Di dalam jendela, seperti tab aktif di aplikasi: AppKit baru menghitung
+    // ulang tampilan view setelah appearance dilepas kalau view ada di jendela
+    // (tab latar dihitung ulang saat dipasang ke jendela).
+    let mtm = MainThreadMarker::new().unwrap();
+    let window = unsafe {
+        objc2_app_kit::NSWindow::initWithContentRect_styleMask_backing_defer(
+            objc2::MainThreadOnly::alloc(mtm),
+            objc2_foundation::NSRect::new(objc2_foundation::NSPoint::new(0.0, 0.0), objc2_foundation::NSSize::new(800.0, 600.0)),
+            objc2_app_kit::NSWindowStyleMask::Titled,
+            objc2_app_kit::NSBackingStoreType::Buffered,
+            false,
+        )
+    };
+    unsafe { window.setReleasedWhenClosed(false) };
+    window.contentView().unwrap().addSubview(&page.view());
     let dark = "String(matchMedia('(prefers-color-scheme: dark)').matches)";
     let system = evaluate(&page, dark).unwrap();
     page.set_color_scheme(ColorScheme::Light);
@@ -366,6 +381,8 @@ fn visual_tools(engine: &WebKitEngine) {
     assert!(spin_until(Duration::from_secs(2), || evaluate(&page, dark).unwrap() == "true"), "mode gelap");
     page.set_color_scheme(ColorScheme::System);
     assert!(spin_until(Duration::from_secs(2), || evaluate(&page, dark).unwrap() == system), "kembali ke sistem");
+    page.view().removeFromSuperview();
+    window.close();
     println!("ok: prefers-color-scheme terang/gelap/sistem per tab");
 
     page.set_mobile_user_agent(true);
@@ -416,6 +433,83 @@ fn visual_tools(engine: &WebKitEngine) {
     assert!(title_becomes(&events, "diklik", Duration::from_secs(2)), "setelah Esc, klik harus sampai ke halaman lagi");
     assert_eq!(evaluate(&page, "String(!document.querySelector('[data-mb-overlay]'))").unwrap(), "true");
     println!("ok: Esc membatalkan mode Tunjuk Elemen");
+}
+
+fn credentials(events: &Rc<RefCell<Vec<PageEvent>>>) -> Vec<(String, String, String)> {
+    events
+        .borrow()
+        .iter()
+        .filter_map(|e| match e {
+            PageEvent::CredentialSubmitted { origin, username, password } => {
+                Some((origin.clone(), username.clone(), password.expose().to_string()))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+/// Pengelola password: penangkap login dan pengisi di content world
+/// terpisah. Script halaman tidak bisa memalsukan pesan, origin berasal dari
+/// frame, dan pengisian menolak origin lain.
+fn password_scripts(engine: &WebKitEngine) {
+    use browser_core::engine::Secret;
+    let events: Rc<RefCell<Vec<PageEvent>>> = Rc::default();
+    let sink = events.clone();
+    let page = engine.create_page(Box::new(move |e| sink.borrow_mut().push(e)));
+    let html = r#"<title>login</title>
+        <form id="f" action="javascript:void 0">
+          <input id="u" name="user" autocomplete="username">
+          <input id="p" type="password">
+          <button id="b" type="submit">Masuk</button>
+        </form>
+        <script>window.inputs = 0; document.getElementById('p').addEventListener('input', function(){ window.inputs++; });</script>"#;
+    load_and_wait(&page, &events, html, "https://example.com/login");
+
+    let reach = "typeof (window.webkit && webkit.messageHandlers && webkit.messageHandlers.mbPassword)";
+    assert_eq!(evaluate(&page, reach).unwrap(), "undefined", "script halaman tidak boleh melihat handler password");
+    page.run_script("try { webkit.messageHandlers.mbPassword.postMessage('{\"password\":\"palsu\"}'); } catch (e) {}");
+    spin_until(Duration::from_millis(500), || false);
+    assert!(credentials(&events).is_empty(), "pesan palsu dari halaman diterima");
+    println!("ok: password: handler tidak terlihat dan tidak bisa dipalsukan script halaman");
+
+    page.run_script("document.getElementById('u').value='dery'; document.getElementById('p').value='rahasia-1'; document.getElementById('b').click();");
+    assert!(spin_until(Duration::from_secs(3), || !credentials(&events).is_empty()), "login tidak tertangkap");
+    spin_until(Duration::from_millis(400), || false);
+    assert_eq!(credentials(&events), vec![("https://example.com".into(), "dery".into(), "rahasia-1".into())], "satu kali saja (klik dan submit)");
+    let shown = format!("{:?}", events.borrow());
+    assert!(!shown.contains("rahasia-1"), "password tercetak lewat Debug");
+    println!("ok: password: login tertangkap sekali dengan origin dari frame, tidak tercetak di log");
+
+    let fill = |origin: &str, user: &str, pass: &str| {
+        let slot: Rc<RefCell<Option<Result<String, String>>>> = Rc::default();
+        let sink = slot.clone();
+        page.fill_login(origin, user, &Secret::new(pass.into()), Box::new(move |r| *sink.borrow_mut() = Some(r)));
+        assert!(spin_until(Duration::from_secs(5), || slot.borrow().is_some()), "fill_login tidak dibalas");
+        let text = slot.borrow_mut().take().unwrap().expect("script pengisi berjalan");
+        serde_json::from_str::<serde_json::Value>(&text).unwrap()
+    };
+    page.run_script("document.getElementById('u').value=''; document.getElementById('p').value=''; window.inputs=0;");
+    let wrong = fill("https://evil.example", "x", "bocor");
+    assert!(wrong["error"].is_string(), "{wrong}");
+    assert_eq!(evaluate(&page, "document.getElementById('p').value").unwrap(), "", "terisi di origin lain");
+    let filled = fill("https://example.com", "baru", "isi-2");
+    assert_eq!((filled["filled_password"].clone(), filled["filled_username"].clone()), (serde_json::json!(true), serde_json::json!(true)));
+    assert_eq!(evaluate(&page, "document.getElementById('u').value + '|' + document.getElementById('p').value").unwrap(), "baru|isi-2");
+    assert_eq!(evaluate(&page, "String(window.inputs > 0)").unwrap(), "true", "event input untuk framework");
+    println!("ok: password: diisi hanya di origin yang sama, dengan event input");
+
+    let steps = r#"<title>bertahap</title><div id="step"><input id="email" type="email"><button id="next">Berikutnya</button></div>
+        <script>document.getElementById('next').onclick = function(){
+          document.getElementById('step').innerHTML = '<input id="pw" type="password"><div role="button" id="go">Masuk</div>';
+        };</script>"#;
+    events.borrow_mut().clear();
+    load_and_wait(&page, &events, steps, "https://accounts.example/signin");
+    page.run_script("var e=document.getElementById('email'); e.value='dery@mail'; e.dispatchEvent(new Event('change',{bubbles:true})); document.getElementById('next').click();");
+    spin_until(Duration::from_millis(300), || false);
+    page.run_script("document.getElementById('pw').value='rahasia-3'; document.getElementById('go').click();");
+    assert!(spin_until(Duration::from_secs(3), || !credentials(&events).is_empty()), "login bertahap tidak tertangkap");
+    assert_eq!(credentials(&events)[0], ("https://accounts.example".into(), "dery@mail".into(), "rahasia-3".into()));
+    println!("ok: password: login bertahap (username lalu password) tertangkap");
 }
 
 /// Panel HTML lokal: pesan dua arah, tidak bisa berpindah halaman, dan
@@ -547,6 +641,7 @@ fn main() {
     developer_tools(&engine);
     visual_tools(&engine);
     panel_bridge(mtm);
+    password_scripts(&engine);
 
     // Daftar aturan yang isinya berubah (mis. setelah update-filters.sh)
     // membuat daftar lama di penyimpanan WebKit usang dan dihapus. WebKit
