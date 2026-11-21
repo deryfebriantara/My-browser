@@ -12,6 +12,7 @@ my-browser-core = { path = "crates/core" }
 engine-webkit = { path = "crates/engine-webkit" }
 my-browser-mcp = { path = "crates/mcp" }
 memtool = { path = "crates/memtool" }
+my-browser-vault = { path = "crates/vault" }
 objc2 = "0.6"
 objc2-foundation = "0.3"
 objc2-app-kit = "0.3"
