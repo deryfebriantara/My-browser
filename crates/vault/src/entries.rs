@@ -90,6 +90,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn nested_blob_urls_are_rejected_without_computing_origin() {
+        // RUSTSEC-2026-0592: Url::origin() pada blob: bersarang bisa stack
+        // overflow. Skema dicek lebih dulu, jadi origin() tidak pernah dipanggil.
+        let nested = format!("{}https://a.com/", "blob:".repeat(50_000));
+        assert_eq!(origin_of(&nested), None);
+    }
+
+    #[test]
     fn origins_are_normalized_and_limited_to_web() {
         assert_eq!(origin_of("https://GitHub.com/login?next=/"), Some("https://github.com".into()));
         assert_eq!(origin_of("https://github.com:443/x"), Some("https://github.com".into()));
