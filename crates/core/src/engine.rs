@@ -69,7 +69,11 @@ pub struct Emulation {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PageEvent {
+    /// URL berubah karena navigasi yang memuat dokumen baru (dimulai atau dialihkan).
     UrlChanged(Url),
+    /// URL berubah tanpa memuat dokumen baru: `history.pushState`,
+    /// `replaceState`, atau `#fragment` (mis. klik video di YouTube).
+    SameDocumentNavigation(Url),
     TitleChanged(String),
     LoadingChanged(bool),
     LoadFinished,

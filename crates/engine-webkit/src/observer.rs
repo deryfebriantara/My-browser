@@ -43,8 +43,12 @@ define_class!(
                     let url = unsafe { webview.URL() }
                         .and_then(|u| u.absoluteString())
                         .and_then(|s| url::Url::parse(&s.to_string()).ok());
+                    // Saat notifikasi URL datang, WebKit sudah memperbarui
+                    // `isLoading`: navigasi yang memuat dokumen baru selalu
+                    // sedang loading, pushState dan #fragment tidak.
+                    let loading = unsafe { webview.isLoading() };
                     if let Some(url) = url {
-                        emitter.emit(PageEvent::UrlChanged(url));
+                        emitter.emit(if loading { PageEvent::UrlChanged(url) } else { PageEvent::SameDocumentNavigation(url) });
                     }
                 }
                 "loading" => emitter.emit(PageEvent::LoadingChanged(unsafe { webview.isLoading() })),

@@ -317,7 +317,7 @@ impl<E: Engine> Browser<E> {
         let is_active = self.tabs.active() == id;
         let Some(tab) = self.tabs.get_mut(id) else { return };
         match event {
-            PageEvent::UrlChanged(url) => {
+            PageEvent::UrlChanged(url) | PageEvent::SameDocumentNavigation(url) => {
                 tab.url = Some(url);
                 self.dirty = true;
                 self.change(UiChange::Tabs);

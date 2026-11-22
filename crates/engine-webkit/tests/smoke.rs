@@ -518,6 +518,37 @@ fn password_scripts(engine: &WebKitEngine) {
 
 /// Panel HTML lokal: pesan dua arah, tidak bisa berpindah halaman, dan
 /// webview-nya bebas setelah panel dilepas.
+/// Navigasi dalam dokumen (pushState, #fragment) dilaporkan sebagai
+/// `SameDocumentNavigation` tanpa `LoadFinished`; muat halaman tetap `UrlChanged`.
+fn same_document_navigation(engine: &WebKitEngine) {
+    let events: Rc<RefCell<Vec<PageEvent>>> = Rc::default();
+    let sink = events.clone();
+    let page = engine.create_page(Box::new(move |e| sink.borrow_mut().push(e)));
+    load_and_wait(&page, &events, "<title>A</title><p>a</p>", "https://mb-history.test/a");
+    let url = |s: &str| Url::parse(s).unwrap();
+
+    events.borrow_mut().clear();
+    evaluate(&page, "history.pushState({},'','/b');'ok'").unwrap();
+    let b = PageEvent::SameDocumentNavigation(url("https://mb-history.test/b"));
+    assert!(spin_until(Duration::from_secs(5), || events.borrow().contains(&b)), "pushState: {:?}", events.borrow());
+    spin_until(Duration::from_millis(300), || false);
+    assert!(!events.borrow().contains(&PageEvent::LoadFinished), "pushState tidak boleh LoadFinished");
+    assert!(!events.borrow().iter().any(|e| matches!(e, PageEvent::UrlChanged(_))), "pushState bukan UrlChanged");
+    println!("ok: pushState -> SameDocumentNavigation");
+
+    events.borrow_mut().clear();
+    evaluate(&page, "location.hash='bagian';'ok'").unwrap();
+    let hash = PageEvent::SameDocumentNavigation(url("https://mb-history.test/b#bagian"));
+    assert!(spin_until(Duration::from_secs(5), || events.borrow().contains(&hash)), "#fragment: {:?}", events.borrow());
+    println!("ok: #fragment -> SameDocumentNavigation");
+
+    load_and_wait(&page, &events, "<title>C</title><p>c</p>", "https://mb-history.test/c");
+    let ev = events.borrow();
+    assert!(ev.contains(&PageEvent::UrlChanged(url("https://mb-history.test/c"))), "muat halaman: {ev:?}");
+    assert!(!ev.iter().any(|e| matches!(e, PageEvent::SameDocumentNavigation(_))), "muat halaman bukan SameDocumentNavigation: {ev:?}");
+    println!("ok: muat halaman baru -> UrlChanged");
+}
+
 /// Jawaban `request_activity` berikutnya: (media, draft).
 fn activity(page: &engine_webkit::WebKitPage, events: &Rc<RefCell<Vec<PageEvent>>>) -> (bool, bool) {
     events.borrow_mut().clear();
@@ -723,6 +754,7 @@ fn main() {
     panel_bridge(mtm);
     password_scripts(&engine);
     drafts(&engine);
+    same_document_navigation(&engine);
 
     // Daftar aturan yang isinya berubah (mis. setelah update-filters.sh)
     // membuat daftar lama di penyimpanan WebKit usang dan dihapus. WebKit
