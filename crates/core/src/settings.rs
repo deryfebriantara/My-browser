@@ -30,6 +30,8 @@ pub struct Settings {
     pub password_never_save: Vec<String>,
     /// Lokasi program yang selalu diizinkan mengontrol browser lewat MCP.
     pub mcp_allowed_clients: Vec<String>,
+    /// Catat halaman yang dibuka ke riwayat.
+    pub history_enabled: bool,
 }
 
 impl Default for Settings {
@@ -47,6 +49,7 @@ impl Default for Settings {
             password_lock_minutes: 10,
             password_never_save: Vec::new(),
             mcp_allowed_clients: Vec::new(),
+            history_enabled: true,
         }
     }
 }
@@ -79,6 +82,7 @@ mod tests {
         assert_eq!((s.claude_path, s.claude_config_dir, s.claude_model), (None, None, None));
         assert!(s.password_offer_save);
         assert_eq!(s.password_lock_minutes, 10);
+        assert!(s.history_enabled);
     }
 
     #[test]

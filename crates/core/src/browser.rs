@@ -4,14 +4,15 @@
 
 use crate::blocking::{host_matches, normalize_host};
 use crate::engine::{ColorScheme, Emulation, Engine, JsTag, Page, PageEvent};
-use crate::omnibox::parse_input;
+use crate::history::{History, HistoryEntry, note_visit, visit_key};
+use crate::omnibox::{Parsed, classify_input, parse_input};
 use crate::session::SessionFile;
 use crate::settings::Settings;
 use crate::sleep::{Pressure, tabs_to_sleep};
-use crate::tabs::{TabId, TabList};
+use crate::tabs::{PendingVisit, TabId, TabList, Url};
 use crate::youtube::{VIDEO_TIME_JS, is_youtube_watch, with_resume_time};
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 pub const SCROLL_Y_JS: &str = "window.scrollY";
 
@@ -43,7 +44,14 @@ pub enum UiChange {
     Nav,
     /// Pengaturan berubah dan perlu disimpan.
     Settings,
+    /// Riwayat berubah (kunjungan baru, judul, atau dihapus).
+    History,
     Notice(String),
+}
+
+/// Detik unix sekarang. Bukan `Instant`, yang berhenti saat Mac tidur.
+fn unix_now() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs())
 }
 
 pub struct Browser<E: Engine> {
@@ -54,17 +62,45 @@ pub struct Browser<E: Engine> {
     sinks: SinkFactory,
     changes: Vec<UiChange>,
     dirty: bool,
+    history: History,
+    /// Jam dinding untuk riwayat (detik unix); bisa diganti di test.
+    clock: Box<dyn Fn() -> u64>,
 }
 
 impl<E: Engine> Browser<E> {
     /// Memulihkan sesi (semua tab tidur) lalu membangunkan tab aktif.
-    pub fn new(engine: E, settings: Settings, session: Option<&SessionFile>, sinks: SinkFactory, now: Instant) -> Self {
-        let tabs = match session {
+    pub fn new(
+        engine: E,
+        settings: Settings,
+        session: Option<&SessionFile>,
+        history: History,
+        sinks: SinkFactory,
+        now: Instant,
+    ) -> Self {
+        let mut tabs = match session {
             Some(s) => TabList::from_session(s, now),
             None => TabList::new(now),
         };
+        // Tab dari sesi sudah tercatat saat dibuka dulu; memuatnya lagi
+        // bukan kunjungan baru.
+        let ids: Vec<TabId> = tabs.iter().map(|t| t.id).collect();
+        for id in ids {
+            if let Some(tab) = tabs.get_mut(id) {
+                tab.visit_key = tab.url.as_ref().and_then(visit_key);
+            }
+        }
         engine.set_blocker_exceptions(&settings.blocker_exceptions);
-        let mut b = Self { engine, tabs, pages: HashMap::new(), settings, sinks, changes: Vec::new(), dirty: false };
+        let mut b = Self {
+            engine,
+            tabs,
+            pages: HashMap::new(),
+            settings,
+            sinks,
+            changes: Vec::new(),
+            dirty: false,
+            history,
+            clock: Box::new(unix_now),
+        };
         let active = b.tabs.active();
         b.wake(active);
         b.change(UiChange::Tabs);
@@ -78,6 +114,71 @@ impl<E: Engine> Browser<E> {
 
     pub fn settings(&self) -> &Settings {
         &self.settings
+    }
+
+    /// Mengganti jam dinding riwayat (untuk test).
+    pub fn set_clock(&mut self, clock: Box<dyn Fn() -> u64>) {
+        self.clock = clock;
+    }
+
+    pub fn history(&self) -> &History {
+        &self.history
+    }
+
+    /// Isi `history.json` kalau riwayat berubah sejak penyimpanan terakhir.
+    pub fn history_bytes_if_dirty(&mut self) -> Option<Vec<u8>> {
+        if !self.history.take_dirty() {
+            return None;
+        }
+        Some(self.history.to_bytes((self.clock)()))
+    }
+
+    /// Isi `history.json` sekarang (saat keluar, atau setelah menghapus).
+    pub fn history_bytes(&mut self) -> Vec<u8> {
+        self.history.take_dirty();
+        self.history.to_bytes((self.clock)())
+    }
+
+    pub fn delete_history(&mut self, url: &str) -> bool {
+        let deleted = self.history.delete(url);
+        if deleted {
+            self.forget_visit_keys();
+            self.change(UiChange::History);
+        }
+        deleted
+    }
+
+    /// Menghapus riwayat sejak `since` (detik unix; semua kalau `None`).
+    pub fn clear_history_since(&mut self, since: Option<u64>) -> usize {
+        let removed = self.history.clear_since(since);
+        if removed > 0 {
+            self.forget_visit_keys();
+            self.change(UiChange::History);
+        }
+        removed
+    }
+
+    /// Setelah riwayat dihapus, kunjungan berikutnya ke halaman yang sedang
+    /// terbuka boleh dicatat lagi.
+    fn forget_visit_keys(&mut self) {
+        let ids: Vec<TabId> = self.tabs.iter().map(|t| t.id).collect();
+        for id in ids {
+            if let Some(tab) = self.tabs.get_mut(id)
+                && tab.visit_key.as_deref().is_some_and(|k| !self.history.entries().iter().any(|e| e.url == k))
+            {
+                tab.visit_key = None;
+            }
+        }
+    }
+
+    /// Pencarian riwayat untuk MCP dan jendela Riwayat.
+    pub fn search_history(&self, query: &str, since: Option<u64>, offset: usize, limit: usize) -> (Vec<&HistoryEntry>, usize) {
+        self.history.search(query, since, offset, limit)
+    }
+
+    /// Detik unix sekarang menurut jam riwayat.
+    pub fn unix_now(&self) -> u64 {
+        (self.clock)()
     }
 
     pub fn active_view(&self) -> Option<<E::Page as Page>::View> {
@@ -156,6 +257,9 @@ impl<E: Engine> Browser<E> {
 
     pub fn reopen_closed_tab(&mut self, now: Instant) {
         if let Some(id) = self.tabs.reopen_closed(now) {
+            if let Some(tab) = self.tabs.get_mut(id) {
+                tab.visit_key = tab.url.as_ref().and_then(visit_key);
+            }
             self.activate(id, now);
         }
     }
@@ -190,10 +294,27 @@ impl<E: Engine> Browser<E> {
         self.navigate_tab(id, input, now)
     }
 
+    /// Memuat input address bar yang diketik pengguna di tab aktif. Alamat
+    /// dihitung sebagai ketikan di riwayat (untuk melengkapi alamat), pencarian
+    /// tidak. `false` kalau input kosong.
+    pub fn navigate_from_address(&mut self, input: &str, now: Instant) -> bool {
+        let Some(parsed) = classify_input(input, &self.settings.search_template) else { return false };
+        let typed = matches!(parsed, Parsed::Url(_));
+        let id = self.tabs.active();
+        self.navigate_url(id, parsed.into_url(), typed, now)
+    }
+
     /// Memuat input di tab tertentu. `false` kalau input kosong atau tab tidak ada.
     pub fn navigate_tab(&mut self, id: TabId, input: &str, now: Instant) -> bool {
         let Some(url) = parse_input(input, &self.settings.search_template) else { return false };
+        self.navigate_url(id, url, false, now)
+    }
+
+    /// Memuat `url` di tab `id`. Kunjungannya dicatat ke riwayat saat selesai
+    /// dimuat, walaupun alamatnya sama dengan yang sedang terbuka.
+    pub fn navigate_url(&mut self, id: TabId, url: Url, typed: bool, now: Instant) -> bool {
         let Some(tab) = self.tabs.get_mut(id) else { return false };
+        tab.pending_visit = Some(PendingVisit { typed });
         tab.url = Some(url.clone());
         tab.scroll_y = 0.0;
         tab.restore_scroll = false;
@@ -315,10 +436,24 @@ impl<E: Engine> Browser<E> {
             return;
         }
         let is_active = self.tabs.active() == id;
+        let record = self.settings.history_enabled;
+        let unix = (self.clock)();
+        let mut history_changed = false;
         let Some(tab) = self.tabs.get_mut(id) else { return };
         match event {
-            PageEvent::UrlChanged(url) | PageEvent::SameDocumentNavigation(url) => {
+            PageEvent::UrlChanged(url) => {
                 tab.url = Some(url);
+                self.dirty = true;
+                self.change(UiChange::Tabs);
+                if is_active {
+                    self.change(UiChange::Nav);
+                }
+            }
+            PageEvent::SameDocumentNavigation(url) => {
+                tab.url = Some(url);
+                // pushState (mis. klik video di YouTube) tidak memicu
+                // LoadFinished, jadi dicatat di sini. #fragment saja tidak.
+                history_changed = record && note_visit(&mut self.history, tab, false, false, unix);
                 self.dirty = true;
                 self.change(UiChange::Tabs);
                 if is_active {
@@ -327,6 +462,15 @@ impl<E: Engine> Browser<E> {
             }
             PageEvent::TitleChanged(title) => {
                 tab.title = title;
+                // Judul hanya untuk entri halaman yang sedang tampil; selama
+                // halaman baru dimuat, URL tab sudah berganti, jadi entri
+                // sebelumnya tidak ikut berganti nama.
+                if record
+                    && let Some(key) = tab.visit_key.as_deref()
+                    && tab.url.as_ref().and_then(visit_key).as_deref() == Some(key)
+                {
+                    history_changed = self.history.set_title(key, &tab.title);
+                }
                 self.dirty = true;
                 self.change(UiChange::Tabs);
             }
@@ -339,6 +483,11 @@ impl<E: Engine> Browser<E> {
             PageEvent::LoadFinished => {
                 tab.committed_url = tab.url.clone();
                 tab.loads += 1;
+                let pending = tab.pending_visit.take();
+                if record {
+                    let typed = pending.is_some_and(|p| p.typed);
+                    history_changed = note_visit(&mut self.history, tab, typed, pending.is_some(), unix);
+                }
                 if tab.restore_scroll {
                     tab.restore_scroll = false;
                     let script = format!("window.scrollTo(0, {})", tab.scroll_y.round() as i64);
@@ -402,6 +551,7 @@ impl<E: Engine> Browser<E> {
                 }
             }
             PageEvent::DownloadStarted => {
+                tab.pending_visit = None;
                 tab.url = tab.committed_url.clone();
                 tab.loading = false;
                 self.dirty = true;
@@ -418,6 +568,7 @@ impl<E: Engine> Browser<E> {
             PageEvent::LoadFailed(message) => {
                 tab.loading = false;
                 tab.restore_scroll = false;
+                tab.pending_visit = None;
                 if is_active {
                     self.change(UiChange::Nav);
                     self.change(UiChange::Notice(format!("Gagal memuat halaman: {message}")));
@@ -425,6 +576,9 @@ impl<E: Engine> Browser<E> {
             }
             // Ditangani aplikasi (pengelola password) sebelum sampai ke sini.
             PageEvent::CredentialSubmitted { .. } => {}
+        }
+        if history_changed {
+            self.change(UiChange::History);
         }
     }
 
@@ -635,7 +789,7 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         let log = Shared::default();
         let t0 = Instant::now();
         let settings = Settings { sleep_idle_secs: 300, max_awake: 3, ..Settings::default() };
-        let b = Browser::new(FakeEngine(log.clone()), settings, session, Box::new(|_| Box::new(|_| {})), t0);
+        let b = Browser::new(FakeEngine(log.clone()), settings, session, History::new(), Box::new(|_| Box::new(|_| {})), t0);
         (b, log, t0)
     }
 
@@ -781,6 +935,180 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         b.handle_event(yt, PageEvent::Number { tag: JsTag::VideoTime, value: Some(125.7) }, t);
         b.handle_event(yt, PageEvent::Activity { media: false, draft: false }, t);
         assert_eq!(b.tabs().get(yt).unwrap().url.as_ref().unwrap().as_str(), "https://www.youtube.com/watch?v=abc&t=125s");
+    }
+
+    /// (url, title, visit_count, typed_count) semua entri riwayat, terbaru dulu.
+    fn hist(b: &Browser<FakeEngine>) -> Vec<(String, String, u32, u32)> {
+        b.history().entries().iter().map(|e| (e.url.clone(), e.title.clone(), e.visit_count, e.typed_count)).collect()
+    }
+
+    fn visits(b: &Browser<FakeEngine>, url: &str) -> u32 {
+        b.history().entries().iter().find(|e| e.url == url).map_or(0, |e| e.visit_count)
+    }
+
+    #[test]
+    fn load_records_once_and_reload_does_not_count() {
+        let (mut b, _log, t0) = setup(None);
+        b.set_clock(Box::new(|| 1_000));
+        let a = b.tabs().active();
+        assert!(b.navigate_from_address("a.com", t0));
+        b.handle_event(a, PageEvent::TitleChanged("Situs A".into()), t0);
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        assert_eq!(hist(&b), vec![("https://a.com/".into(), "Situs A".into(), 1, 1)]);
+        assert!(b.take_changes().contains(&UiChange::History));
+        // Muat ulang (tanpa navigasi baru) tidak menambah hitungan.
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        assert_eq!(visits(&b, "https://a.com/"), 1);
+        assert_eq!(b.history().entries()[0].last_visit, 1_000);
+    }
+
+    #[test]
+    fn typed_only_for_addresses_not_searches_or_links() {
+        let (mut b, _log, t0) = setup(None);
+        let a = b.tabs().active();
+        assert!(b.navigate_from_address("resep nasi", t0));
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        b.handle_event(a, PageEvent::UrlChanged(u("https://b.com/x")), t0);
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        let h = hist(&b);
+        assert_eq!((h[0].0.as_str(), h[0].3), ("https://b.com/x", 0), "link bukan ketikan");
+        assert_eq!((h[1].0.as_str(), h[1].3), ("https://www.google.com/search?q=resep+nasi", 0), "pencarian bukan ketikan");
+    }
+
+    #[test]
+    fn explicit_navigation_to_same_url_counts_again() {
+        let (mut b, _log, t0) = setup(None);
+        let a = b.tabs().active();
+        for _ in 0..2 {
+            assert!(b.navigate_from_address("a.com", t0));
+            b.handle_event(a, PageEvent::LoadFinished, t0);
+        }
+        assert_eq!(hist(&b), vec![("https://a.com/".into(), String::new(), 2, 2)]);
+    }
+
+    #[test]
+    fn redirect_records_only_final_url() {
+        let (mut b, _log, t0) = setup(None);
+        let a = b.tabs().active();
+        assert!(b.navigate_from_address("a.com/lama", t0));
+        b.handle_event(a, PageEvent::UrlChanged(u("https://a.com/baru")), t0);
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        assert_eq!(hist(&b), vec![("https://a.com/baru".into(), String::new(), 1, 1)]);
+    }
+
+    #[test]
+    fn same_document_navigation_records_but_fragment_does_not() {
+        let (mut b, _log, t0) = setup(None);
+        let a = b.tabs().active();
+        assert!(b.navigate("https://www.youtube.com/", t0));
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        b.handle_event(a, PageEvent::SameDocumentNavigation(u("https://www.youtube.com/watch?v=1")), t0);
+        b.handle_event(a, PageEvent::TitleChanged("Video Satu - YouTube".into()), t0);
+        b.handle_event(a, PageEvent::SameDocumentNavigation(u("https://www.youtube.com/watch?v=1#komentar")), t0);
+        let h = hist(&b);
+        assert_eq!(h.len(), 2);
+        assert_eq!((h[0].0.as_str(), h[0].1.as_str(), h[0].2), ("https://www.youtube.com/watch?v=1", "Video Satu - YouTube", 1));
+    }
+
+    #[test]
+    fn title_during_load_does_not_rename_previous_entry() {
+        let (mut b, _log, t0) = setup(None);
+        let a = b.tabs().active();
+        assert!(b.navigate("a.com", t0));
+        b.handle_event(a, PageEvent::TitleChanged("A".into()), t0);
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        b.handle_event(a, PageEvent::UrlChanged(u("https://b.com/")), t0);
+        b.handle_event(a, PageEvent::TitleChanged("B".into()), t0);
+        assert_eq!(hist(&b), vec![("https://a.com/".into(), "A".into(), 1, 0)]);
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        assert_eq!(hist(&b)[0], ("https://b.com/".into(), "B".into(), 1, 0));
+        b.handle_event(a, PageEvent::TitleChanged(String::new()), t0);
+        assert_eq!(hist(&b)[0].1, "B", "judul kosong diabaikan");
+    }
+
+    #[test]
+    fn session_restore_does_not_count() {
+        let saved = |url: &str| SavedTab { url: url.into(), title: String::new(), scroll_y: 0.0 };
+        let s = SessionFile { version: SESSION_VERSION, active_index: Some(0), tabs: vec![saved("https://a.com/")] };
+        let (mut b, _log, t0) = setup(Some(&s));
+        let a = b.tabs().active();
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        assert!(b.history().is_empty());
+    }
+
+    #[test]
+    fn youtube_sleep_and_wake_keep_one_entry_without_resume_time() {
+        let (mut b, _log, t0) = setup(None);
+        let yt = b.tabs().active();
+        assert!(b.navigate("https://www.youtube.com/watch?v=abc", t0));
+        b.handle_event(yt, PageEvent::LoadFinished, t0);
+        b.new_tab(t0);
+        assert!(b.navigate("b.com", t0));
+        let t = t0 + secs(301);
+        b.tick(t, Pressure::Normal);
+        b.handle_event(yt, PageEvent::Number { tag: JsTag::VideoTime, value: Some(125.7) }, t);
+        b.handle_event(yt, PageEvent::Activity { media: false, draft: false }, t);
+        assert!(!b.tabs().get(yt).unwrap().awake);
+        b.activate(yt, t);
+        b.handle_event(yt, PageEvent::LoadFinished, t);
+        assert_eq!(visits(&b, "https://www.youtube.com/watch?v=abc"), 1);
+        assert!(b.history().entries().iter().all(|e| !e.url.contains("t=125")));
+    }
+
+    #[test]
+    fn reopened_closed_tab_does_not_count() {
+        let (mut b, _log, t0) = setup(None);
+        let a = b.tabs().active();
+        assert!(b.navigate("a.com", t0));
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        b.new_tab(t0);
+        b.close_tab(a, t0);
+        b.reopen_closed_tab(t0);
+        let reopened = b.tabs().active();
+        b.handle_event(reopened, PageEvent::LoadFinished, t0);
+        assert_eq!(visits(&b, "https://a.com/"), 1);
+    }
+
+    #[test]
+    fn failed_load_and_download_clear_pending_visit() {
+        let (mut b, _log, t0) = setup(None);
+        let a = b.tabs().active();
+        assert!(b.navigate("a.com", t0));
+        b.handle_event(a, PageEvent::LoadFailed("offline".into()), t0);
+        assert_eq!(b.tabs().get(a).unwrap().pending_visit, None);
+        assert!(b.navigate("a.com/berkas.zip", t0));
+        b.handle_event(a, PageEvent::DownloadStarted, t0);
+        assert_eq!(b.tabs().get(a).unwrap().pending_visit, None);
+        assert!(b.history().is_empty());
+    }
+
+    #[test]
+    fn history_disabled_records_nothing() {
+        let log = Shared::default();
+        let t0 = Instant::now();
+        let settings = Settings { history_enabled: false, ..Settings::default() };
+        let mut b = Browser::new(FakeEngine(log), settings, None, History::new(), Box::new(|_| Box::new(|_| {})), t0);
+        let a = b.tabs().active();
+        assert!(b.navigate("a.com", t0));
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        assert!(b.history().is_empty());
+    }
+
+    #[test]
+    fn dirty_bytes_and_delete_forgets_visit() {
+        let (mut b, _log, t0) = setup(None);
+        let a = b.tabs().active();
+        assert!(b.navigate("a.com", t0));
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        assert!(b.history_bytes_if_dirty().is_some());
+        assert!(b.history_bytes_if_dirty().is_none());
+        assert!(b.delete_history("https://a.com/"));
+        assert!(b.take_changes().contains(&UiChange::History));
+        // Halaman yang masih terbuka tercatat lagi saat dimuat ulang.
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        assert_eq!(visits(&b, "https://a.com/"), 1);
+        assert_eq!(b.clear_history_since(None), 1);
+        assert!(b.history().is_empty());
     }
 
     #[test]

@@ -118,7 +118,7 @@ impl AppState {
                     state.refresh();
                 }
             }));
-            let browser = Browser::new(engine, settings, session, sink_factory(weak.clone()), Instant::now());
+            let browser = Browser::new(engine, settings, session, browser_core::history::History::new(), sink_factory(weak.clone()), Instant::now());
             AppState {
                 mtm,
                 me: weak.clone(),
