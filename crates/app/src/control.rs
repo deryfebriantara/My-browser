@@ -186,6 +186,9 @@ pub fn handle(state: &Rc<AppState>, request: R, kind: &ClientKind, reply: Reply)
             }
         },
         R::MemoryUsage => reply(ok(memory_usage(state))),
+        R::SearchHistory { query, limit, days } => reply(ok(search_history(state, query, limit, days))),
+        #[cfg(debug_assertions)]
+        R::DebugUi { action, text } => reply(crate::debug_ui::handle(state, &action, text.as_deref())),
         R::ReadPage { tab_id, max_chars } => {
             run_on_page(state, tab_id, js::read_page(max_chars.unwrap_or(js::DEFAULT_MAX_CHARS)), reply)
         }
@@ -527,6 +530,16 @@ fn megabytes(bytes: u64) -> f64 {
 }
 
 /// Physical footprint proses browser dan proses WebKit miliknya, plus per tab.
+/// Hasil tool `search_history`: halaman yang cocok, terbaru dulu.
+fn search_history(state: &AppState, query: Option<String>, limit: Option<usize>, days: Option<u32>) -> Value {
+    let query: String = query.unwrap_or_default().chars().take(200).collect();
+    let limit = limit.unwrap_or(20).clamp(1, 100);
+    let browser = state.browser.borrow();
+    let since = days.map(|d| browser.unix_now().saturating_sub(u64::from(d) * 86_400));
+    let (entries, total) = browser.search_history(&query, since, 0, limit);
+    browser_core::history::search_json(&entries, total, crate::local_time::offset_at)
+}
+
 fn memory_usage(state: &AppState) -> Value {
     let me = std::process::id() as i32;
     let b = state.browser.borrow();

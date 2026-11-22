@@ -142,6 +142,23 @@ pub enum ControlRequest {
         tab_id: u64,
     },
     MemoryUsage,
+    /// Mencari riwayat halaman yang pernah dibuka (baca saja).
+    SearchHistory {
+        #[serde(default)]
+        query: Option<String>,
+        #[serde(default)]
+        limit: Option<usize>,
+        #[serde(default)]
+        days: Option<u32>,
+    },
+    /// Pengait uji khusus build debug: menggerakkan address bar, menu, dan
+    /// jendela lewat jalur AppKit sungguhan. Tidak ada di build release.
+    #[cfg(debug_assertions)]
+    DebugUi {
+        action: String,
+        #[serde(default)]
+        text: Option<String>,
+    },
     ReadPage {
         #[serde(default)]
         tab_id: Option<u64>,
@@ -274,6 +291,7 @@ impl ControlRequest {
                 | Self::Screenshot { .. }
                 | Self::Youtube { .. }
                 | Self::MemoryUsage
+                | Self::SearchHistory { .. }
                 | Self::ConsoleLogs { .. }
                 | Self::NetworkLog { .. }
                 | Self::WaitFor { .. }
@@ -304,7 +322,9 @@ impl ControlRequest {
             | Self::NetworkLog { tab_id, .. }
             | Self::WaitFor { tab_id, .. }
             | Self::InspectElement { tab_id, .. } => *tab_id,
-            Self::ListTabs | Self::OpenTab { .. } | Self::MemoryUsage => None,
+            Self::ListTabs | Self::OpenTab { .. } | Self::MemoryUsage | Self::SearchHistory { .. } => None,
+            #[cfg(debug_assertions)]
+            Self::DebugUi { .. } => None,
         }
     }
 }
@@ -456,12 +476,25 @@ mod tests {
         assert!(parse(json!({"cmd": "run_js", "code": "1"})).needs_interaction());
         for cmd in [
             "list_tabs", "memory_usage", "read_page", "list_elements", "screenshot",
-            "console_logs", "network_log", "wait_for", "inspect_element", "get_selection",
+            "console_logs", "network_log", "wait_for", "inspect_element", "get_selection", "search_history",
         ] {
             assert!(!parse(json!({"cmd": cmd})).needs_interaction(), "{cmd}");
         }
         assert!(!parse(json!({"cmd": "scroll", "direction": "down"})).needs_interaction());
         assert!(!parse(json!({"cmd": "emulate", "device": "mobile"})).needs_interaction());
+    }
+
+    #[test]
+    fn search_history_parses_and_is_read_only() {
+        assert_eq!(
+            parse(json!({"cmd": "search_history"})),
+            ControlRequest::SearchHistory { query: None, limit: None, days: None }
+        );
+        let r = parse(json!({"cmd": "search_history", "query": "youtube", "limit": 5, "days": 7}));
+        assert_eq!(r, ControlRequest::SearchHistory { query: Some("youtube".into()), limit: Some(5), days: Some(7) });
+        assert!(r.is_read_only());
+        assert_eq!(r.tab_id(), None);
+        assert!(serde_json::from_value::<ControlRequest>(json!({"cmd": "search_history", "url": "x"})).is_err());
     }
 
     #[test]

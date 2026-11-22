@@ -5,7 +5,9 @@
 //! AppKit bisa memanggil balik handler aksi secara sinkron.
 
 use crate::actions::ActionTarget;
+use crate::address_bar::AddressBar;
 use crate::chat::Chat;
+use crate::history_window::HistoryWindow;
 use crate::mcp_access::McpAccess;
 use crate::password_manager::PasswordManager;
 use crate::passwords::Passwords;
@@ -14,6 +16,8 @@ use crate::tab_strip::TabInfo;
 use crate::window::Ui;
 use browser_core::browser::{Browser, SinkFactory, UiChange};
 use browser_core::engine::{Emulation, Page};
+use browser_core::history::History;
+use browser_core::suggest::Suggestion;
 use browser_core::page_scripts::ELEMENT_PICKER;
 use browser_core::session::SessionFile;
 use browser_core::settings::Settings;
@@ -28,7 +32,10 @@ use browser_core::engine::Engine;
 use objc2_foundation::NSRunLoop;
 use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
-use std::time::Instant;
+use std::time::{Duration, Instant};
+
+/// Jeda paling pendek antara dua penyimpanan riwayat saat browsing.
+const HISTORY_SAVE_INTERVAL: Duration = Duration::from_secs(120);
 
 pub struct AppState {
     mtm: MainThreadMarker,
@@ -50,6 +57,12 @@ pub struct AppState {
     pub password_manager: PasswordManager,
     /// Izin program untuk socket kontrol (MCP).
     pub mcp_access: McpAccess,
+    /// Pelengkapan dan dropdown saran address bar.
+    pub address: AddressBar,
+    /// Jendela Riwayat (⌘Y).
+    pub history_window: HistoryWindow,
+    /// Terakhir kali riwayat disimpan.
+    last_history_save: Cell<Instant>,
 }
 
 struct NavInfo {
@@ -102,7 +115,7 @@ fn sink_factory(weak: Weak<AppState>) -> SinkFactory {
 }
 
 impl AppState {
-    pub fn new(mtm: MainThreadMarker, settings: Settings, session: Option<&SessionFile>) -> Rc<AppState> {
+    pub fn new(mtm: MainThreadMarker, settings: Settings, session: Option<&SessionFile>, history: History) -> Rc<AppState> {
         Rc::new_cyclic(|weak: &Weak<AppState>| {
             let target = ActionTarget::new(mtm, weak.clone());
             let ui = Ui::build(mtm, target);
@@ -118,7 +131,7 @@ impl AppState {
                     state.refresh();
                 }
             }));
-            let browser = Browser::new(engine, settings, session, browser_core::history::History::new(), sink_factory(weak.clone()), Instant::now());
+            let browser = Browser::new(engine, settings, session, history, sink_factory(weak.clone()), Instant::now());
             AppState {
                 mtm,
                 me: weak.clone(),
@@ -131,6 +144,9 @@ impl AppState {
                 passwords: Passwords::default(),
                 password_manager: PasswordManager::default(),
                 mcp_access: McpAccess::default(),
+                last_history_save: Cell::new(Instant::now()),
+                address: AddressBar::default(),
+                history_window: HistoryWindow::default(),
             }
         })
     }
@@ -175,6 +191,7 @@ impl AppState {
             self.update_window_title(&nav.title);
         }
         if has(UiChange::Active) {
+            self.address.end();
             let (view, viewport) = {
                 let b = self.browser.borrow();
                 (b.active_view(), b.active_viewport())
@@ -193,6 +210,9 @@ impl AppState {
         if has(UiChange::Settings) {
             let settings = self.browser.borrow().settings().clone();
             persistence::save_settings(&settings);
+        }
+        if has(UiChange::History) {
+            self.history_window.changed(self);
         }
         for change in changes {
             if let UiChange::Notice(message) = change {
@@ -306,6 +326,21 @@ impl AppState {
         if let Some(session) = session {
             persistence::save_session(&session);
         }
+        // Riwayat bisa sekitar 1,5 MB: disimpan paling sering sekali per 2 menit.
+        if self.last_history_save.get().elapsed() >= HISTORY_SAVE_INTERVAL {
+            let bytes = self.browser.borrow_mut().history_bytes_if_dirty();
+            if let Some(bytes) = bytes {
+                persistence::save_history(&bytes);
+                self.last_history_save.set(Instant::now());
+            }
+        }
+    }
+
+    /// Menyimpan riwayat sekarang (setelah dihapus pengguna).
+    pub fn save_history_now(&self) {
+        let bytes = self.browser.borrow_mut().history_bytes();
+        persistence::save_history(&bytes);
+        self.last_history_save.set(Instant::now());
     }
 
     /// Dipanggil saat aplikasi akan keluar: sesi selalu disimpan. Pengaturan
@@ -314,6 +349,10 @@ impl AppState {
     pub fn save_all(&self) {
         let session = self.browser.borrow().tabs().to_session();
         persistence::save_session(&session);
+        let bytes = self.browser.borrow_mut().history_bytes_if_dirty();
+        if let Some(bytes) = bytes {
+            persistence::save_history(&bytes);
+        }
     }
 
     /// URL dari argumen baris perintah. URL pertama memakai tab aktif kalau
@@ -374,22 +413,41 @@ impl AppState {
     }
 
     pub fn focus_address(&self) {
+        self.address.begin();
         self.ui.window.makeFirstResponder(Some(&self.ui.nav.address));
         unsafe { self.ui.nav.address.selectText(None) };
     }
 
     pub fn revert_address(&self) {
+        self.address.end();
         let url = self.nav_info().url;
         self.ui.nav.address.abortEditing();
         self.ui.nav.address.setStringValue(&NSString::from_str(&url));
         self.focus_address();
     }
 
+    /// Enter di address bar tanpa saran yang dipilih.
     pub fn navigate_from_address(&self) {
-        let text = self.ui.nav.address.stringValue().to_string();
-        let ok = self.browser.borrow_mut().navigate(&text, Instant::now());
+        self.address.end();
+        // Selama diedit, teks terbaru ada di field editor.
+        let text = match self.ui.nav.address.currentEditor() {
+            Some(editor) => editor.string().to_string(),
+            None => self.ui.nav.address.stringValue().to_string(),
+        };
+        let ok = self.browser.borrow_mut().navigate_from_address(&text, Instant::now());
         self.refresh();
         if ok && let Some(view) = self.ui.shown_view() {
+            self.ui.window.makeFirstResponder(Some(&view));
+        }
+    }
+
+    /// Membuka saran dari dropdown address bar.
+    pub fn activate_suggestion(&self, suggestion: &Suggestion) {
+        self.address.end();
+        self.ui.nav.address.abortEditing();
+        self.browser.borrow_mut().open_suggestion(suggestion, Instant::now());
+        self.refresh();
+        if let Some(view) = self.ui.shown_view() {
             self.ui.window.makeFirstResponder(Some(&view));
         }
     }

@@ -76,6 +76,23 @@ define_class!(
             self.with(|s| s.reopen_closed_tab());
         }
 
+        #[unsafe(method(showHistory:))]
+        fn show_history(&self, _sender: Option<&AnyObject>) {
+            self.with(|s| s.history_window.open(s));
+        }
+
+        #[unsafe(method(clearHistory:))]
+        fn clear_history(&self, _sender: Option<&AnyObject>) {
+            self.with(crate::history_window::clear_dialog);
+        }
+
+        /// Baris dropdown saran address bar diklik (tag = nomor baris).
+        #[unsafe(method(suggestionClicked:))]
+        fn suggestion_clicked(&self, sender: Option<&AnyObject>) {
+            let index = tag_of(sender) as usize;
+            self.with(|s| s.address.clicked(s, index));
+        }
+
         #[unsafe(method(focusAddress:))]
         fn focus_address(&self, _sender: Option<&AnyObject>) {
             self.with(|s| s.focus_address());
@@ -166,6 +183,9 @@ define_class!(
                 item.setState(if on { NSControlStateValueOn } else { NSControlStateValueOff });
                 return Bool::YES;
             }
+            if item.action() == Some(sel!(clearHistory:)) {
+                return Bool::new(self.ivars().state.upgrade().is_some_and(|s| !s.browser.borrow().history().is_empty()));
+            }
             if item.action() == Some(sel!(lockPasswords:)) {
                 return Bool::new(self.ivars().state.upgrade().is_some_and(|s| s.passwords.is_unlocked()));
             }
@@ -188,14 +208,27 @@ define_class!(
     }
 
     unsafe impl NSControlTextEditingDelegate for ActionTarget {
-        /// Escape di address field mengembalikan URL tab aktif.
+        /// Panah, Enter, Escape, Tab, dan hapus di address field: dropdown
+        /// saran dan pelengkapan inline (lihat `AddressBar::command`).
         #[unsafe(method(control:textView:doCommandBySelector:))]
         fn do_command(&self, _control: &NSControl, _text_view: &NSTextView, command: Sel) -> Bool {
-            if command == sel!(cancelOperation:) {
-                self.with(|s| s.revert_address());
-                return Bool::YES;
-            }
-            Bool::NO
+            let Some(state) = self.ivars().state.upgrade() else { return Bool::NO };
+            Bool::new(state.address.command(&state, command))
+        }
+
+        #[unsafe(method(controlTextDidBeginEditing:))]
+        fn text_did_begin(&self, notification: &NSNotification) {
+            self.with_address(notification, |s| s.address.begin());
+        }
+
+        #[unsafe(method(controlTextDidChange:))]
+        fn text_did_change(&self, notification: &NSNotification) {
+            self.with_address(notification, |s| s.address.text_did_change(s));
+        }
+
+        #[unsafe(method(controlTextDidEndEditing:))]
+        fn text_did_end(&self, notification: &NSNotification) {
+            self.with_address(notification, |s| s.address.end());
         }
     }
 
@@ -203,14 +236,28 @@ define_class!(
 
     unsafe impl NSWindowDelegate for ActionTarget {
         #[unsafe(method(windowDidResize:))]
-        fn window_did_resize(&self, _notification: &NSNotification) {
+        fn window_did_resize(&self, notification: &NSNotification) {
             self.with(|s| s.layout_tabs());
+            self.with_main_window(notification, |s| s.address.hide_popup());
+        }
+
+        #[unsafe(method(windowDidResignKey:))]
+        fn window_did_resign_key(&self, notification: &NSNotification) {
+            self.with_main_window(notification, |s| s.address.hide_popup());
+        }
+
+        #[unsafe(method(windowWillMove:))]
+        fn window_will_move(&self, notification: &NSNotification) {
+            self.with_main_window(notification, |s| s.address.hide_popup());
         }
 
         #[unsafe(method(windowWillClose:))]
         fn window_will_close(&self, notification: &NSNotification) {
             let window = notification.object().map_or(std::ptr::null(), |o| Retained::as_ptr(&o).cast());
-            self.with(|s| s.password_manager.window_will_close(s, window));
+            self.with(|s| {
+                s.password_manager.window_will_close(s, window);
+                s.history_window.window_will_close(s, window);
+            });
         }
     }
 );
@@ -225,5 +272,23 @@ impl ActionTarget {
         if let Some(state) = self.ivars().state.upgrade() {
             f(&state);
         }
+    }
+
+    /// Seperti `with`, hanya untuk notifikasi dari address field.
+    fn with_address(&self, notification: &NSNotification, f: impl FnOnce(&Rc<AppState>)) {
+        self.with(|s| {
+            if notification.object().is_some_and(|o| std::ptr::eq(Retained::as_ptr(&o).cast::<u8>(), Retained::as_ptr(&s.ui.nav.address).cast())) {
+                f(s);
+            }
+        });
+    }
+
+    /// Seperti `with`, hanya untuk notifikasi dari jendela utama.
+    fn with_main_window(&self, notification: &NSNotification, f: impl FnOnce(&Rc<AppState>)) {
+        self.with(|s| {
+            if notification.object().is_some_and(|o| std::ptr::eq(Retained::as_ptr(&o).cast::<u8>(), Retained::as_ptr(&s.ui.window).cast())) {
+                f(s);
+            }
+        });
     }
 }

@@ -71,7 +71,7 @@ impl McpAccess {
             info.push_str(&format!("\nFolder kerja: {cwd}"));
         }
         info.push_str(
-            "\n\nProgram ini akan bisa membaca dan memotret tab, membuka halaman, dan mengatur tab. Klik, mengetik, \
+            "\n\nProgram ini akan bisa membaca dan memotret tab, membaca riwayat, membuka halaman, dan mengatur tab. Klik, mengetik, \
              dan JavaScript tetap butuh menu Claude > Izinkan Claude Berinteraksi. Tolak kalau Anda tidak mengenali \
              program ini.",
         );

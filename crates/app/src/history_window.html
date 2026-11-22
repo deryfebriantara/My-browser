@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<style>
+  :root {
+    --bg: #faf9f7; --surface: #ffffff; --text: #1f1e1d; --muted: #6f6b66; --line: #e7e3dd;
+    --accent: #c96442; --accent-text: #ffffff; --danger: #b3261e; --soft: #f1eee9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1f1e1d; --surface: #2a2927; --text: #ecebe8; --muted: #a29d96; --line: #3a3835;
+      --accent: #d97757; --accent-text: #1f1e1d; --danger: #f2b8b5; --soft: #33312e;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body { display: flex; flex-direction: column; background: var(--bg); color: var(--text); font: 13px/1.45 -apple-system, BlinkMacSystemFont, sans-serif; -webkit-font-smoothing: antialiased; }
+  header { display: flex; gap: 8px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  input { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; outline: 0; flex: 1; }
+  input:focus { border-color: var(--accent); }
+  button { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 5px 11px; cursor: default; white-space: nowrap; }
+  button:hover { border-color: var(--accent); }
+  button.danger { color: var(--danger); }
+  main { flex: 1; overflow-y: auto; padding: 4px 16px 16px; }
+  h2 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 16px 0 4px; position: sticky; top: 0; background: var(--bg); padding: 4px 0; }
+  .row { display: grid; grid-template-columns: 44px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 8px; border-radius: 8px; }
+  .row:hover { background: var(--soft); }
+  .time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .page { min-width: 0; cursor: default; }
+  .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .url { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 12px; }
+  .actions { display: flex; gap: 2px; opacity: 0; }
+  .row:hover .actions, .row:focus-within .actions { opacity: 1; }
+  .icon { border: 0; background: none; padding: 3px 7px; color: var(--muted); }
+  .icon:hover { color: var(--text); }
+  .empty { text-align: center; color: var(--muted); margin-top: 80px; }
+  footer { display: flex; justify-content: space-between; align-items: center; padding: 8px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+  #toast { position: fixed; left: 50%; bottom: 56px; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 7px 12px; border-radius: 8px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.on { opacity: .95; }
+</style>
+</head>
+<body>
+<header>
+  <input id="search" type="search" placeholder="Cari riwayat" aria-label="Cari riwayat" autofocus>
+</header>
+<main id="list"></main>
+<footer>
+  <span id="count"></span>
+  <button id="clear" class="danger">Hapus Riwayat…</button>
+</footer>
+<div id="toast" role="status"></div>
+<script>
+(function () {
+  'use strict';
+  function post(o) { webkit.messageHandlers.mb.postMessage(JSON.stringify(o)); }
+  var list = document.getElementById('list');
+  var search = document.getElementById('search');
+  var count = document.getElementById('count');
+  var entries = [], total = 0, query = '', loading = false;
+
+  var toastTimer;
+  function toast(text) {
+    var t = document.getElementById('toast'); t.textContent = text; t.classList.add('on');
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove('on'); }, 3000);
+  }
+
+  function dayLabel(d) {
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    var day = new Date(d); day.setHours(0, 0, 0, 0);
+    var diff = Math.round((today - day) / 86400000);
+    if (diff === 0) return 'Hari ini';
+    if (diff === 1) return 'Kemarin';
+    return d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  }
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  }
+
+  function row(entry) {
+    var d = new Date(entry.last * 1000);
+    var r = el('div', 'row');
+    r.appendChild(el('span', 'time', d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })));
+    var page = el('div', 'page');
+    page.title = entry.url;
+    // Judul berasal dari situs: selalu lewat textContent, tidak pernah innerHTML.
+    page.appendChild(el('div', 'title', entry.title || entry.display));
+    page.appendChild(el('div', 'url', entry.display));
+    page.onclick = function (ev) { post({ t: 'open', url: entry.url, new_tab: ev.metaKey }); };
+    r.appendChild(page);
+    var actions = el('div', 'actions');
+    var newTab = el('button', 'icon', '↗');
+    newTab.title = 'Buka di Tab Baru'; newTab.setAttribute('aria-label', 'Buka di Tab Baru');
+    newTab.onclick = function () { post({ t: 'open', url: entry.url, new_tab: true }); };
+    var del = el('button', 'icon', '✕');
+    del.title = 'Hapus dari riwayat'; del.setAttribute('aria-label', 'Hapus dari riwayat');
+    del.onclick = function () { post({ t: 'delete', url: entry.url }); };
+    actions.appendChild(newTab); actions.appendChild(del);
+    r.appendChild(actions);
+    return r;
+  }
+
+  function render() {
+    list.textContent = '';
+    if (!entries.length) {
+      list.appendChild(el('p', 'empty', query ? 'Tidak ada yang cocok dengan “' + query + '”.' : 'Riwayat masih kosong.'));
+    }
+    var lastLabel = null;
+    entries.forEach(function (entry) {
+      var label = dayLabel(new Date(entry.last * 1000));
+      if (label !== lastLabel) { list.appendChild(el('h2', '', label)); lastLabel = label; }
+      list.appendChild(row(entry));
+    });
+    count.textContent = total + ' halaman' + (query ? ' cocok' : '');
+    document.getElementById('clear').disabled = !total && !query;
+  }
+
+  var timer;
+  search.addEventListener('input', function () {
+    clearTimeout(timer);
+    timer = setTimeout(function () { post({ t: 'query', q: search.value, offset: 0 }); }, 150);
+  });
+  list.addEventListener('scroll', function () {
+    if (loading || entries.length >= total) return;
+    if (list.scrollTop + list.clientHeight > list.scrollHeight - 300) {
+      loading = true;
+      post({ t: 'query', q: query, offset: entries.length });
+    }
+  });
+  document.getElementById('clear').onclick = function () { post({ t: 'clear' }); };
+  window.addEventListener('focus', function () { post({ t: 'query', q: query, offset: 0 }); });
+
+  window.mbReceive = function (m) {
+    if (m.t === 'entries') {
+      loading = false;
+      if (m.offset === 0 || m.q !== query) entries = m.entries; else entries = entries.concat(m.entries);
+      query = m.q; total = m.total;
+      render();
+    } else if (m.t === 'toast') toast(m.text);
+  };
+  post({ t: 'ready' });
+})();
+</script>
+</body>
+</html>

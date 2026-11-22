@@ -34,10 +34,15 @@ fn make(mtm: MainThreadMarker, spec: &Item) -> Retained<NSMenuItem> {
     item
 }
 
+/// Item tanpa judul menjadi garis pemisah.
 fn submenu(mtm: MainThreadMarker, title: &str, items: &[Item]) -> Retained<NSMenuItem> {
     let menu = NSMenu::initWithTitle(NSMenu::alloc(mtm), &NSString::from_str(title));
     for spec in items {
-        menu.addItem(&make(mtm, spec));
+        if spec.title.is_empty() {
+            menu.addItem(&NSMenuItem::separatorItem(mtm));
+        } else {
+            menu.addItem(&make(mtm, spec));
+        }
     }
     let holder = NSMenuItem::new(mtm);
     holder.setSubmenu(Some(&menu));
@@ -89,7 +94,13 @@ pub fn build(mtm: MainThreadMarker, target: &ActionTarget) -> Retained<NSMenu> {
     main.addItem(&submenu(
         mtm,
         "Riwayat",
-        &[it("Mundur", sel!(goBack:), "[", cmd, t, 0), it("Maju", sel!(goForward:), "]", cmd, t, 0)],
+        &[
+            it("Mundur", sel!(goBack:), "[", cmd, t, 0),
+            it("Maju", sel!(goForward:), "]", cmd, t, 0),
+            it("", sel!(goBack:), "", cmd, t, 0),
+            it("Tampilkan Semua Riwayat", sel!(showHistory:), "y", cmd, t, 0),
+            it("Hapus Riwayat…", sel!(clearHistory:), "", cmd, t, 0),
+        ],
     ));
 
     let opt_cmd = NSEventModifierFlags::Option | NSEventModifierFlags::Command;

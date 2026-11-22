@@ -21,7 +21,8 @@ Claude > Izinkan Claude Berinteraksi di browser. Untuk membangun atau men-debug 
 server lokal, buka dengan navigate (mis. http://localhost:5173), lalu setelah setiap perubahan \
 panggil check_page (reload + error console + request gagal + screenshot sekaligus). Periksa tampilan HP, \
 tablet, dan mode gelap dengan emulate, lalu kembalikan dengan emulate device=reset. Kalau pengguna \
-menyebut elemen yang ia tunjuk atau pilih di browser, panggil get_selection.";
+menyebut elemen yang ia tunjuk atau pilih di browser, panggil get_selection. Untuk halaman yang pernah dibuka \
+pengguna (mis. \"video yang saya tonton kemarin\"), pakai search_history.";
 
 pub struct Server<T: Transport> {
     transport: T,
@@ -409,7 +410,7 @@ mod tests {
         let mut s = server(|_| unreachable!());
         let list = call(&mut s, json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}))["result"]["tools"].clone();
         let list = list.as_array().unwrap();
-        assert_eq!(list.len(), 25);
+        assert_eq!(list.len(), 26);
         for t in list {
             let name = t["name"].as_str().unwrap();
             // check_page dirangkai server ini dari beberapa permintaan.
