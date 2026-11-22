@@ -1,0 +1,19 @@
+# Pemeriksaan yang sama dengan scripts/check.sh, di runner macOS GitHub.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain dari rust-toolchain.toml
+        run: rustup show && rustup component add rustfmt clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Pasang cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Format, clippy, test, audit
+        run: scripts/check.sh
