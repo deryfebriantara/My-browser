@@ -79,6 +79,11 @@ fn looks_like_domain(host: &str) -> bool {
     }
 }
 
+/// URL pencarian untuk `text` lewat `template` (`{}` diganti kata kunci).
+pub fn search_url(text: &str, template: &str) -> Option<Url> {
+    search(text.trim(), template)
+}
+
 fn search(text: &str, template: &str) -> Option<Url> {
     let query: String = url::form_urlencoded::byte_serialize(text.as_bytes()).collect();
     Url::parse(&template.replace("{}", &query)).ok()

@@ -18,4 +18,6 @@ pub mod claude_chat;
 pub mod password_scripts;
 pub mod drafts;
 pub mod history;
+pub mod suggest;
+pub mod address_edit;
 pub mod mcp_access;

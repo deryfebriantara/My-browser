@@ -9,6 +9,7 @@ use crate::omnibox::{Parsed, classify_input, parse_input};
 use crate::session::SessionFile;
 use crate::settings::Settings;
 use crate::sleep::{Pressure, tabs_to_sleep};
+use crate::suggest::{Suggestion, SuggestionKind, Suggestions, TabCandidate, suggest};
 use crate::tabs::{PendingVisit, TabId, TabList, Url};
 use crate::youtube::{VIDEO_TIME_JS, is_youtube_watch, with_resume_time};
 use std::collections::HashMap;
@@ -179,6 +180,39 @@ impl<E: Engine> Browser<E> {
     /// Detik unix sekarang menurut jam riwayat.
     pub fn unix_now(&self) -> u64 {
         (self.clock)()
+    }
+
+    /// Saran address bar untuk `input` dari riwayat dan tab lain yang terbuka.
+    pub fn suggest(&self, input: &str, allow_inline: bool) -> Suggestions {
+        let active = self.tabs.active();
+        let tabs: Vec<TabCandidate> = self
+            .tabs
+            .iter()
+            .filter(|t| t.id != active)
+            .filter_map(|t| t.url.as_ref().map(|url| TabCandidate { id: t.id, title: &t.title, url }))
+            .collect();
+        suggest(input, &self.history, &tabs, &self.settings.search_template, allow_inline, (self.clock)())
+    }
+
+    /// Membuka saran address bar. "Pindah ke tab" menutup tab asal kalau tab
+    /// itu kosong, seperti Safari.
+    pub fn open_suggestion(&mut self, suggestion: &Suggestion, now: Instant) -> bool {
+        let active = self.tabs.active();
+        match suggestion.kind {
+            SuggestionKind::SwitchTab(id) => {
+                if id == active || self.tabs.get(id).is_none() {
+                    return false;
+                }
+                let blank = self.tabs.get(active).is_some_and(|t| t.url.is_none());
+                self.activate(id, now);
+                if blank {
+                    self.close_tab(active, now);
+                }
+                true
+            }
+            SuggestionKind::Search => self.navigate_url(active, suggestion.url.clone(), false, now),
+            SuggestionKind::Url | SuggestionKind::History => self.navigate_url(active, suggestion.url.clone(), true, now),
+        }
     }
 
     pub fn active_view(&self) -> Option<<E::Page as Page>::View> {
@@ -1109,6 +1143,48 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         assert_eq!(visits(&b, "https://a.com/"), 1);
         assert_eq!(b.clear_history_since(None), 1);
         assert!(b.history().is_empty());
+    }
+
+    #[test]
+    fn suggest_excludes_active_tab_and_offers_others() {
+        let (mut b, _log, t0) = setup(None);
+        let (a, bb) = two_tabs(&mut b, t0);
+        b.handle_event(a, PageEvent::TitleChanged("Situs A".into()), t0);
+        b.handle_event(bb, PageEvent::TitleChanged("Situs B".into()), t0);
+        let kinds: Vec<SuggestionKind> = b.suggest("situs", false).rows.into_iter().map(|r| r.kind).collect();
+        assert!(kinds.contains(&SuggestionKind::SwitchTab(a)));
+        assert!(!kinds.contains(&SuggestionKind::SwitchTab(bb)), "tab aktif tidak disarankan");
+    }
+
+    #[test]
+    fn switch_tab_suggestion_closes_blank_tab() {
+        let (mut b, log, t0) = setup(None);
+        let a = b.tabs().active();
+        assert!(b.navigate("a.com", t0));
+        b.new_tab(t0);
+        let blank = b.tabs().active();
+        let s = b.suggest("a.com", false).rows.into_iter().find(|r| r.kind == SuggestionKind::SwitchTab(a)).unwrap();
+        let loads = log.borrow().calls.iter().filter(|c| matches!(c, Call::Load(_))).count();
+        assert!(b.open_suggestion(&s, t0));
+        assert_eq!(b.tabs().active(), a);
+        assert!(b.tabs().get(blank).is_none(), "tab kosong asal ditutup");
+        assert_eq!(log.borrow().calls.iter().filter(|c| matches!(c, Call::Load(_))).count(), loads, "tidak memuat ulang");
+    }
+
+    #[test]
+    fn history_suggestion_counts_as_typed() {
+        let (mut b, _log, t0) = setup(None);
+        let a = b.tabs().active();
+        let row = Suggestion {
+            kind: SuggestionKind::History,
+            title: String::new(),
+            detail: String::new(),
+            url: u("https://docs.rs/url"),
+            fill: String::new(),
+        };
+        assert!(b.open_suggestion(&row, t0));
+        b.handle_event(a, PageEvent::LoadFinished, t0);
+        assert_eq!(hist(&b), vec![("https://docs.rs/url".into(), String::new(), 1, 1)]);
     }
 
     #[test]
