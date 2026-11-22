@@ -209,15 +209,15 @@ pub fn handle(state: &Rc<AppState>, request: R, kind: &ClientKind, reply: Reply)
         }
         R::GetSelection { tab_id } => get_selection(state, tab_id, reply),
         R::Click { element, tab_id } => {
-            notice(state, &format!("Claude: klik elemen {element}"));
+            notice(state, &format!("Claude: clicking element {element}"));
             run_on_page(state, tab_id, js::click(element), reply)
         }
         R::Type { element, text, submit, tab_id } => {
-            notice(state, &format!("Claude: mengisi elemen {element}"));
+            notice(state, &format!("Claude: typing into element {element}"));
             run_on_page(state, tab_id, js::type_text(element, &text, submit), reply)
         }
         R::RunJs { code, tab_id } => {
-            notice(state, "Claude: menjalankan JavaScript");
+            notice(state, "Claude: running JavaScript");
             run_async_on_page(state, tab_id, js::run_js(&code), reply)
         }
         R::ConsoleLogs { level, since, limit, tab_id } => run_on_page(
@@ -475,17 +475,17 @@ fn split_reply(reply: Reply) -> (Reply, Reply) {
 
 fn describe_emulation(e: &Emulation) -> String {
     if *e == Emulation::default() {
-        return "tampilan normal".into();
+        return "normal view".into();
     }
     let mut parts = Vec::new();
     match e.viewport {
-        Some((w, h)) => parts.push(format!("{}{}×{}", if e.mobile { "HP " } else { "" }, w, h)),
-        None if e.mobile => parts.push("user agent HP".into()),
+        Some((w, h)) => parts.push(format!("{}{}×{}", if e.mobile { "phone " } else { "" }, w, h)),
+        None if e.mobile => parts.push("phone user agent".into()),
         None => {}
     }
     match e.color_scheme {
-        ColorScheme::Dark => parts.push("mode gelap".into()),
-        ColorScheme::Light => parts.push("mode terang".into()),
+        ColorScheme::Dark => parts.push("dark mode".into()),
+        ColorScheme::Light => parts.push("light mode".into()),
         ColorScheme::System => {}
     }
     parts.join(", ")
@@ -620,10 +620,10 @@ mod tests {
     #[test]
     fn emulation_is_described_in_plain_words() {
         let phone = Emulation { viewport: Some((390.0, 844.0)), mobile: true, color_scheme: ColorScheme::Dark };
-        assert_eq!(describe_emulation(&phone), "HP 390×844, mode gelap");
-        assert_eq!(describe_emulation(&Emulation::default()), "tampilan normal");
+        assert_eq!(describe_emulation(&phone), "phone 390×844, dark mode");
+        assert_eq!(describe_emulation(&Emulation::default()), "normal view");
         let light = Emulation { color_scheme: ColorScheme::Light, ..Emulation::default() };
-        assert_eq!(describe_emulation(&light), "mode terang");
+        assert_eq!(describe_emulation(&light), "light mode");
     }
 
     #[test]

@@ -65,13 +65,13 @@ Pencatat console dan network terpasang di awal setiap halaman dan dibatasi jumla
 
 Socket kontrol hanya bisa dibuka oleh user macOS yang sama. Itu berarti program apa pun yang Anda jalankan, jadi setiap program juga harus diizinkan dulu.
 
-- Saat sebuah program tersambung pertama kali, my-browser maju ke depan dan bertanya: "Izinkan Claude Code mengontrol my-browser?". Dialog itu menampilkan lokasi program, pid, dan folder kerjanya, sehingga Anda bisa mengenali sesi Claude Code mana yang meminta. Pilihannya:
-  - **Selalu Izinkan:** lokasi program disimpan di `mcp_allowed_clients` di `settings.json`.
-  - **Izinkan Sekali:** berlaku sampai koneksi itu putus.
-  - **Tolak:** berlaku sampai browser ditutup.
+- Saat sebuah program tersambung pertama kali, my-browser maju ke depan dan bertanya: "Allow Claude Code to control my-browser?". Dialog itu menampilkan lokasi program, pid, dan folder kerjanya, sehingga Anda bisa mengenali sesi Claude Code mana yang meminta. Pilihannya:
+  - **Always Allow:** lokasi program disimpan di `mcp_allowed_clients` di `settings.json`.
+  - **Allow Once:** berlaku sampai koneksi itu putus.
+  - **Deny:** berlaku sampai browser ditutup.
 - Permintaan pertama menunggu jawaban Anda sampai 35 detik. Kalau Anda menjawab setelah itu, jawabannya tetap berlaku untuk permintaan berikutnya.
 - **Identitas dari kernel**, bukan dari pengakuan program. Pid peer socket menunjuk ke `my-browser --mcp`, dan yang dianggap meminta akses adalah induk proses itu (misalnya `claude`). Program asing yang menjalankan `my-browser --mcp` sendiri akan tampil dengan namanya sendiri.
-- **Panel Tanya Claude** dikenali dari silsilah proses (proses Claude-nya adalah anak browser ini), jadi tidak ditanya. Browser juga membatasinya ke perintah baca saja, sebagai lapisan kedua di atas daftar tool panel.
+- **Panel Ask Claude** dikenali dari silsilah proses (proses Claude-nya adalah anak browser ini), jadi tidak ditanya. Browser juga membatasinya ke perintah baca saja, sebagai lapisan kedua di atas daftar tool panel.
 - Program yang diizinkan bisa membaca riwayat lewat `search_history`, dan teks dialognya menyebut hal itu. Program yang sudah diizinkan sebelum tool ini ada tidak ditanya ulang.
 - Menu **Claude > Revoke MCP Client Access** menghapus semua izin; setiap program akan ditanya lagi.
 - Izin disimpan per lokasi program. Setelah Claude Code diperbarui ke lokasi lain (misalnya versi Node di nvm berganti), Anda akan ditanya sekali lagi.

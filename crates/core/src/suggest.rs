@@ -95,7 +95,7 @@ pub fn suggest(
             Parsed::Url(url) => Suggestion {
                 kind: SuggestionKind::Url,
                 title: display_url(url.as_str()),
-                detail: "Buka alamat".into(),
+                detail: "Open address".into(),
                 url: url.clone(),
                 fill: query.to_string(),
             },
@@ -124,7 +124,7 @@ pub fn suggest(
         rows.push(Suggestion {
             kind: SuggestionKind::SwitchTab(tab.id),
             title: if tab.title.trim().is_empty() { display.clone() } else { tab.title.to_string() },
-            detail: format!("Pindah ke tab · {display}"),
+            detail: format!("Switch to tab · {display}"),
             url: tab.url.clone(),
             fill: tab.url.to_string(),
         });
@@ -178,7 +178,7 @@ fn search_row(query: &str, url: &Url, template: &str) -> Suggestion {
         .unwrap_or_default();
     Suggestion {
         kind: SuggestionKind::Search,
-        title: format!("Cari “{query}”"),
+        title: format!("Search “{query}”"),
         detail: engine,
         url: url.clone(),
         fill: query.to_string(),
@@ -395,7 +395,7 @@ mod tests {
         let s = run("resep nasi", &History::new());
         assert_eq!(s.rows.len(), 1);
         assert_eq!(s.rows[0].kind, SuggestionKind::Search);
-        assert_eq!(s.rows[0].title, "Cari “resep nasi”");
+        assert_eq!(s.rows[0].title, "Search “resep nasi”");
         assert_eq!(s.rows[0].detail, "google.com");
         assert_eq!(s.rows[0].url.as_str(), "https://www.google.com/search?q=resep+nasi");
         assert_eq!(s.inline_tail, None);
@@ -499,7 +499,7 @@ mod tests {
         let s = suggest("url rust", &h, &tabs, G, true, NOW);
         assert_eq!(s.rows[0].kind, SuggestionKind::Search);
         assert_eq!(s.rows[1].kind, SuggestionKind::SwitchTab(TabId(7)));
-        assert_eq!(s.rows[1].detail, "Pindah ke tab · docs.rs/url");
+        assert_eq!(s.rows[1].detail, "Switch to tab · docs.rs/url");
         assert_eq!(s.rows.iter().filter(|r| r.url == url).count(), 1);
     }
 

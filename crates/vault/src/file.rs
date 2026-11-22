@@ -79,9 +79,9 @@ pub enum VaultError {
 impl std::fmt::Display for VaultError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            VaultError::WrongPassword => write!(f, "Master password salah."),
-            VaultError::Corrupt(why) => write!(f, "Berkas vault rusak: {why}"),
-            VaultError::Unsupported(why) => write!(f, "Berkas vault tidak didukung: {why}"),
+            VaultError::WrongPassword => write!(f, "Incorrect master password."),
+            VaultError::Corrupt(why) => write!(f, "The vault file is damaged: {why}"),
+            VaultError::Unsupported(why) => write!(f, "The vault file isn't supported: {why}"),
         }
     }
 }
@@ -99,7 +99,7 @@ fn sealed(nonce: [u8; crypto::NONCE_LEN], ct: Vec<u8>) -> Sealed {
 }
 
 fn decode(field: &str, value: &str) -> Result<Vec<u8>, VaultError> {
-    hex::decode(value).ok_or_else(|| VaultError::Corrupt(format!("{field} bukan heksadesimal")))
+    hex::decode(value).ok_or_else(|| VaultError::Corrupt(format!("{field} is not hexadecimal")))
 }
 
 /// Vault yang sedang terbuka. Kunci dan entri dihapus dari memory saat dilepas.
@@ -114,7 +114,7 @@ impl Vault {
     /// Vault baru yang kosong, dikunci dengan `master`.
     pub fn create(master: &str, params: KdfParams) -> Result<Vault, VaultError> {
         if master.is_empty() {
-            return Err(VaultError::Unsupported("master password kosong".into()));
+            return Err(VaultError::Unsupported("empty master password".into()));
         }
         let key = crypto::random_key();
         let (kdf, wrapped) = wrap(&key, master, params)?;
@@ -124,21 +124,21 @@ impl Vault {
     /// Membuka berkas dengan master password.
     pub fn unlock(file: &VaultFile, master: &str) -> Result<Vault, VaultError> {
         if file.version != VERSION {
-            return Err(VaultError::Unsupported(format!("versi {}", file.version)));
+            return Err(VaultError::Unsupported(format!("version {}", file.version)));
         }
         if file.kdf.alg != ALG {
-            return Err(VaultError::Unsupported(format!("algoritma {}", file.kdf.alg)));
+            return Err(VaultError::Unsupported(format!("algorithm {}", file.kdf.alg)));
         }
         let params = KdfParams { m_kib: file.kdf.m_kib, t: file.kdf.t, p: file.kdf.p };
         if !params.within_limits() {
-            return Err(VaultError::Unsupported("parameter Argon2id di luar batas".into()));
+            return Err(VaultError::Unsupported("Argon2id parameters out of range".into()));
         }
         let salt = decode("salt", &file.kdf.salt)?;
         if !(SALT_LEN..=64).contains(&salt.len()) {
-            return Err(VaultError::Corrupt("panjang salt".into()));
+            return Err(VaultError::Corrupt("invalid salt length".into()));
         }
         let kek = crypto::derive(master.as_bytes(), &salt, params.m_kib, params.t, params.p)
-            .ok_or_else(|| VaultError::Unsupported("parameter Argon2id".into()))?;
+            .ok_or_else(|| VaultError::Unsupported("invalid Argon2id parameters".into()))?;
         let raw = crypto::open(
             &kek,
             &decode("key.nonce", &file.key.nonce)?,
@@ -147,16 +147,16 @@ impl Vault {
         )
         .ok_or(VaultError::WrongPassword)?;
         let key: Key =
-            Zeroizing::new(raw.as_slice().try_into().map_err(|_| VaultError::Corrupt("panjang kunci".into()))?);
+            Zeroizing::new(raw.as_slice().try_into().map_err(|_| VaultError::Corrupt("invalid key length".into()))?);
         let json = crypto::open(
             &key,
             &decode("data.nonce", &file.data.nonce)?,
             &decode("data.ct", &file.data.ct)?,
             &header_aad(&file.kdf, "data"),
         )
-        .ok_or_else(|| VaultError::Corrupt("isi tidak lolos autentikasi".into()))?;
+        .ok_or_else(|| VaultError::Corrupt("contents failed authentication".into()))?;
         let entries: Vec<Entry> =
-            serde_json::from_slice(&json).map_err(|e| VaultError::Corrupt(format!("isi tidak terbaca: {e}")))?;
+            serde_json::from_slice(&json).map_err(|e| VaultError::Corrupt(format!("contents can't be read: {e}")))?;
         Ok(Vault { key, kdf: file.kdf.clone(), wrapped: file.key.clone(), entries })
     }
 
@@ -170,7 +170,7 @@ impl Vault {
     /// Mengganti master password. Isi tidak perlu dienkripsi ulang.
     pub fn change_master(&mut self, master: &str, params: KdfParams) -> Result<(), VaultError> {
         if master.is_empty() {
-            return Err(VaultError::Unsupported("master password kosong".into()));
+            return Err(VaultError::Unsupported("empty master password".into()));
         }
         let (kdf, wrapped) = wrap(&self.key, master, params)?;
         self.kdf = kdf;
@@ -282,12 +282,12 @@ impl Vault {
 
 fn wrap(key: &Key, master: &str, params: KdfParams) -> Result<(Kdf, Sealed), VaultError> {
     if !params.within_limits() {
-        return Err(VaultError::Unsupported("parameter Argon2id di luar batas".into()));
+        return Err(VaultError::Unsupported("Argon2id parameters out of range".into()));
     }
     let salt = crypto::random::<SALT_LEN>();
     let kdf = Kdf { alg: ALG.into(), m_kib: params.m_kib, t: params.t, p: params.p, salt: hex::encode(&salt) };
     let kek = crypto::derive(master.as_bytes(), &salt, params.m_kib, params.t, params.p)
-        .ok_or_else(|| VaultError::Unsupported("parameter Argon2id".into()))?;
+        .ok_or_else(|| VaultError::Unsupported("invalid Argon2id parameters".into()))?;
     let (nonce, ct) = crypto::seal(&kek, key.as_ref(), &header_aad(&kdf, "key"));
     Ok((kdf, sealed(nonce, ct)))
 }
@@ -296,10 +296,10 @@ fn wrap(key: &Key, master: &str, params: KdfParams) -> Result<(Kdf, Sealed), Vau
 pub fn load(path: &Path) -> Result<Option<VaultFile>, VaultError> {
     match std::fs::read(path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(VaultError::Corrupt(format!("tidak bisa dibaca: {e}"))),
-        Ok(bytes) => {
-            serde_json::from_slice(&bytes).map(Some).map_err(|e| VaultError::Corrupt(format!("bukan JSON vault: {e}")))
-        }
+        Err(e) => Err(VaultError::Corrupt(format!("can't be read: {e}"))),
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|e| VaultError::Corrupt(format!("not a vault JSON file: {e}"))),
     }
 }
 

@@ -25,9 +25,9 @@ fn download_notice(event: &PageEvent) -> Option<String> {
     match event {
         PageEvent::DownloadFinished(path) => {
             let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-            Some(format!("Selesai diunduh: {name}"))
+            Some(format!("Downloaded: {name}"))
         }
-        PageEvent::DownloadFailed(message) => Some(format!("Gagal mengunduh: {message}")),
+        PageEvent::DownloadFailed(message) => Some(format!("Download failed: {message}")),
         _ => None,
     }
 }
@@ -478,9 +478,7 @@ impl<E: Engine> Browser<E> {
                 if !is_active {
                     self.sleep(id);
                 } else if previous.is_some_and(|p| now.saturating_duration_since(p) < CRASH_RELOAD_WINDOW) {
-                    self.change(UiChange::Notice(
-                        "Halaman ini crash berulang kali. Tekan ⌘R untuk memuat ulang.".into(),
-                    ));
+                    self.change(UiChange::Notice("This page keeps crashing. Press ⌘R to reload.".into()));
                 } else {
                     self.pages[&id].reload();
                 }
@@ -506,7 +504,7 @@ impl<E: Engine> Browser<E> {
                 tab.pending_visit = None;
                 if is_active {
                     self.change(UiChange::Nav);
-                    self.change(UiChange::Notice(format!("Gagal memuat halaman: {message}")));
+                    self.change(UiChange::Notice(format!("Couldn't load page: {message}")));
                 }
             }
             // Ditangani aplikasi (pengelola password) sebelum sampai ke sini.

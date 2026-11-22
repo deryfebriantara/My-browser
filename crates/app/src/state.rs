@@ -80,7 +80,7 @@ pub(crate) fn display_title(tab: &Tab) -> String {
     }
     match &tab.url {
         Some(url) => url.host_str().unwrap_or(url.as_str()).to_string(),
-        None => "Tab Baru".to_string(),
+        None => "New Tab".to_string(),
     }
 }
 
@@ -231,7 +231,7 @@ impl AppState {
     fn update_window_title(&self, tab_title: &str) {
         let mut title = if tab_title.is_empty() { "my-browser".to_string() } else { tab_title.to_string() };
         if self.claude_interact.get() {
-            title.push_str(" — Claude dapat berinteraksi");
+            title.push_str(" — Claude can interact");
         }
         self.ui.window.setTitle(&NSString::from_str(&title));
     }
@@ -242,9 +242,9 @@ impl AppState {
         let title = self.nav_info().title;
         self.update_window_title(&title);
         self.ui.nav.show_notice(if on {
-            "Claude sekarang boleh klik, mengetik, dan menjalankan JavaScript"
+            "Claude can now click, type, and run JavaScript"
         } else {
-            "Interaksi Claude dimatikan"
+            "Claude interaction turned off"
         });
     }
 
@@ -254,7 +254,7 @@ impl AppState {
         let id = self.browser.borrow().tabs().active();
         let started = self.browser.borrow().page(id).map(|page| page.run_script(ELEMENT_PICKER)).is_some();
         if !started {
-            self.ui.nav.show_notice("Buka halaman dulu untuk menunjuk elemen");
+            self.ui.nav.show_notice("Open a page first to pick an element");
             return;
         }
         self.picked_tab.set(Some(id));
@@ -262,7 +262,7 @@ impl AppState {
         if let Some(view) = self.ui.shown_view() {
             self.ui.window.makeFirstResponder(Some(&view));
         }
-        self.ui.nav.show_notice("Klik elemen yang ingin ditunjukkan ke Claude (Esc untuk batal)");
+        self.ui.nav.show_notice("Click the element to show Claude (Esc to cancel)");
     }
 
     pub fn mtm(&self) -> MainThreadMarker {
@@ -285,7 +285,7 @@ impl AppState {
         let id = self.browser.borrow().tabs().active();
         self.browser.borrow_mut().set_emulation(id, Emulation::default());
         self.refresh();
-        self.ui.nav.show_notice("Tampilan kembali normal");
+        self.ui.nav.show_notice("Back to normal view");
     }
 
     /// Menjadwalkan penggambaran ulang tab strip di putaran run loop berikutnya.

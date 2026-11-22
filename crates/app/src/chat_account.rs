@@ -54,8 +54,8 @@ pub(crate) fn claude_command(state: &AppState) -> Result<Command, String> {
     let settings = state.browser.borrow().settings().clone();
     let home = home();
     let claude = find_claude(&home, settings.claude_path.as_deref()).ok_or_else(|| {
-        "Claude Code tidak ditemukan. Pasang dari https://claude.com/claude-code, atau isi claude_path di \
-         settings.json dengan lokasi binary claude."
+        "Claude Code wasn't found. Install it from https://claude.com/claude-code, or set claude_path in \
+         settings.json to the location of the claude binary."
             .to_string()
     })?;
     let mut command = Command::new(&claude);
@@ -183,7 +183,7 @@ impl ChatAccount {
                     .output()
                     .map_err(|e| e.to_string())?;
                 cc::parse_auth_status(&String::from_utf8_lossy(&out.stdout))
-                    .ok_or_else(|| "Status akun tidak terbaca.".to_string())
+                    .ok_or_else(|| "Couldn't read the account status.".to_string())
             },
             move |result: Result<Account, String>| {
                 let Some(state) = weak.upgrade() else { return };
@@ -226,7 +226,7 @@ impl ChatAccount {
     fn start_login(&self, state: &Rc<AppState>, console: bool) -> Result<(), String> {
         let dir = persistence::data_dir().join("claude-login");
         let bin = dir.join("bin");
-        std::fs::create_dir_all(&bin).map_err(|e| format!("Folder login tidak bisa dibuat: {e}"))?;
+        std::fs::create_dir_all(&bin).map_err(|e| format!("Couldn't create the sign-in folder: {e}"))?;
         let shim = bin.join("open");
         std::fs::write(&shim, OPEN_SHIM)
             .and_then(|_| std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o700)))
@@ -245,7 +245,7 @@ impl ChatAccount {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
-        let mut child = command.spawn().map_err(|e| format!("claude auth login tidak bisa dijalankan: {e}"))?;
+        let mut child = command.spawn().map_err(|e| format!("Couldn't run claude auth login: {e}"))?;
         let stdin = child.stdin.take().expect("stdin di-pipe");
         let stdout = child.stdout.take().expect("stdout di-pipe");
         let stderr = child.stderr.take().expect("stderr di-pipe");
@@ -299,7 +299,7 @@ impl ChatAccount {
         state.refresh();
         self.login_tab.set(tab);
         *self.note.borrow_mut() = Some(
-            "Halaman login dibuka di tab baru. Masuk dan setujui di sana; panel ini lanjut sendiri setelahnya.".into(),
+            "The sign-in page opened in a new tab. Sign in and approve access there; this panel continues on its own afterward.".into(),
         );
         self.post(state);
     }
@@ -318,7 +318,7 @@ impl ChatAccount {
         if success {
             self.close_login_tab(state);
             *self.message.borrow_mut() = None;
-            state.ui.nav.show_notice("Berhasil masuk ke Claude");
+            state.ui.nav.show_notice("Signed in to Claude");
         } else {
             let detail = output
                 .lines()
@@ -326,7 +326,7 @@ impl ChatAccount {
                 .find(|l| !l.trim().is_empty() && !l.contains("Paste code"))
                 .unwrap_or("")
                 .to_string();
-            *self.message.borrow_mut() = Some(format!("Login tidak selesai. {detail}").trim().to_string());
+            *self.message.borrow_mut() = Some(format!("Sign-in didn't finish. {detail}").trim().to_string());
         }
         self.refresh(state);
     }
@@ -367,7 +367,7 @@ impl ChatAccount {
         self.login.borrow_mut().take();
         self.phase.set(Phase::Checking);
         *self.message.borrow_mut() = None;
-        *self.note.borrow_mut() = Some("Login dibatalkan.".into());
+        *self.note.borrow_mut() = Some("Sign-in canceled.".into());
         self.refresh(state);
     }
 
@@ -376,14 +376,14 @@ impl ChatAccount {
     pub fn logout(&self, state: &Rc<AppState>) {
         let profile = config_dir(state);
         let info = format!(
-            "Logout berlaku untuk profil {profile}: Claude Code di Terminal yang memakai profil ini juga ikut keluar."
+            "Signing out applies to the {profile} profile: Claude Code in Terminal that uses this profile is signed out too."
         );
         let weak = Rc::downgrade(state);
         dialogs::confirm(
             &state.dialog_window(),
-            "Keluar dari akun Claude?",
+            "Sign out of your Claude account?",
             &info,
-            &["Keluar", "Batal"],
+            &["Sign Out", "Cancel"],
             move |choice| {
                 let Some(state) = weak.upgrade() else { return };
                 if choice != 0 {

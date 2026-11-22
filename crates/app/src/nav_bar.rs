@@ -54,16 +54,16 @@ impl NavBar {
             NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewMinYMargin,
         );
 
-        let reload_icon = symbol("arrow.clockwise", "Muat ulang");
-        let stop_icon = symbol("xmark", "Berhenti");
-        let back = icon_button(mtm, &symbol("chevron.left", "Mundur"), target, sel!(goBack:), 8.0);
-        let forward = icon_button(mtm, &symbol("chevron.right", "Maju"), target, sel!(goForward:), 40.0);
+        let reload_icon = symbol("arrow.clockwise", "Reload");
+        let stop_icon = symbol("xmark", "Stop");
+        let back = icon_button(mtm, &symbol("chevron.left", "Back"), target, sel!(goBack:), 8.0);
+        let forward = icon_button(mtm, &symbol("chevron.right", "Forward"), target, sel!(goForward:), 40.0);
         let reload = icon_button(mtm, &reload_icon, target, sel!(reloadOrStop:), 72.0);
 
         let address = NSTextField::new(mtm);
         address.setFrame(NSRect::new(NSPoint::new(108.0, 7.0), NSSize::new(width - 116.0 - CLAUDE_W, 22.0)));
         address.setAutoresizingMask(NSAutoresizingMaskOptions::ViewWidthSizable);
-        address.setPlaceholderString(Some(&NSString::from_str("Cari atau ketik alamat")));
+        address.setPlaceholderString(Some(&NSString::from_str("Search or enter address")));
         unsafe {
             address.setTarget(Some(target));
             address.setAction(Some(sel!(addressEntered:)));

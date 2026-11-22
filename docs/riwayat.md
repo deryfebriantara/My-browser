@@ -1,6 +1,6 @@
 # Riwayat dan saran address bar
 
-my-browser mencatat halaman yang dibuka, menyarankan halaman itu saat Anda mengetik di address bar, dan menyediakan jendela Riwayat untuk mencari dan menghapusnya. Semua saran berasal dari riwayat dan tab di Mac ini. Ketikan Anda tidak pernah dikirim ke mesin pencari sebelum Anda menekan Enter.
+my-browser mencatat halaman yang dibuka, menyarankan halaman itu saat Anda mengetik di address bar, dan menyediakan jendela History untuk mencari dan menghapusnya. Semua saran berasal dari riwayat dan tab di Mac ini. Ketikan Anda tidak pernah dikirim ke mesin pencari sebelum Anda menekan Enter.
 
 ## Cara pakai
 
@@ -8,10 +8,10 @@ my-browser mencatat halaman yang dibuka, menyarankan halaman itu saat Anda menge
   - ↑ ↓ memilih saran, Enter membuka saran yang disorot, klik juga bisa.
   - Escape pertama menutup daftar saran, Escape kedua mengembalikan alamat tab.
   - Tab menerima pelengkapan.
-  - Baris **Pindah ke tab** membuka tab yang sudah terbuka, tanpa memuat ulang. Kalau tab asalnya kosong, tab itu ditutup.
-  - Baris terakhir selalu **Cari “…”** di mesin pencari.
-- **Jendela Riwayat:** **History > Show All History** (⌘Y). Daftar dikelompokkan per hari, bisa dicari. Klik membuka di tab ini, ⌘-klik atau tombol ↗ membuka di tab baru, tombol ✕ menghapus satu halaman.
-- **Hapus Riwayat:** **History > Clear History…** atau tombol di jendela Riwayat. Pilihannya satu jam terakhir, hari ini, hari ini dan kemarin, atau semua riwayat.
+  - Baris **Switch to tab** membuka tab yang sudah terbuka, tanpa memuat ulang. Kalau tab asalnya kosong, tab itu ditutup.
+  - Baris terakhir selalu **Search “…”** di mesin pencari.
+- **Jendela History:** **History > Show All History** (⌘Y). Daftar dikelompokkan per hari, bisa dicari. Klik membuka di tab ini, ⌘-klik atau tombol ↗ membuka di tab baru, tombol ✕ menghapus satu halaman.
+- **Clear History:** **History > Clear History…** atau tombol di jendela History. Pilihannya Last hour, Today, Today and yesterday, atau All history.
 
 ## Yang dicatat
 
@@ -32,7 +32,7 @@ Satu entri per halaman, berisi URL, judul, jumlah kunjungan, jumlah kali alamatn
 - Berkas: `~/Library/Application Support/my-browser/history.json`, izin 0600 sejak dibuat (`crates/core/src/persist.rs:26`). Isinya tidak dienkripsi, sama seperti riwayat Safari dan Chrome.
 - Batasnya 10.000 halaman dan 90 hari. Halaman yang terakhir dibuka paling lama dibuang lebih dulu (`crates/core/src/history.rs:16`, `:18`). Judul dipotong di 300 karakter.
 - Disimpan paling sering sekali per 2 menit selama browsing (`crates/app/src/state.rs:38`), selalu saat keluar, dan langsung setelah ada yang dihapus.
-- **Hapus Riwayat menghapus entri utuh** yang terakhir dibuka dalam rentang yang dipilih (`crates/core/src/history.rs:186`). Kunjungan tidak disimpan satu per satu, jadi halaman yang juga dibuka sebelum rentang itu ikut terhapus. Ini sengaja: lebih aman menghapus terlalu banyak daripada terlalu sedikit.
+- **Clear History menghapus entri utuh** yang terakhir dibuka dalam rentang yang dipilih (`crates/core/src/history.rs:186`). Kunjungan tidak disimpan satu per satu, jadi halaman yang juga dibuka sebelum rentang itu ikut terhapus. Ini sengaja: lebih aman menghapus terlalu banyak daripada terlalu sedikit.
 - **Yang tidak ikut terhapus:** tab yang terbuka, daftar mundur/maju di tab, `session.json`, daftar tab yang baru ditutup, cookie, login, dan cache.
 
 ## Cara saran dipilih
@@ -41,11 +41,11 @@ Satu entri per halaman, berisi URL, judul, jumlah kunjungan, jumlah kali alamatn
 
 1. **Baris pertama** adalah tindakan bawaan saat Enter ditekan:
    - halaman yang dilengkapi inline, kalau ada;
-   - kalau tidak, "Buka alamat" untuk teks yang berupa alamat;
-   - kalau bukan alamat, "Cari “…”".
-2. **"Pindah ke tab":** paling banyak 3 tab yang cocok (`:13`).
+   - kalau tidak, "Open address" untuk teks yang berupa alamat;
+   - kalau bukan alamat, "Search “…”".
+2. **"Switch to tab":** paling banyak 3 tab yang cocok (`:13`).
 3. **Halaman dari riwayat**, berperingkat, tanpa duplikat.
-4. **"Cari “…”"** di baris terakhir. Totalnya paling banyak 8 baris (`:11`).
+4. **"Search “…”"** di baris terakhir. Totalnya paling banyak 8 baris (`:11`).
 
 Kecocokan (`crates/core/src/suggest.rs:236`), dari yang paling kuat:
 1. awal host (`you` ke `youtube.com`);
@@ -69,9 +69,9 @@ Halaman yang hanya sekali dibuka lewat link tetap muncul sebagai saran, tetapi t
 
 Tool MCP `search_history` (baca saja) mencari riwayat. Parameternya `query` (semua kata harus ada di judul atau URL), `limit` (bawaan 20, maksimal 100), dan `days`. Hasilnya URL, judul, waktu terakhir dibuka dalam ISO 8601 berzona, dan jumlah kunjungan (`crates/app/src/control.rs:534`).
 
-- Tool ini juga tersedia di panel Tanya Claude, yang hanya mendapat tool baca (`crates/core/src/claude_chat.rs:27`).
+- Tool ini juga tersedia di panel Ask Claude, yang hanya mendapat tool baca (`crates/core/src/claude_chat.rs:27`).
 - Program MCP luar tetap harus diizinkan lewat dialog izin program. Teks dialognya menyebut "membaca riwayat".
-- Judul halaman berasal dari situs dan bisa berisi instruksi jahat, jadi hasil tool dan deskripsinya mengingatkan Claude untuk tidak mengikutinya. Panel Tanya Claude tidak bisa membuka URL, jadi riwayat tidak bisa dikirim keluar dari situ.
+- Judul halaman berasal dari situs dan bisa berisi instruksi jahat, jadi hasil tool dan deskripsinya mengingatkan Claude untuk tidak mengikutinya. Panel Ask Claude tidak bisa membuka URL, jadi riwayat tidak bisa dikirim keluar dari situ.
 - Program MCP yang sudah diizinkan sebelum fitur ini ada otomatis bisa membaca riwayat, tanpa ditanya lagi. Cabut lewat **Claude > Revoke MCP Client Access** kalau tidak diinginkan.
 
 ## Kode
@@ -82,7 +82,7 @@ Tool MCP `search_history` (baca saja) mencari riwayat. Parameternya `query` (sem
 - `crates/core/src/browser.rs`: kapan kunjungan dicatat, `navigate_from_address`, `open_suggestion`.
 - `crates/engine-webkit/src/observer.rs`: membedakan pushState dari muat halaman.
 - `crates/app/src/address_bar.rs` dan `suggest_popup.rs`: field editor dan daftar saran.
-- `crates/app/src/history_window.rs` dan `.html`: jendela Riwayat dan Hapus Riwayat (`clear_dialog`, `:186`). Judul hanya disisipkan sebagai teks (`history_window.html:91`).
+- `crates/app/src/history_window.rs` dan `.html`: jendela History dan Clear History (`clear_dialog`, `:186`). Judul hanya disisipkan sebagai teks (`history_window.html:91`).
 
 ## Pengujian
 
@@ -91,10 +91,10 @@ Tool MCP `search_history` (baca saja) mencari riwayat. Parameternya `query` (sem
 - **E2E di instance uji (24 dari 24 lulus):**
   - redirect, SPA, dan fragment;
   - reload dan tidur-bangun tidak menambah hitungan;
-  - mengetik alamat, inline, Backspace, panah, Escape dua tahap, dan "Pindah ke tab";
+  - mengetik alamat, inline, Backspace, panah, Escape dua tahap, dan "Switch to tab";
   - letak daftar saran, dan proses WebContent yang tidak bertambah;
   - izin 0600 dan isi tetap utuh setelah dibuka ulang;
-  - jendela Riwayat, hapus satu entri, dan Hapus Riwayat.
+  - jendela History, hapus satu entri, dan Clear History.
 - **Pengait uji khusus build debug:** `debug_ui` di socket kontrol (`crates/app/src/debug_ui.rs`) mengetik lewat `insertText:` dan menekan tombol lewat `doCommandBySelector:` di field editor sungguhan. Pengait ini tidak ada di build release.
 
 ## Yang belum terverifikasi

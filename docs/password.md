@@ -4,10 +4,10 @@ my-browser menyimpan password dalam vault terenkripsi yang hanya bisa dibuka den
 
 ## Cara pakai
 
-- **Menyimpan:** login di sebuah situs seperti biasa. Setelah form dikirim, muncul tawaran "Simpan password untuk github.com?". Pilihannya **Simpan**, **Jangan Sekarang**, atau **Jangan untuk Situs Ini**. Pertama kali menyimpan, Anda diminta membuat master password (minimal 10 karakter).
+- **Menyimpan:** login di sebuah situs seperti biasa. Setelah form dikirim, muncul tawaran "Save Password for github.com?". Pilihannya **Save**, **Not Now**, atau **Never for This Site**. Pertama kali menyimpan, Anda diminta membuat master password (minimal 10 karakter).
 - **Mengisi:** di halaman login, tekan ⌘\ atau pilih **Passwords > Fill Password**. Kalau ada beberapa akun untuk situs itu, pilih salah satu. Login bertahap (misalnya Google): tekan ⌘\ di langkah username, lalu sekali lagi di langkah password.
 - **Kelola:** **Passwords > Manage Passwords…** (⌥⌘P) untuk mencari, melihat, menyalin, menambah, mengedit, dan menghapus password, impor dan ekspor CSV, serta mengganti master password.
-- **Password acak:** **Passwords > Copy Random Password** menyalin password 20 karakter ke clipboard, misalnya untuk form daftar. Di jendela Kelola, tombol **Buat acak** mengisi kolom password.
+- **Password acak:** **Passwords > Copy Random Password** menyalin password 20 karakter ke clipboard, misalnya untuk form daftar. Di jendela Passwords, tombol **Generate** mengisi kolom password.
 - **Kunci:** **Passwords > Lock Passwords**.
 
 ## Enkripsi
@@ -38,14 +38,14 @@ Kunci vault dibungkus terpisah, jadi mengganti master password tidak perlu menge
 
 - **Master password tidak bisa dipulihkan.** Kalau lupa, isi vault hilang. Simpan di tempat aman.
 - Halaman yang sudah diisi password bisa membaca isian itu. Ini berlaku di semua password manager.
-- Upaya menghapus rahasia dari memory adalah upaya terbaik: Rust dan WebKit bisa menyimpan salinan sementara yang tidak bisa dihapus paksa. Password yang ditampilkan dengan **Lihat** disembunyikan lagi setelah 20 detik.
+- Upaya menghapus rahasia dari memory adalah upaya terbaik: Rust dan WebKit bisa menyimpan salinan sementara yang tidak bisa dihapus paksa. Password yang ditampilkan dengan **Show** disembunyikan lagi setelah 20 detik.
 - Belum ada sinkronisasi ke perangkat lain. Passkey belum didukung (butuh izin khusus Apple untuk browser). Form login di dalam iframe belum diisi.
 - Saat vault terkunci, akun yang tersimpan dikenali dari pembukaan terakhir (hanya di memory). Setelah browser dibuka ulang, login pertama bisa memunculkan tawaran simpan lagi; memilih Simpan akan meminta master password lalu memberi tahu bahwa password itu sudah tersimpan.
-- Host di "Jangan untuk Situs Ini" disimpan di `settings.json` tanpa enkripsi (hanya nama situs).
+- Host di "Never for This Site" disimpan di `settings.json` tanpa enkripsi (hanya nama situs).
 
 ## Impor dari browser lain
 
-Di jendela **Passwords > Manage Passwords…**, tombol **Impor CSV** menerima ekspor Chrome, Safari/app Passwords (File > Ekspor), Firefox, dan Bitwarden. Akun yang sama (situs dan username) diperbarui passwordnya. Setelah impor, hapus berkas CSV itu (juga dari Sampah), karena isinya password tanpa enkripsi.
+Di jendela **Passwords > Manage Passwords…**, tombol **Import CSV…** menerima ekspor Chrome, Safari/app Passwords (File > Ekspor), Firefox, dan Bitwarden. Akun yang sama (situs dan username) diperbarui passwordnya. Setelah impor, hapus berkas CSV itu (juga dari Sampah), karena isinya password tanpa enkripsi.
 
 ## Rencana: Touch ID
 

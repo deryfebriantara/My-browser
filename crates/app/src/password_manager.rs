@@ -60,6 +60,11 @@ fn origin_from_input(input: &str) -> Option<String> {
     if input.contains("://") { origin_of(input) } else { origin_of(&format!("https://{input}")) }
 }
 
+/// Jumlah dengan kata benda tunggal atau jamak: `1 password`, `3 passwords`.
+fn count(n: usize, one: &str, many: &str) -> String {
+    format!("{n} {}", if n == 1 { one } else { many })
+}
+
 fn copy_plain(text: &str) {
     let board = NSPasteboard::generalPasteboard();
     board.clearContents();
@@ -87,7 +92,7 @@ impl PasswordManager {
             )
         };
         unsafe { window.setReleasedWhenClosed(false) };
-        window.setTitle(&NSString::from_str("Password"));
+        window.setTitle(&NSString::from_str("Passwords"));
         window.setContentMinSize(NSSize::new(560.0, 360.0));
         window.setDelegate(Some(ProtocolObject::from_ref(&*state.ui.target)));
         let weak = Rc::downgrade(state);
@@ -165,23 +170,23 @@ impl PasswordManager {
                 }
             }
             Some("unlock") => {
-                state.passwords.with_vault(state, "untuk mengelola password", |s, v| s.password_manager.changed(s, v))
+                state.passwords.with_vault(state, "to manage passwords", |s, v| s.password_manager.changed(s, v))
             }
-            Some("reveal") => state.passwords.with_vault(state, "untuk melihat password", move |s, v| {
+            Some("reveal") => state.passwords.with_vault(state, "to show the password", move |s, v| {
                 if let Some(e) = v.get(&id) {
                     s.password_manager.post(json!({"t": "secret", "id": id, "password": e.password}));
                 }
             }),
-            Some("copy") => state.passwords.with_vault(state, "untuk menyalin password", move |s, v| {
+            Some("copy") => state.passwords.with_vault(state, "to copy the password", move |s, v| {
                 if let Some(e) = v.get(&id) {
                     copy_secret(&e.password);
-                    s.password_manager.toast("Password disalin; clipboard dibersihkan dalam 30 detik");
+                    s.password_manager.toast("Password copied; clipboard clears in 30 seconds");
                 }
             }),
-            Some("copy_user") => state.passwords.with_vault(state, "untuk menyalin username", move |s, v| {
+            Some("copy_user") => state.passwords.with_vault(state, "to copy the username", move |s, v| {
                 if let Some(e) = v.get(&id) {
                     copy_plain(&e.username);
-                    s.password_manager.toast("Username disalin");
+                    s.password_manager.toast("Username copied");
                 }
             }),
             Some("save") => self.save(state, &message),
@@ -207,26 +212,26 @@ impl PasswordManager {
             field("password"),
             field("note"),
         );
-        state.passwords.with_vault(state, "untuk menyimpan password", move |s, v| {
+        state.passwords.with_vault(state, "to save the password", move |s, v| {
             let manager = &s.password_manager;
             let form_error = |text: &str| manager.post(json!({"t": "form_error", "text": text}));
             let text = match &id {
                 Some(id) => {
                     let password = (!password.is_empty()).then_some(password.as_str());
                     if !v.update(id, Some(&username), password, Some(&note), now()) {
-                        return form_error("Entri tidak ditemukan.");
+                        return form_error("Entry not found.");
                     }
-                    "Perubahan disimpan".to_string()
+                    "Changes saved".to_string()
                 }
                 None => {
                     let Some(origin) = origin_from_input(&url) else {
-                        return form_error("Alamat situs tidak valid. Contoh: https://github.com");
+                        return form_error("Invalid website address. Example: https://github.com");
                     };
                     if password.is_empty() {
-                        return form_error("Password tidak boleh kosong.");
+                        return form_error("Password can't be empty.");
                     }
                     if v.entries().iter().any(|e| e.origin == origin && e.username == *username) {
-                        return form_error("Akun ini sudah ada untuk situs itu; edit entri yang ada.");
+                        return form_error("This account already exists for that site; edit the existing entry.");
                     }
                     let entry = NewEntry {
                         origin: origin.clone(),
@@ -235,7 +240,7 @@ impl PasswordManager {
                         note: note.to_string(),
                     };
                     v.add(entry, now());
-                    format!("Password untuk {} disimpan", host(&origin))
+                    format!("Password for {} saved", host(&origin))
                 }
             };
             match persist(v) {
@@ -250,26 +255,26 @@ impl PasswordManager {
     }
 
     fn delete(&self, state: &Rc<AppState>, id: String) {
-        state.passwords.with_vault(state, "untuk menghapus password", move |s, v| {
+        state.passwords.with_vault(state, "to delete the password", move |s, v| {
             let Some(entry) = v.get(&id) else { return };
-            let title = format!("Hapus password untuk {}?", entry.host());
+            let title = format!("Delete Password for {}?", entry.host());
             let info = format!(
-                "Akun: {}. Penghapusan tidak bisa dibatalkan.",
-                if entry.username.is_empty() { "(tanpa username)" } else { &entry.username }
+                "Account: {}. This can't be undone.",
+                if entry.username.is_empty() { "(no username)" } else { &entry.username }
             );
             let weak = Rc::downgrade(s);
-            dialogs::confirm(&s.dialog_window(), &title, &info, &["Hapus", "Batal"], move |choice| {
+            dialogs::confirm(&s.dialog_window(), &title, &info, &["Delete", "Cancel"], move |choice| {
                 let Some(state) = weak.upgrade() else { return };
                 if choice != 0 {
                     return;
                 }
-                state.passwords.with_vault(&state, "untuk menghapus password", move |s, v| {
+                state.passwords.with_vault(&state, "to delete the password", move |s, v| {
                     if v.delete(&id) {
                         match persist(v) {
                             Ok(()) => {
                                 s.passwords.refresh_known(v);
                                 s.password_manager.changed(s, v);
-                                s.password_manager.toast("Password dihapus");
+                                s.password_manager.toast("Password deleted");
                             }
                             Err(e) => s.password_manager.toast(&e),
                         }
@@ -284,7 +289,7 @@ impl PasswordManager {
         let panel = NSOpenPanel::openPanel(mtm);
         panel.setCanChooseFiles(true);
         panel.setMessage(Some(&NSString::from_str(
-            "Pilih berkas CSV ekspor password (Chrome, Safari/Passwords, Firefox, Bitwarden)",
+            "Choose a CSV file of exported passwords (Chrome, Safari/Passwords, Firefox, Bitwarden)",
         )));
         if panel.runModal() != NSModalResponseOK {
             return;
@@ -292,24 +297,26 @@ impl PasswordManager {
         let Some(path) = panel.URLs().firstObject().and_then(|u| u.path()).map(|p| p.to_string()) else { return };
         let text = match std::fs::read_to_string(&path) {
             Ok(text) => Zeroizing::new(text),
-            Err(e) => return self.toast(&format!("Berkas tidak bisa dibaca: {e}")),
+            Err(e) => return self.toast(&format!("Couldn't read the file: {e}")),
         };
         let imported = match csv::import(&text) {
             Ok(imported) => imported,
             Err(e) => return self.toast(&e),
         };
         let skipped = imported.skipped;
-        state.passwords.with_vault(state, "untuk mengimpor password", move |s, v| {
+        state.passwords.with_vault(state, "to import passwords", move |s, v| {
             let (added, updated) = v.import(imported.entries, now());
             match persist(v) {
                 Ok(()) => {
                     s.passwords.refresh_known(v);
                     s.password_manager.changed(s, v);
                     let info = format!(
-                        "{added} password ditambahkan, {updated} diperbarui, {skipped} baris dilewati.\n\nBerkas CSV itu berisi \
-                         password tanpa enkripsi. Sebaiknya hapus sekarang (juga dari Sampah):\n{path}"
+                        "{} added, {updated} updated, {} skipped.\n\nThat CSV file contains unencrypted passwords. You \
+                         should delete it now (and empty it from the Trash too):\n{path}",
+                        count(added, "password", "passwords"),
+                        count(skipped, "row", "rows"),
                     );
-                    dialogs::confirm(&s.dialog_window(), "Impor selesai", &info, &["OK"], |_| {});
+                    dialogs::confirm(&s.dialog_window(), "Import Complete", &info, &["OK"], |_| {});
                 }
                 Err(e) => s.password_manager.toast(&e),
             }
@@ -319,28 +326,28 @@ impl PasswordManager {
     /// Ekspor meminta master password lagi (diverifikasi ke berkas di disk),
     /// karena hasilnya berisi semua password tanpa enkripsi.
     fn export(&self, state: &Rc<AppState>) {
-        let info = "Berkas CSV hasil ekspor berisi semua password tanpa enkripsi. Siapa pun yang mendapat berkas itu bisa \
-                    membaca semuanya. Masukkan master password untuk melanjutkan.";
+        let info = "The exported CSV file contains all your passwords unencrypted. Anyone who gets the file can read \
+                    all of them. Enter your master password to continue.";
         let weak = Rc::downgrade(state);
         dialogs::ask_secrets(
             &state.dialog_window(),
-            "Ekspor Password",
+            "Export Passwords",
             info,
             &["Master password"],
-            "Lanjut",
+            "Continue",
             move |values| {
                 let (Some(state), Some(mut values)) = (weak.upgrade(), values) else { return };
                 let master = values.remove(0);
                 let file = match vault::load(&vault_path()) {
                     Ok(Some(file)) => file,
-                    _ => return state.password_manager.toast("Belum ada vault password."),
+                    _ => return state.password_manager.toast("There's no password vault yet."),
                 };
                 background::run(
                     move || Vault::unlock(&file, &master),
                     move |result| match result {
                         Ok(verified) => state.password_manager.write_export(&state, &verified),
                         Err(VaultError::WrongPassword) => {
-                            state.password_manager.toast("Master password salah; ekspor dibatalkan.")
+                            state.password_manager.toast("Incorrect master password; export canceled.")
                         }
                         Err(e) => state.password_manager.toast(&e.to_string()),
                     },
@@ -352,7 +359,7 @@ impl PasswordManager {
     fn write_export(&self, _state: &Rc<AppState>, vault: &Vault) {
         let Some(mtm) = MainThreadMarker::new() else { return };
         let panel = NSSavePanel::savePanel(mtm);
-        panel.setNameFieldStringValue(&NSString::from_str("password-my-browser.csv"));
+        panel.setNameFieldStringValue(&NSString::from_str("my-browser-passwords.csv"));
         if panel.runModal() != NSModalResponseOK {
             return;
         }
@@ -367,9 +374,10 @@ impl PasswordManager {
             .and_then(|mut f| f.write_all(text.as_bytes()));
         match written {
             Ok(()) => {
-                self.toast(&format!("{} password diekspor. Hapus berkasnya setelah dipakai.", vault.entries().len()))
+                let exported = count(vault.entries().len(), "password", "passwords");
+                self.toast(&format!("Exported {exported}. Delete the file when you're done with it."))
             }
-            Err(e) => self.toast(&format!("Ekspor gagal: {e}")),
+            Err(e) => self.toast(&format!("Export failed: {e}")),
         }
     }
 
@@ -377,7 +385,7 @@ impl PasswordManager {
     /// di disk, lalu kunci vault dibungkus ulang dengan yang baru.
     fn change_master(&self, state: &Rc<AppState>, error: Option<&str>) {
         if !state.passwords.is_unlocked() {
-            state.passwords.with_vault(state, "untuk mengganti master password", |s, _| {
+            state.passwords.with_vault(state, "to change the master password", |s, _| {
                 // Dijalankan setelah vault terbuka dan dialog buka kunci tertutup.
                 let weak = Rc::downgrade(s);
                 let block = RcBlock::new(move || {
@@ -389,57 +397,66 @@ impl PasswordManager {
             });
             return;
         }
-        let mut info =
-            format!("Master password baru minimal {MIN_MASTER} karakter dan tidak bisa dipulihkan kalau lupa.");
+        let mut info = format!(
+            "The new master password must be at least {MIN_MASTER} characters and can't be recovered if you forget it."
+        );
         if let Some(error) = error {
             info = format!("{error}\n\n{info}");
         }
         let weak = Rc::downgrade(state);
-        let fields = ["Master password sekarang", "Master password baru", "Ulangi master password baru"];
-        dialogs::ask_secrets(&state.dialog_window(), "Ganti Master Password", &info, &fields, "Ganti", move |values| {
-            let (Some(state), Some(values)) = (weak.upgrade(), values) else { return };
-            let (current, new, again) = (values[0].clone(), values[1].clone(), values[2].clone());
-            if new.chars().count() < MIN_MASTER {
-                return state.password_manager.change_master(&state, Some("Master password baru terlalu pendek."));
-            }
-            if new != again {
-                return state.password_manager.change_master(&state, Some("Kedua master password baru tidak sama."));
-            }
-            let (Ok(Some(file)), Some(mut vault)) = (vault::load(&vault_path()), state.passwords.take_vault()) else {
-                return state.password_manager.toast("Vault tidak terbuka.");
-            };
-            background::run(
-                move || {
-                    let outcome = match Vault::unlock(&file, &current)
-                        .and_then(|_| vault.change_master(&new, KdfParams::DEFAULT))
-                    {
-                        Err(VaultError::WrongPassword) => Change::WrongCurrent,
-                        Err(e) => Change::Failed(e.to_string()),
-                        Ok(()) => match vault::save(&vault_path(), &vault.to_file()) {
-                            Ok(()) => Change::Done,
-                            Err(e) => {
-                                // Disk masih memakai master password lama: kembalikan
-                                // bungkusan di memory supaya simpanan berikutnya tidak
-                                // diam-diam mengganti master password.
-                                let _ = vault.change_master(&current, KdfParams::DEFAULT);
-                                Change::Failed(format!("Master password tidak diganti: {e}"))
+        let fields = ["Current master password", "New master password", "Confirm new master password"];
+        dialogs::ask_secrets(
+            &state.dialog_window(),
+            "Change Master Password",
+            &info,
+            &fields,
+            "Change",
+            move |values| {
+                let (Some(state), Some(values)) = (weak.upgrade(), values) else { return };
+                let (current, new, again) = (values[0].clone(), values[1].clone(), values[2].clone());
+                if new.chars().count() < MIN_MASTER {
+                    return state.password_manager.change_master(&state, Some("The new master password is too short."));
+                }
+                if new != again {
+                    return state.password_manager.change_master(&state, Some("The new master passwords don't match."));
+                }
+                let (Ok(Some(file)), Some(mut vault)) = (vault::load(&vault_path()), state.passwords.take_vault())
+                else {
+                    return state.password_manager.toast("The password vault isn't open.");
+                };
+                background::run(
+                    move || {
+                        let outcome = match Vault::unlock(&file, &current)
+                            .and_then(|_| vault.change_master(&new, KdfParams::DEFAULT))
+                        {
+                            Err(VaultError::WrongPassword) => Change::WrongCurrent,
+                            Err(e) => Change::Failed(e.to_string()),
+                            Ok(()) => match vault::save(&vault_path(), &vault.to_file()) {
+                                Ok(()) => Change::Done,
+                                Err(e) => {
+                                    // Disk masih memakai master password lama: kembalikan
+                                    // bungkusan di memory supaya simpanan berikutnya tidak
+                                    // diam-diam mengganti master password.
+                                    let _ = vault.change_master(&current, KdfParams::DEFAULT);
+                                    Change::Failed(format!("Master password not changed: {e}"))
+                                }
+                            },
+                        };
+                        (vault, outcome)
+                    },
+                    move |(vault, outcome)| {
+                        state.passwords.put_vault(vault);
+                        match outcome {
+                            Change::Done => state.password_manager.toast("Master password changed"),
+                            Change::WrongCurrent => {
+                                state.password_manager.change_master(&state, Some("Incorrect current master password."))
                             }
-                        },
-                    };
-                    (vault, outcome)
-                },
-                move |(vault, outcome)| {
-                    state.passwords.put_vault(vault);
-                    match outcome {
-                        Change::Done => state.password_manager.toast("Master password diganti"),
-                        Change::WrongCurrent => {
-                            state.password_manager.change_master(&state, Some("Master password sekarang salah."))
+                            Change::Failed(e) => state.password_manager.toast(&e),
                         }
-                        Change::Failed(e) => state.password_manager.toast(&e),
-                    }
-                },
-            );
-        });
+                    },
+                );
+            },
+        );
     }
 }
 
@@ -473,6 +490,13 @@ mod tests {
         assert!(!text.contains("rahasia"), "{text}");
         assert_eq!(list[0]["host"], "a.example", "urut per situs");
         assert_eq!(list[1]["username"], "u2");
+    }
+
+    #[test]
+    fn counts_use_singular_and_plural() {
+        assert_eq!(count(1, "password", "passwords"), "1 password");
+        assert_eq!(count(0, "password", "passwords"), "0 passwords");
+        assert_eq!(count(3, "row", "rows"), "3 rows");
     }
 
     #[test]

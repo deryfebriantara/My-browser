@@ -102,7 +102,7 @@ pub fn ask_secrets(
     done: impl FnOnce(Option<Vec<Zeroizing<String>>>) + 'static,
 ) -> bool {
     let Some(mtm) = MainThreadMarker::new() else { return false };
-    let alert = alert(mtm, title, info, &[confirm, "Batal"]);
+    let alert = alert(mtm, title, info, &[confirm, "Cancel"]);
     let height = ROW_H * placeholders.len() as f64;
     let accessory =
         NSView::initWithFrame(NSView::alloc(mtm), NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(FIELD_W, height)));
@@ -151,7 +151,7 @@ pub fn choose(
     done: impl FnOnce(Option<usize>) + 'static,
 ) -> bool {
     let Some(mtm) = MainThreadMarker::new() else { return false };
-    let alert = alert(mtm, title, info, &[confirm, "Batal"]);
+    let alert = alert(mtm, title, info, &[confirm, "Cancel"]);
     let popup = NSPopUpButton::initWithFrame_pullsDown(
         NSPopUpButton::alloc(mtm),
         NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(FIELD_W, 26.0)),

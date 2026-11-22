@@ -65,19 +65,19 @@ impl McpAccess {
         #[allow(deprecated)]
         NSApplication::sharedApplication(state.mtm()).activateIgnoringOtherApps(true);
         let name = display_name(&client.path);
-        let title = format!("Izinkan {name} mengontrol my-browser?");
-        let mut info = format!("Program: {}\nPid: {}", client.path, client.pid);
+        let title = format!("Allow {name} to control my-browser?");
+        let mut info = format!("Program: {}\nPID: {}", client.path, client.pid);
         if let Some(cwd) = &client.cwd {
-            info.push_str(&format!("\nFolder kerja: {cwd}"));
+            info.push_str(&format!("\nWorking folder: {cwd}"));
         }
         info.push_str(
-            "\n\nProgram ini akan bisa membaca dan memotret tab, membaca riwayat, membuka halaman, dan mengatur tab. Klik, mengetik, \
-             dan JavaScript tetap butuh menu Claude > Allow Claude to Interact. Tolak kalau Anda tidak mengenali \
-             program ini.",
+            "\n\nThis program will be able to read and screenshot tabs, read your browsing history, open pages, and \
+             manage tabs. Clicking, typing, and JavaScript still require Claude > Allow Claude to Interact. Deny if \
+             you don't recognize this program.",
         );
         let weak = Rc::downgrade(state);
         let path = client.path.clone();
-        let buttons = ["Selalu Izinkan", "Izinkan Sekali", "Tolak"];
+        let buttons = ["Always Allow", "Allow Once", "Deny"];
         let shown = dialogs::confirm(&state.ui.window, &title, &info, &buttons, move |choice| {
             if let Some(state) = weak.upgrade() {
                 state.mcp_access.resolve(&state, &path, choice);
@@ -101,7 +101,7 @@ impl McpAccess {
                     }
                 });
                 state.refresh();
-                state.ui.nav.show_notice(&format!("{} diizinkan mengontrol browser", display_name(path)));
+                state.ui.nav.show_notice(&format!("{} can now control the browser", display_name(path)));
                 Ok(())
             }
             1 => {
@@ -132,6 +132,6 @@ impl McpAccess {
         self.denied.borrow_mut().clear();
         self.once.borrow_mut().clear();
         state.refresh();
-        state.ui.nav.show_notice("Izin program MCP dicabut; program akan ditanya lagi saat tersambung");
+        state.ui.nav.show_notice("MCP client access revoked; programs will be asked again when they connect");
     }
 }

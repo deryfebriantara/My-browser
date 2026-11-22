@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <!-- Tanpa sumber luar sama sekali: jawaban Claude (yang bisa memuat teks dari
@@ -100,32 +100,32 @@
 <header>
   <div class="title">
     <svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2l1.9 6.2L20 10l-6.1 1.8L12 18l-1.9-6.2L4 10l6.1-1.8z"/></svg>
-    Tanya Claude
+    Ask Claude
   </div>
-  <button class="icon-btn" id="new" title="Percakapan baru">Baru</button>
-  <button class="icon-btn" id="close" title="Tutup panel (Cmd+J)">✕</button>
+  <button class="icon-btn" id="new" title="Start a new conversation">New</button>
+  <button class="icon-btn" id="close" title="Close panel (⌘J)">✕</button>
 </header>
 <div class="account" id="account" hidden>
   <span id="account-text"></span>
-  <select id="profile" title="Profil Claude Code" hidden></select>
-  <button class="icon-btn" id="logout" hidden>Keluar</button>
+  <select id="profile" title="Claude Code profile" hidden></select>
+  <button class="icon-btn" id="logout" hidden>Sign Out</button>
 </div>
 <div class="signin" id="signin" hidden>
-  <h2>Masuk ke Claude</h2>
-  <p>Panel memakai akun Claude Code Anda dan kuota langganannya. Halaman login dibuka di tab baru my-browser.</p>
-  <label id="signin-profile-row">Profil <select id="signin-profile"></select></label>
+  <h2>Sign In to Claude</h2>
+  <p>The panel uses your Claude Code account and its subscription quota. The sign-in page opens in a new my-browser tab.</p>
+  <label id="signin-profile-row">Profile <select id="signin-profile"></select></label>
   <div class="buttons" id="signin-buttons">
-    <button class="btn primary" id="login-claude">Masuk dengan langganan Claude</button>
-    <button class="btn" id="login-console">Pakai API Console (bayar per pemakaian)</button>
+    <button class="btn primary" id="login-claude">Sign In with Claude Subscription</button>
+    <button class="btn" id="login-console">Use API Console (Pay per Use)</button>
   </div>
   <div id="signing" hidden>
-    <div class="waiting"><span class="dots"><span></span><span></span><span></span></span> Menunggu login selesai di tab baru…</div>
+    <div class="waiting"><span class="dots"><span></span><span></span><span></span></span> Waiting for sign-in to finish in the new tab…</div>
     <details>
-      <summary>Halaman login menampilkan kode?</summary>
-      <input id="code" placeholder="Tempel kode di sini" autocomplete="off" spellcheck="false">
-      <button class="btn" id="send-code">Kirim kode</button>
+      <summary>Does the sign-in page show a code?</summary>
+      <input id="code" placeholder="Paste the code here" autocomplete="off" spellcheck="false">
+      <button class="btn" id="send-code">Send Code</button>
     </details>
-    <button class="btn" id="cancel-login">Batal</button>
+    <button class="btn" id="cancel-login">Cancel</button>
   </div>
   <p class="note" id="signin-note"></p>
   <p class="message" id="signin-message"></p>
@@ -133,10 +133,10 @@
 <div id="log"></div>
 <footer>
   <div class="composer">
-    <textarea id="input" rows="1" placeholder="Tanya tentang halaman ini…"></textarea>
-    <button id="send">Kirim</button>
+    <textarea id="input" rows="1" placeholder="Ask about this page…"></textarea>
+    <button id="send">Send</button>
   </div>
-  <div class="hint">Claude bisa membaca dan memotret tab, tetapi tidak bisa membuka situs, mengklik, atau menyentuh file.</div>
+  <div class="hint">Claude can read tabs and take screenshots of them, but can't open sites, click, or touch files.</div>
 </footer>
 <script>
 (function () {
@@ -245,15 +245,15 @@
   }
   function setBusy(b) {
     busy = b;
-    send.textContent = b ? 'Berhenti' : 'Kirim';
+    send.textContent = b ? 'Stop' : 'Send';
     render();
   }
   function empty() {
     if (log.children.length) return;
     var e = el('div', 'empty');
-    e.innerHTML = '<h2>Tanya tentang halaman ini</h2><p>Claude bisa membaca tab yang sedang Anda lihat, memotretnya, dan melihat elemen yang Anda tunjuk (Cmd+Shift+E).</p>';
+    e.innerHTML = '<h2>Ask About This Page</h2><p>Claude can read the tab you\'re viewing, take a screenshot of it, and see the element you pick (⌘⇧E).</p>';
     var s = el('div', 'suggest');
-    ['Ringkas halaman ini', 'Apa poin terpentingnya?', 'Jelaskan elemen yang saya tunjuk'].forEach(function (q) {
+    ['Summarize this page', 'What are the key points?', 'Explain the element I picked'].forEach(function (q) {
       var b = el('button'); b.textContent = q; b.onclick = function () { submit(q); }; s.appendChild(b);
     });
     e.appendChild(s); log.appendChild(e);
@@ -298,8 +298,8 @@
     fillProfiles(document.getElementById('signin-profile'), m);
     document.getElementById('account').hidden = !(signedIn || m.state === 'checking');
     document.getElementById('account-text').textContent = signedIn
-      ? (m.email || 'Masuk') + (m.plan ? ' · ' + m.plan : '') + (many ? '' : ' · ' + m.profile_label)
-      : 'Memeriksa akun ' + m.profile_label + '…';
+      ? (m.email || 'Signed in') + (m.plan ? ' · ' + m.plan : '') + (many ? '' : ' · ' + m.profile_label)
+      : 'Checking ' + m.profile_label + ' account…';
     document.getElementById('profile').hidden = !(signedIn && many);
     document.getElementById('logout').hidden = !signedIn;
     document.getElementById('signin').hidden = !(out || signing);
@@ -311,7 +311,7 @@
     var locked = out || signing;
     document.body.classList.toggle('locked', locked);
     input.disabled = locked;
-    input.placeholder = locked ? 'Masuk dulu untuk bertanya' : 'Tanya tentang halaman ini…';
+    input.placeholder = locked ? 'Sign in to ask a question' : 'Ask about this page…';
     if (!locked && !busy) input.focus();
   }
   document.getElementById('login-claude').onclick = function () { post({ t: 'login', method: 'claudeai' }); };
@@ -347,7 +347,7 @@
     } else if (m.t === 'tool') {
       addTool(m.label); setStatus(m.label + '…'); scroll(false);
     } else if (m.t === 'done') {
-      if (current && m.stopped) { current.text += (current.text ? '\n\n' : '') + '*(dihentikan)*'; }
+      if (current && m.stopped) { current.text += (current.text ? '\n\n' : '') + '*(stopped)*'; }
       setBusy(false);
       if (current && !current.text && !current.tools.children.length) { current.el.remove(); current = null; }
       if (m.error) addError(m.error);

@@ -591,7 +591,7 @@ fn download_finished_emits_notice() {
     assert!(b.navigate("a.com", t0));
     b.take_changes();
     b.handle_event(a, PageEvent::DownloadFinished("/Users/x/Downloads/a.pdf".into()), t0);
-    assert!(b.take_changes().contains(&UiChange::Notice("Selesai diunduh: a.pdf".into())));
+    assert!(b.take_changes().contains(&UiChange::Notice("Downloaded: a.pdf".into())));
 }
 
 #[test]
@@ -601,7 +601,7 @@ fn download_failed_emits_notice() {
     assert!(b.navigate("a.com", t0));
     b.take_changes();
     b.handle_event(a, PageEvent::DownloadFailed("koneksi terputus".into()), t0);
-    assert!(b.take_changes().contains(&UiChange::Notice("Gagal mengunduh: koneksi terputus".into())));
+    assert!(b.take_changes().contains(&UiChange::Notice("Download failed: koneksi terputus".into())));
 }
 
 #[test]
@@ -717,7 +717,7 @@ fn load_failure_in_active_tab_emits_notice() {
     b.handle_event(a, PageEvent::LoadFailed("Could not connect to the server.".into()), t0);
     assert!(!b.tabs().get(a).unwrap().loading);
     assert!(
-        b.take_changes().contains(&UiChange::Notice("Gagal memuat halaman: Could not connect to the server.".into()))
+        b.take_changes().contains(&UiChange::Notice("Couldn't load page: Could not connect to the server.".into()))
     );
 }
 
@@ -728,8 +728,8 @@ fn global_download_events_emit_notices() {
     b.handle_global_event(PageEvent::DownloadFinished("/Users/x/Downloads/a.pdf".into()));
     b.handle_global_event(PageEvent::DownloadFailed("koneksi terputus".into()));
     let changes = b.take_changes();
-    assert!(changes.contains(&UiChange::Notice("Selesai diunduh: a.pdf".into())));
-    assert!(changes.contains(&UiChange::Notice("Gagal mengunduh: koneksi terputus".into())));
+    assert!(changes.contains(&UiChange::Notice("Downloaded: a.pdf".into())));
+    assert!(changes.contains(&UiChange::Notice("Download failed: koneksi terputus".into())));
 }
 
 #[test]

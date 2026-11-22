@@ -62,12 +62,12 @@ Pengait khusus build debug (tidak ada di build release; periksa dengan `strings 
 |---|---|
 | `MYBROWSER_DIALOG_SELFTEST=<teks>` | Menjawab setiap dialog otomatis; isian rahasia diisi teks itu |
 | `MYBROWSER_DIALOG_CHOICE=<n>` | Tombol yang dipilih di dialog (0 = tombol pertama) |
-| `MYBROWSER_CHAT_SELFTEST=<berkas>` | Mengirim satu baris berkas ke panel Tanya Claude setiap kali panel dibuka |
+| `MYBROWSER_CHAT_SELFTEST=<berkas>` | Mengirim satu baris berkas ke panel Ask Claude setiap kali panel dibuka |
 | Tool `debug_ui` | Mengetik dan menekan tombol di address bar lewat field editor, mengirim aksi menu, membaca keadaan jendela, keluar (`crates/app/src/debug_ui.rs`) |
 
 `MYBROWSER_DEBUG=1` mencetak log tambahan (event global dan keadaan tidur tab) ke stderr, juga di build release.
 
 ## Gaya
 
-- Komentar dan dokumentasi dalam bahasa Indonesia. Menu memakai bahasa Inggris; dialog, panel, dan notifikasi masih bahasa Indonesia.
+- Seluruh teks UI (menu, dialog, notifikasi, address bar, jendela, panel) dalam bahasa Inggris. Komentar, dokumentasi, log developer, dan teks yang dibaca Claude (prompt panel, deskripsi dan pesan tool MCP) dalam bahasa Indonesia.
 - Commit memakai awalan Conventional Commits (`feat`, `fix`, `refactor`, `style`, `docs`, `test`).

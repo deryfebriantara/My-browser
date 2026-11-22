@@ -197,7 +197,7 @@ pub fn parse_line(line: &str) -> Vec<ChatEvent> {
         (Some("result"), _) => {
             let error = (event["is_error"] == true).then(|| {
                 let message = text(&event["result"]);
-                if message.is_empty() { "Claude gagal menjawab.".to_string() } else { message }
+                if message.is_empty() { "Claude couldn't answer.".to_string() } else { message }
             });
             vec![ChatEvent::Done { error }]
         }
@@ -209,20 +209,20 @@ pub fn parse_line(line: &str) -> Vec<ChatEvent> {
 pub fn tool_label(name: &str) -> String {
     let short = name.strip_prefix("mcp__my-browser__").unwrap_or(name);
     match short {
-        "list_tabs" => "Melihat daftar tab",
-        "read_page" => "Membaca halaman",
-        "list_elements" => "Melihat elemen halaman",
-        "scroll" => "Menggulir halaman",
-        "screenshot" => "Memotret halaman",
-        "youtube" => "Mengontrol YouTube",
-        "memory_usage" => "Memeriksa memory",
-        "search_history" => "Mencari riwayat",
-        "console_logs" => "Membaca console",
-        "network_log" => "Membaca log jaringan",
-        "wait_for" => "Menunggu halaman",
-        "inspect_element" => "Memeriksa elemen",
-        "get_selection" => "Melihat elemen yang ditunjuk",
-        other => return format!("Memakai {other}"),
+        "list_tabs" => "Viewing tab list",
+        "read_page" => "Reading page",
+        "list_elements" => "Viewing page elements",
+        "scroll" => "Scrolling page",
+        "screenshot" => "Taking screenshot",
+        "youtube" => "Controlling YouTube",
+        "memory_usage" => "Checking memory usage",
+        "search_history" => "Searching history",
+        "console_logs" => "Reading console",
+        "network_log" => "Reading network log",
+        "wait_for" => "Waiting for page",
+        "inspect_element" => "Inspecting element",
+        "get_selection" => "Viewing picked element",
+        other => return format!("Using {other}"),
     }
     .to_string()
 }
@@ -270,7 +270,7 @@ pub fn profile_dirs(names: &[String]) -> Vec<String> {
 /// Nama pendek profil untuk ditampilkan: `~/.claude-work` → `work`.
 pub fn profile_label(dir: &str) -> String {
     match dir.trim_end_matches('/').rsplit('/').next().unwrap_or(dir) {
-        ".claude" => "utama".into(),
+        ".claude" => "default".into(),
         name => name.strip_prefix(".claude-").unwrap_or(name).to_string(),
     }
 }
@@ -290,9 +290,9 @@ pub fn error_hint(error: &str, config_dir: &str) -> Option<String> {
         || lower.contains("authenticate")
     {
         return Some(format!(
-            "Login Claude Code untuk profil {config_dir} belum ada atau kedaluwarsa. Buka Terminal, jalankan \
-             `CLAUDE_CONFIG_DIR={config_dir} claude`, lalu ketik /login. Profil lain bisa dipilih lewat \
-             claude_config_dir di settings.json."
+            "Claude Code isn't signed in for the {config_dir} profile, or the sign-in has expired. Open Terminal, \
+             run `CLAUDE_CONFIG_DIR={config_dir} claude`, then type /login. You can choose another profile with \
+             claude_config_dir in settings.json."
         ));
     }
     None
@@ -392,7 +392,7 @@ mod tests {
             events,
             vec![
                 ChatEvent::Session("a8444cc6".into()),
-                ChatEvent::Tool("Melihat daftar tab".into()),
+                ChatEvent::Tool("Viewing tab list".into()),
                 ChatEvent::TextStart,
                 ChatEvent::Text("Judul: ".into()),
                 ChatEvent::Text("Kopi Senja".into()),
@@ -409,8 +409,8 @@ mod tests {
         let hint = error_hint("Failed to authenticate: run `claude auth login`", "~/.claude").unwrap();
         assert!(hint.contains("CLAUDE_CONFIG_DIR=~/.claude claude") && hint.contains("/login"));
         assert!(error_hint("Rate limit", "~/.claude").is_none());
-        assert_eq!(tool_label("mcp__my-browser__screenshot"), "Memotret halaman");
-        assert_eq!(tool_label("mcp__lain__x"), "Memakai mcp__lain__x");
+        assert_eq!(tool_label("mcp__my-browser__screenshot"), "Taking screenshot");
+        assert_eq!(tool_label("mcp__lain__x"), "Using mcp__lain__x");
     }
 
     #[test]
@@ -435,7 +435,7 @@ mod tests {
                 .map(String::from)
                 .to_vec();
         assert_eq!(profile_dirs(&names), vec!["~/.claude", "~/.claude-flash", "~/.claude-work"]);
-        assert_eq!(profile_label("~/.claude"), "utama");
+        assert_eq!(profile_label("~/.claude"), "default");
         assert_eq!(profile_label("/Users/a/.claude-work"), "work");
     }
 

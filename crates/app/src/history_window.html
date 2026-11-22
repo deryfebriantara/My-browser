@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="id">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
@@ -43,12 +43,12 @@
 </head>
 <body>
 <header>
-  <input id="search" type="search" placeholder="Cari riwayat" aria-label="Cari riwayat" autofocus>
+  <input id="search" type="search" placeholder="Search history" aria-label="Search history" autofocus>
 </header>
 <main id="list"></main>
 <footer>
   <span id="count"></span>
-  <button id="clear" class="danger">Hapus Riwayat…</button>
+  <button id="clear" class="danger">Clear History…</button>
 </footer>
 <div id="toast" role="status"></div>
 <script>
@@ -70,9 +70,9 @@
     var today = new Date(); today.setHours(0, 0, 0, 0);
     var day = new Date(d); day.setHours(0, 0, 0, 0);
     var diff = Math.round((today - day) / 86400000);
-    if (diff === 0) return 'Hari ini';
-    if (diff === 1) return 'Kemarin';
-    return d.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+    if (diff === 0) return 'Today';
+    if (diff === 1) return 'Yesterday';
+    return d.toLocaleDateString('en-US', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   }
 
   function el(tag, cls, text) {
@@ -85,7 +85,7 @@
   function row(entry) {
     var d = new Date(entry.last * 1000);
     var r = el('div', 'row');
-    r.appendChild(el('span', 'time', d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })));
+    r.appendChild(el('span', 'time', d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })));
     var page = el('div', 'page');
     page.title = entry.url;
     // Judul berasal dari situs: selalu lewat textContent, tidak pernah innerHTML.
@@ -95,10 +95,10 @@
     r.appendChild(page);
     var actions = el('div', 'actions');
     var newTab = el('button', 'icon', '↗');
-    newTab.title = 'Buka di Tab Baru'; newTab.setAttribute('aria-label', 'Buka di Tab Baru');
+    newTab.title = 'Open in New Tab'; newTab.setAttribute('aria-label', 'Open in New Tab');
     newTab.onclick = function () { post({ t: 'open', url: entry.url, new_tab: true }); };
     var del = el('button', 'icon', '✕');
-    del.title = 'Hapus dari riwayat'; del.setAttribute('aria-label', 'Hapus dari riwayat');
+    del.title = 'Remove from History'; del.setAttribute('aria-label', 'Remove from History');
     del.onclick = function () { post({ t: 'delete', url: entry.url }); };
     actions.appendChild(newTab); actions.appendChild(del);
     r.appendChild(actions);
@@ -108,7 +108,7 @@
   function render() {
     list.textContent = '';
     if (!entries.length) {
-      list.appendChild(el('p', 'empty', query ? 'Tidak ada yang cocok dengan “' + query + '”.' : 'Riwayat masih kosong.'));
+      list.appendChild(el('p', 'empty', query ? 'No pages match “' + query + '”.' : 'No history yet.'));
     }
     var lastLabel = null;
     entries.forEach(function (entry) {
@@ -116,7 +116,7 @@
       if (label !== lastLabel) { list.appendChild(el('h2', '', label)); lastLabel = label; }
       list.appendChild(row(entry));
     });
-    count.textContent = total + ' halaman' + (query ? ' cocok' : '');
+    count.textContent = total + (query ? ' matching' : '') + (total === 1 ? ' page' : ' pages');
     document.getElementById('clear').disabled = !total && !query;
   }
 

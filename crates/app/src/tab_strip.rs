@@ -79,7 +79,7 @@ impl TabStrip {
             button.setTag(tab.id as isize);
             if tab.sleeping {
                 button.setAlphaValue(0.5);
-                button.setToolTip(Some(&NSString::from_str("Tidur, dimuat ulang saat dibuka")));
+                button.setToolTip(Some(&NSString::from_str("Sleeping; reloads when opened")));
             } else {
                 button.setToolTip(Some(&title));
             }
@@ -88,7 +88,7 @@ impl TabStrip {
 
             let close = unsafe {
                 NSButton::buttonWithImage_target_action(
-                    &symbol("xmark", "Tutup tab"),
+                    &symbol("xmark", "Close tab"),
                     Some(target),
                     Some(sel!(closeTabButton:)),
                     mtm,
@@ -101,7 +101,7 @@ impl TabStrip {
         }
 
         let plus = unsafe {
-            NSButton::buttonWithImage_target_action(&symbol("plus", "Tab baru"), Some(target), Some(sel!(newTab:)), mtm)
+            NSButton::buttonWithImage_target_action(&symbol("plus", "New tab"), Some(target), Some(sel!(newTab:)), mtm)
         };
         plus.setBordered(false);
         plus.setFrame(NSRect::new(NSPoint::new(w * tabs.len() as f64 + 2.0, 2.0), NSSize::new(24.0, 24.0)));

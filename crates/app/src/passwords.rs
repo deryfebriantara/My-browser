@@ -81,7 +81,7 @@ pub(crate) fn decide(
 
 /// Menyimpan vault ke disk.
 pub(crate) fn persist(vault: &Vault) -> Result<(), String> {
-    vault::save(&vault_path(), &vault.to_file()).map_err(|e| format!("Password tidak bisa disimpan: {e}"))
+    vault::save(&vault_path(), &vault.to_file()).map_err(|e| format!("Couldn't save passwords: {e}"))
 }
 
 #[derive(Default)]
@@ -114,7 +114,7 @@ impl Passwords {
         let was_open = self.vault.borrow_mut().take().is_some();
         self.last_used.set(None);
         if was_open && announce {
-            notice(state, "Password dikunci");
+            notice(state, "Passwords locked");
         }
         state.password_manager.locked(state);
     }
@@ -178,13 +178,13 @@ impl Passwords {
             return;
         }
         if self.unlocking.get() || dialogs::is_open() {
-            notice(state, "Selesaikan dialog yang sedang terbuka dulu");
+            notice(state, "Finish the open dialog first");
             return;
         }
         match vault::load(&vault_path()) {
             Err(e) => {
-                let info = format!("{e}\n\nBerkas: {}", vault_path().display());
-                dialogs::confirm(&state.dialog_window(), "Vault password tidak bisa dibuka", &info, &["OK"], |_| {});
+                let info = format!("{e}\n\nFile: {}", vault_path().display());
+                dialogs::confirm(&state.dialog_window(), "Couldn't Open Password Vault", &info, &["OK"], |_| {});
             }
             Ok(None) => self.create_flow(state, reason, Box::new(then), None),
             Ok(Some(file)) => self.unlock_flow(state, reason, file, Box::new(then), None),
@@ -192,7 +192,7 @@ impl Passwords {
     }
 
     fn unlock_flow(&self, state: &Rc<AppState>, reason: &str, file: VaultFile, then: Then, error: Option<&str>) {
-        let mut info = format!("Masukkan master password {reason}.");
+        let mut info = format!("Enter your master password {reason}.");
         if let Some(error) = error {
             info = format!("{error}\n\n{info}");
         }
@@ -200,15 +200,15 @@ impl Passwords {
         let reason = reason.to_string();
         dialogs::ask_secrets(
             &state.dialog_window(),
-            "Buka Kunci Password",
+            "Unlock Passwords",
             &info,
             &["Master password"],
-            "Buka",
+            "Unlock",
             move |values| {
                 let (Some(state), Some(mut values)) = (weak.upgrade(), values) else { return };
                 let master = values.remove(0);
                 if master.is_empty() {
-                    state.passwords.unlock_flow(&state, &reason, file, then, Some("Master password kosong."));
+                    state.passwords.unlock_flow(&state, &reason, file, then, Some("Master password can't be empty."));
                     return;
                 }
                 state.passwords.unlocking.set(true);
@@ -219,13 +219,17 @@ impl Passwords {
                         state.passwords.unlocking.set(false);
                         match result {
                             Ok(vault) => state.passwords.opened(&state, vault, then),
-                            Err(VaultError::WrongPassword) => {
-                                state.passwords.unlock_flow(&state, &reason, file, then, Some("Master password salah."))
-                            }
+                            Err(VaultError::WrongPassword) => state.passwords.unlock_flow(
+                                &state,
+                                &reason,
+                                file,
+                                then,
+                                Some("Incorrect master password."),
+                            ),
                             Err(e) => {
                                 dialogs::confirm(
                                     &state.dialog_window(),
-                                    "Vault password tidak bisa dibuka",
+                                    "Couldn't Open Password Vault",
                                     &e.to_string(),
                                     &["OK"],
                                     |_| {},
@@ -240,28 +244,29 @@ impl Passwords {
 
     fn create_flow(&self, state: &Rc<AppState>, reason: &str, then: Then, error: Option<&str>) {
         let mut info = format!(
-            "my-browser akan membuat penyimpanan password terenkripsi {reason}. Master password mengunci semua \
-             password Anda dan tidak bisa dipulihkan kalau lupa, jadi simpan di tempat aman. Minimal {MIN_MASTER} karakter."
+            "my-browser will create an encrypted password vault {reason}. Your master password locks all your \
+             passwords and can't be recovered if you forget it, so keep it somewhere safe. Use at least {MIN_MASTER} \
+             characters."
         );
         if let Some(error) = error {
             info = format!("{error}\n\n{info}");
         }
         let weak = Rc::downgrade(state);
         let reason = reason.to_string();
-        let placeholders = ["Master password", "Ulangi master password"];
+        let placeholders = ["Master password", "Confirm master password"];
         dialogs::ask_secrets(
             &state.dialog_window(),
-            "Buat Master Password",
+            "Create Master Password",
             &info,
             &placeholders,
-            "Buat",
+            "Create",
             move |values| {
                 let (Some(state), Some(values)) = (weak.upgrade(), values) else { return };
                 let (first, second): (&Zeroizing<String>, &Zeroizing<String>) = (&values[0], &values[1]);
                 let problem = if first.chars().count() < MIN_MASTER {
-                    Some("Master password terlalu pendek.")
+                    Some("Master password is too short.")
                 } else if first != second {
-                    Some("Kedua master password tidak sama.")
+                    Some("The master passwords don't match.")
                 } else {
                     None
                 };
@@ -277,7 +282,7 @@ impl Passwords {
                         state.passwords.unlocking.set(false);
                         // Jangan pernah menimpa vault yang sudah ada.
                         let saved = match result {
-                            _ if vault_path().exists() => Err("Vault password sudah ada.".to_string()),
+                            _ if vault_path().exists() => Err("A password vault already exists.".to_string()),
                             Ok(vault) => persist(&vault).map(|_| vault),
                             Err(e) => Err(e.to_string()),
                         };
@@ -286,7 +291,7 @@ impl Passwords {
                             Err(e) => {
                                 dialogs::confirm(
                                     &state.dialog_window(),
-                                    "Vault password tidak bisa dibuat",
+                                    "Couldn't Create Password Vault",
                                     &e,
                                     &["OK"],
                                     |_| {},
@@ -325,27 +330,30 @@ impl Passwords {
         }
         let site = host(&origin).to_string();
         let (title, button) = match offer {
-            Offer::Update(_) => (format!("Perbarui password untuk {site}?"), "Perbarui"),
-            _ => (format!("Simpan password untuk {site}?"), "Simpan"),
+            Offer::Update(_) => (format!("Update Password for {site}?"), "Update"),
+            _ => (format!("Save Password for {site}?"), "Save"),
         };
-        let mut info =
-            if username.is_empty() { "Akun tanpa username.".to_string() } else { format!("Akun: {username}") };
+        let mut info = if username.is_empty() {
+            "Account without a username.".to_string()
+        } else {
+            format!("Account: {username}")
+        };
         if !vault_path().exists() {
-            info.push_str("\n\nPassword disimpan terenkripsi dan dikunci dengan master password yang akan Anda buat.");
+            info.push_str("\n\nPasswords are stored encrypted and locked with a master password you'll create.");
         }
         let weak = Rc::downgrade(state);
-        let buttons = [button, "Jangan Sekarang", "Jangan untuk Situs Ini"];
+        let buttons = [button, "Not Now", "Never for This Site"];
         dialogs::confirm(&state.dialog_window(), &title, &info, &buttons, move |choice| {
             let Some(state) = weak.upgrade() else { return };
             match choice {
                 0 => {
-                    let reason = format!("untuk menyimpan password {site}");
+                    let reason = format!("to save the password for {site}");
                     state.passwords.with_vault(&state, &reason, move |state, vault| {
                         let message = match vault.offer(&origin, &username, password.expose()) {
-                            Offer::Nothing => "Password ini sudah tersimpan".to_string(),
+                            Offer::Nothing => "This password is already saved".to_string(),
                             Offer::Update(id) => {
                                 vault.update(&id, None, Some(password.expose()), None, now());
-                                format!("Password diperbarui untuk {site}")
+                                format!("Password updated for {site}")
                             }
                             Offer::Save => {
                                 let entry = NewEntry {
@@ -355,7 +363,7 @@ impl Passwords {
                                     note: String::new(),
                                 };
                                 vault.add(entry, now());
-                                format!("Password disimpan untuk {site}")
+                                format!("Password saved for {site}")
                             }
                         };
                         match persist(vault) {
@@ -371,7 +379,7 @@ impl Passwords {
                 2 => {
                     state.browser.borrow_mut().update_settings(|s| s.password_never_save.push(site.clone()));
                     state.refresh();
-                    notice(&state, &format!("Password tidak akan ditawarkan lagi untuk {site}"));
+                    notice(&state, &format!("Won't offer to save passwords for {site} again"));
                 }
                 _ => {}
             }
@@ -386,14 +394,14 @@ impl Passwords {
             (id, b.tabs().get(id).and_then(|t| t.url.as_ref().map(|u| u.to_string())))
         };
         let Some(origin) = url.as_deref().and_then(origin_of) else {
-            notice(state, "Buka halaman login dulu untuk mengisi password");
+            notice(state, "Open a login page first to fill a password");
             return;
         };
         if state.browser.borrow().page(tab).is_none() {
             return;
         }
         let site = host(&origin).to_string();
-        self.with_vault(state, &format!("untuk mengisi password di {site}"), move |state, vault| {
+        self.with_vault(state, &format!("to fill the password on {site}"), move |state, vault| {
             let accounts: Vec<(String, String, Secret)> = vault
                 .for_origin(&origin)
                 .iter()
@@ -402,7 +410,7 @@ impl Passwords {
             match accounts.len() {
                 0 => notice(
                     state,
-                    &format!("Belum ada password untuk {site}. Login seperti biasa untuk menyimpannya, atau tambahkan lewat Passwords > Manage Passwords…."),
+                    &format!("No saved passwords for {site}. Log in as usual to save one, or add it in Passwords > Manage Passwords…"),
                 ),
                 1 => {
                     let (id, user, password) = accounts.into_iter().next().expect("satu akun");
@@ -410,10 +418,10 @@ impl Passwords {
                 }
                 _ => {
                     let names: Vec<String> =
-                        accounts.iter().map(|(_, u, _)| if u.is_empty() { "(tanpa username)".into() } else { u.clone() }).collect();
+                        accounts.iter().map(|(_, u, _)| if u.is_empty() { "(no username)".into() } else { u.clone() }).collect();
                     let weak = Rc::downgrade(state);
-                    let title = format!("Pilih akun untuk {site}");
-                    dialogs::choose(&state.dialog_window(), &title, "Login akan diisi ke halaman ini.", &names, "Isi", move |choice| {
+                    let title = format!("Choose an Account for {site}");
+                    dialogs::choose(&state.dialog_window(), &title, "The login will be filled in on this page.", &names, "Fill", move |choice| {
                         let (Some(state), Some(i)) = (weak.upgrade(), choice) else { return };
                         if let Some((id, user, password)) = accounts.into_iter().nth(i) {
                             fill(&state, tab, origin, id, user, password);
@@ -439,7 +447,7 @@ impl Passwords {
     pub fn copy_generated(&self, state: &AppState) {
         let password = Zeroizing::new(generator::generate(generator::DEFAULT_LENGTH, true));
         copy_secret(&password);
-        notice(state, "Password acak disalin; clipboard dibersihkan dalam 30 detik");
+        notice(state, "Random password copied; clipboard clears in 30 seconds");
     }
 
     pub(crate) fn take_vault(&self) -> Option<Vault> {
@@ -456,7 +464,7 @@ fn fill(state: &Rc<AppState>, tab: TabId, origin: String, id: String, username: 
     let b = state.browser.borrow();
     let Some(page) = b.page(tab) else {
         drop(b);
-        notice(state, "Tab sudah ditutup atau sedang tidur");
+        notice(state, "The tab is closed or sleeping");
         return;
     };
     let weak = Rc::downgrade(state);
@@ -472,14 +480,14 @@ fn fill(state: &Rc<AppState>, tab: TabId, origin: String, id: String, username: 
                 notice(&state, error);
             } else if value["filled_password"] == true || value["filled_username"] == true {
                 let message = if username.is_empty() {
-                    "Password diisi".to_string()
+                    "Password filled".to_string()
                 } else {
-                    format!("Login diisi untuk {username}")
+                    format!("Login filled for {username}")
                 };
                 notice(&state, &message);
                 state.passwords.mark_used(&state, &id);
             } else {
-                notice(&state, "Kolom login tidak ditemukan");
+                notice(&state, "No login fields found");
             }
         }),
     );

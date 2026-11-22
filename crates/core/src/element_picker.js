@@ -17,7 +17,7 @@
     '.tag{display:none;padding:3px 7px}' +
     '.hint{top:12px;left:50%;transform:translateX(-50%);padding:8px 12px;font-size:13px;box-shadow:0 4px 18px rgba(0,0,0,.3)}' +
     '</style><div class="box"></div><div class="tag"></div>' +
-    '<div class="hint">Klik elemen yang ingin ditunjukkan ke Claude · Esc untuk batal</div>';
+    '<div class="hint">Click an element to show Claude · Esc to cancel</div>';
   var box = root.querySelector('.box');
   var tag = root.querySelector('.tag');
   var hint = root.querySelector('.hint');
@@ -135,7 +135,7 @@
   // Tanda singkat bahwa elemen sudah terpilih, lalu overlay dibuang.
   function acknowledge(el) {
     show(el);
-    hint.textContent = 'Terpilih: ' + label(el) + ' · sekarang bilang ke Claude';
+    hint.textContent = 'Selected: ' + label(el) + ' · now tell Claude';
     setTimeout(function () { host.remove(); }, 1800);
   }
 

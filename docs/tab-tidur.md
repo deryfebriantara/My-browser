@@ -1,6 +1,6 @@
 # Tab tidur
 
-Tab latar yang lama tidak dilihat ditidurkan: WKWebView-nya dilepas, sehingga proses WebContent dan memory-nya ikut dilepas. Tab tetap ada di bilah tab (redup, dengan tooltip "Tidur, dimuat ulang saat dibuka", `crates/app/src/tab_strip.rs:78`) dan dimuat ulang saat dibuka.
+Tab latar yang lama tidak dilihat ditidurkan: WKWebView-nya dilepas, sehingga proses WebContent dan memory-nya ikut dilepas. Tab tetap ada di bilah tab (redup, dengan tooltip "Sleeping; reloads when opened", `crates/app/src/tab_strip.rs:82`) dan dimuat ulang saat dibuka.
 
 Hasil ukur Task 9 (`docs/testing/hasil-ukur.md`): empat tab bangun memakai 399,0 MB. Setelah tiga tab latar ditidurkan, angkanya turun menjadi 122,9 MB.
 

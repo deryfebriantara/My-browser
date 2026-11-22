@@ -195,7 +195,7 @@ define_class!(
             frame: &WKFrameInfo,
             handler: &block2::DynBlock<dyn Fn(Bool)>,
         ) {
-            let alert = self.alert(&frame_host(frame), message, &["OK", "Batal"]);
+            let alert = self.alert(&frame_host(frame), message, &["OK", "Cancel"]);
             let response = self.while_busy(|| alert.runModal());
             handler.call((Bool::new(response == NSAlertFirstButtonReturn),));
         }
@@ -210,7 +210,7 @@ define_class!(
             handler: &block2::DynBlock<dyn Fn(*mut NSString)>,
         ) {
             let mtm = MainThreadMarker::from(self);
-            let alert = self.alert(&frame_host(frame), prompt, &["OK", "Batal"]);
+            let alert = self.alert(&frame_host(frame), prompt, &["OK", "Cancel"]);
             let field = NSTextField::new(mtm);
             field.setFrame(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(260.0, 24.0)));
             field.setStringValue(default_text.unwrap_or(&NSString::from_str("")));
@@ -254,7 +254,7 @@ impl Delegate {
 
     fn alert(&self, host: &str, message: &NSString, buttons: &[&str]) -> Retained<NSAlert> {
         let alert = NSAlert::new(MainThreadMarker::from(self));
-        let title = if host.is_empty() { "Halaman ini".to_string() } else { host.to_string() };
+        let title = if host.is_empty() { "This page".to_string() } else { host.to_string() };
         alert.setMessageText(&NSString::from_str(&title));
         alert.setInformativeText(message);
         for button in buttons {

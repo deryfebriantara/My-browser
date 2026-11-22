@@ -1,22 +1,22 @@
-# Tanya Claude: chat di samping halaman
+# Ask Claude: chat di samping halaman
 
 Panel chat di kanan jendela untuk bertanya tentang halaman yang sedang dibuka, misalnya "ringkas artikel ini", "bandingkan dengan tab sebelah", atau "kenapa tombol ini berantakan di HP?". Jawaban datang dari Claude Code di Mac Anda, jadi memakai kuota langganan Claude yang sama, tanpa API key.
 
 ## Cara pakai
 
 - Buka panel lewat tombol ✦ di kanan nav bar, menu **Claude > Ask Claude**, atau ⌘J. Tutup dengan cara yang sama.
-- Ketik pertanyaan lalu Enter (Shift+Enter untuk baris baru). Tombol **Berhenti** atau Esc menghentikan jawaban.
-- **Baru** memulai percakapan baru.
+- Ketik pertanyaan lalu Enter (Shift+Enter untuk baris baru). Tombol **Stop** atau Esc menghentikan jawaban.
+- **New** memulai percakapan baru.
 - Setiap pertanyaan otomatis membawa judul dan URL tab aktif, jadi "halaman ini" selalu merujuk ke tab yang sedang Anda lihat.
 - Untuk bertanya tentang satu elemen: pilih elemennya dulu lewat **Claude > Pick Element for Claude** (⌘⇧E), lalu tanya "jelaskan elemen yang saya tunjuk".
 
 ## Akun dan masuk
 
 - Bilah di bawah judul panel menampilkan akun yang dipakai: email, paket (misalnya Max atau Pro), dan profil Claude Code. Kalau ada beberapa profil (`~/.claude`, `~/.claude-work`, dan seterusnya), pilih di situ. Mengganti profil memulai percakapan baru, karena sesi Claude Code tersimpan per profil.
-- Kalau profil itu belum login, panel menampilkan **Masuk ke Claude**. Pilihannya **langganan Claude**, atau **API Console** yang dibayar per pemakaian.
+- Kalau profil itu belum login, panel menampilkan kartu **Sign In to Claude**. Pilihannya **Sign In with Claude Subscription**, atau **Use API Console (Pay per Use)** yang dibayar per pemakaian.
   - Halaman login dibuka di **tab my-browser**, tidak di Safari atau Chrome. Masuk dan setujui di sana; panel lanjut sendiri dan tab login ditutup otomatis.
-  - Kalau halaman login menampilkan kode, tempel di kolom "Halaman login menampilkan kode?".
-- **Keluar** mengeluarkan profil itu dari Claude Code. Claude Code di Terminal yang memakai profil yang sama juga ikut keluar, dan itu ditanyakan dulu sebelum dijalankan.
+  - Kalau halaman login menampilkan kode, tempel di kolom "Does the sign-in page show a code?".
+- **Sign Out** mengeluarkan profil itu dari Claude Code. Claude Code di Terminal yang memakai profil yang sama juga ikut keluar, dan itu ditanyakan dulu sebelum dijalankan.
 
 Cara kerjanya: panel menjalankan `claude auth login` untuk profil terpilih. CLI membuka halaman login dengan perintah `open`. Khusus untuk proses login itu, `open` diganti skrip kecil lewat PATH yang menyerahkan URL-nya ke my-browser. Setelah disetujui, halaman dialihkan ke localhost tempat CLI menunggu. Status akun dibaca dari `claude auth status --json`.
 
@@ -44,7 +44,7 @@ Lokasi berkas: `~/Library/Application Support/my-browser/settings.json`. Tutup b
 
 ## Kalau muncul "Not logged in" atau "Failed to authenticate"
 
-Login profil itu belum ada atau sudah kedaluwarsa. Panel memeriksa ulang statusnya dan menampilkan **Masuk ke Claude**. Cara manualnya: jalankan `CLAUDE_CONFIG_DIR=~/.claude claude` di Terminal (sesuaikan profilnya), lalu ketik `/login`. Panel sengaja selalu memasang `CLAUDE_CONFIG_DIR`, karena tanpa variabel itu Claude Code membaca login bawaan yang bisa berbeda dari profil yang Anda pakai di Terminal.
+Login profil itu belum ada atau sudah kedaluwarsa. Panel memeriksa ulang statusnya dan menampilkan kartu masuk. Cara manualnya: jalankan `CLAUDE_CONFIG_DIR=~/.claude claude` di Terminal (sesuaikan profilnya), lalu ketik `/login`. Panel sengaja selalu memasang `CLAUDE_CONFIG_DIR`, karena tanpa variabel itu Claude Code membaca login bawaan yang bisa berbeda dari profil yang Anda pakai di Terminal.
 
 ## Cara kerja
 

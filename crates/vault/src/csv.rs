@@ -55,12 +55,12 @@ fn column(header: &[String], names: &[&str]) -> Option<usize> {
 /// Entri dari CSV ekspor browser atau password manager lain.
 pub fn import(text: &str) -> Result<Imported, String> {
     let rows = parse(text);
-    let Some((header, body)) = rows.split_first() else { return Err("Berkas CSV kosong.".into()) };
+    let Some((header, body)) = rows.split_first() else { return Err("The CSV file is empty.".into()) };
     let url = column(header, &["url", "login_uri", "website", "origin"]);
     let password = column(header, &["password", "login_password"]);
     let (Some(url), Some(password)) = (url, password) else {
-        return Err("Kolom url dan password tidak ditemukan. Yang didukung: ekspor Chrome, Safari/Passwords, \
-                    Firefox, dan Bitwarden."
+        return Err("Couldn't find url and password columns. Supported: exports from Chrome, Safari/Passwords, \
+                    Firefox, and Bitwarden."
             .into());
     };
     let username = column(header, &["username", "login_username", "user", "email", "login"]);

@@ -42,7 +42,7 @@ Catatan: dicek pengguna pada 2026-11-15, semua lancar. GATE lulus.
 
 Untuk uji manual, tutup browser dulu (⌘Q), set `"sleep_idle_secs": 20` di `~/Library/Application Support/my-browser/settings.json`, lalu buka lagi. Kembalikan ke 1800 (bawaan, 30 menit) dengan cara yang sama setelah selesai.
 
-- [ ] (a) Buka 4 tab ber-URL, aktifkan satu, tunggu 60 detik: tab latar tampil tidur (redup, tooltip "Tidur, dimuat ulang saat dibuka")
+- [ ] (a) Buka 4 tab ber-URL, aktifkan satu, tunggu 60 detik: tab latar tampil tidur (redup, tooltip "Sleeping; reloads when opened")
 - [ ] (b) Video YouTube diputar di tab latar: tab itu tidak pernah tidur
 - [ ] (c) Video YouTube di-pause di menit ke-2, ditidurkan, lalu dibuka: lanjut dari sekitar menit ke-2
 - [ ] (d) Halaman yang di-scroll jauh, ditidurkan, lalu dibuka: posisi scroll kembali
@@ -70,7 +70,7 @@ Untuk uji manual, tutup browser dulu (⌘Q), set `"sleep_idle_secs": 20` di `~/L
 Sudah diverifikasi otomatis (folder Downloads sementara): dua download bersamaan bernama sama menjadi `gitignore-main.zip` dan `gitignore-main (1).zip`; tab yang navigasinya berubah menjadi download tidak masuk sesi dan tidak mengunduh ulang saat aplikasi dibuka lagi.
 
 - [ ] Mengunduh sebuah PDF lewat link `download` dua kali menghasilkan `nama.pdf` dan `nama (1).pdf` di `~/Downloads`
-- [ ] Label "Selesai diunduh: ..." muncul di kanan nav bar lalu hilang setelah sekitar 6 detik
+- [ ] Label "Downloaded: ..." muncul di kanan nav bar lalu hilang setelah sekitar 6 detik
 
 ## Perbaikan setelah review akhir
 
@@ -78,8 +78,8 @@ Sudah diverifikasi otomatis (folder Downloads sementara): dua download bersamaan
 - [ ] Klik tab berulang kali (termasuk tab yang sudah aktif) dan tutup tab lewat tombol silang: tidak crash, tanda tab aktif tetap benar
 - [ ] Upload berkas (mis. form upload gambar di situs mana pun): jendela pilih berkas muncul
 - [ ] Dialog `alert`, `confirm`, dan `prompt` muncul (mis. ketik `javascript` tidak berlaku di address bar; pakai situs uji seperti https://www.w3schools.com/js/tryit.asp?filename=tryjs_alert)
-- [ ] Membuka `localhost:59999` (server mati): muncul "Gagal memuat halaman: ..." di kanan nav bar
-- [ ] Mulai download lalu langsung tutup tabnya: pemberitahuan "Selesai diunduh" tetap muncul
+- [ ] Membuka `localhost:59999` (server mati): muncul "Couldn't load page: ..." di kanan nav bar
+- [ ] Mulai download lalu langsung tutup tabnya: pemberitahuan "Downloaded" tetap muncul
 - [ ] Pengecualian pemblokir dari subdomain (mis. aktifkan di www.detik.com, buka news.detik.com, matikan lagi): pemblokir benar-benar aktif kembali
 
 ## MCP Claude
@@ -94,14 +94,14 @@ Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`), lal
 - [ ] Matikan lagi: klik ditolak lagi
 - [ ] Tutup browser (⌘Q), lalu minta Claude melihat daftar tab: browser terbuka otomatis
 - [ ] Minta Claude membuat website kecil, menjalankannya di localhost, lalu memeriksanya: Claude memakai console_logs, network_log, dan screenshot, lalu memperbaiki error yang ditemukan
-- [ ] Pilih Claude > Pick Element for Claude (⌘⇧E), arahkan kursor: elemen disorot dengan label ukuran; klik sebuah tombol: tombolnya tidak ikut jalan, tanda "Terpilih" muncul sebentar. Lalu minta Claude "lihat elemen yang saya pilih": Claude menyebut elemen yang benar dan bisa melihat gambarnya
+- [ ] Pilih Claude > Pick Element for Claude (⌘⇧E), arahkan kursor: elemen disorot dengan label ukuran; klik sebuah tombol: tombolnya tidak ikut jalan, tanda "Selected" muncul sebentar. Lalu minta Claude "lihat elemen yang saya pilih": Claude menyebut elemen yang benar dan bisa melihat gambarnya
 - [ ] Mode Pick Element for Claude lalu tekan Esc: sorotan hilang, klik berikutnya berjalan normal
-- [ ] Minta Claude "cek tampilan HP dan mode gelap": halaman tampil selebar HP di tengah atas jendela, pemberitahuan "Claude: HP 390×844, mode gelap" muncul; setelah Claude selesai (atau lewat menu Claude > Reset Device Emulation) tampilan kembali penuh
+- [ ] Minta Claude "cek tampilan HP dan mode gelap": halaman tampil selebar HP di tengah atas jendela, pemberitahuan "Claude: phone 390×844, dark mode" muncul; setelah Claude selesai (atau lewat menu Claude > Reset Device Emulation) tampilan kembali penuh
 - [ ] Menu Reset Device Emulation nonaktif (abu-abu) di tab yang tidak diemulasi
 - [ ] Minta Claude "screenshot seluruh halaman" di halaman panjang: Claude menerima beberapa gambar dan bisa menjelaskan bagian bawah halaman
 - [ ] Minta Claude memakai check_page setelah mengubah kode situs lokal: satu panggilan berisi ringkasan error, request gagal, dan screenshot
 
-## Tanya Claude
+## Ask Claude
 
 Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
 
@@ -118,11 +118,11 @@ Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
 
 Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
 
-- [ ] Login di sebuah situs: muncul "Simpan password untuk …?"; Simpan meminta membuat master password (ditolak kalau < 10 karakter atau kedua isian beda)
+- [ ] Login di sebuah situs: muncul "Save Password for …?"; Save meminta membuat master password (ditolak kalau < 10 karakter atau kedua isian beda)
 - [ ] Keluar lalu buka halaman login lagi, tekan ⌘\: username dan password terisi, situs bisa dipakai login
 - [ ] Passwords > Lock Passwords, lalu ⌘\: diminta master password; master password salah ditolak dengan pesan, yang benar langsung mengisi
-- [ ] Login dengan password berbeda: muncul "Perbarui password untuk …?"
-- [ ] "Jangan untuk Situs Ini": login berikutnya di situs itu tidak ditanya lagi
+- [ ] Login dengan password berbeda: muncul "Update Password for …?"
+- [ ] "Never for This Site": login berikutnya di situs itu tidak ditanya lagi
 - [ ] Passwords > Manage Passwords…: cari, Lihat (tersembunyi lagi setelah 20 detik), Salin (clipboard kosong lagi setelah 30 detik), Edit, Hapus (minta konfirmasi), Tambah dengan Buat acak
 - [ ] Impor CSV dari Chrome atau app Passwords: jumlah yang diimpor sesuai, muncul pengingat untuk menghapus berkas CSV
 - [ ] Ekspor CSV: meminta master password lagi; master password salah membatalkan ekspor
@@ -135,15 +135,15 @@ Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
 
 Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
 
-- [ ] Mulai sesi Claude Code baru dan minta Claude melihat daftar tab: my-browser maju ke depan dengan dialog "Izinkan Claude Code mengontrol my-browser?" yang menampilkan folder proyek sesi itu
-- [ ] Selalu Izinkan: Claude langsung mendapat daftar tab; sesi Claude Code berikutnya tidak ditanya lagi
+- [ ] Mulai sesi Claude Code baru dan minta Claude melihat daftar tab: my-browser maju ke depan dengan dialog "Allow Claude Code to control my-browser?" yang menampilkan folder proyek sesi itu
+- [ ] Always Allow: Claude langsung mendapat daftar tab; sesi Claude Code berikutnya tidak ditanya lagi
 - [ ] Claude > Revoke MCP Client Access: permintaan berikutnya ditanya lagi
-- [ ] Tolak: Claude mendapat pesan penolakan; permintaan berikutnya langsung ditolak sampai browser dibuka ulang
-- [ ] Panel Tanya Claude tetap bisa membaca halaman tanpa dialog izin
+- [ ] Deny: Claude mendapat pesan penolakan; permintaan berikutnya langsung ditolak sampai browser dibuka ulang
+- [ ] Panel Ask Claude tetap bisa membaca halaman tanpa dialog izin
 - [ ] Panel menampilkan email, paket, dan profil di bawah judul; pilihan profil mengganti akun dan memulai percakapan baru
-- [ ] Pilih profil yang belum login (mis. ~/.claude-flash): muncul Masuk ke Claude; Masuk membuka halaman login di tab my-browser; setelah disetujui tab login tertutup sendiri dan panel siap dipakai
-- [ ] Batal saat menunggu login: kembali ke kartu Masuk
-- [ ] Keluar: diminta konfirmasi dengan peringatan bahwa Claude Code di Terminal dengan profil yang sama ikut keluar
+- [ ] Pilih profil yang belum login (mis. ~/.claude-flash): muncul kartu Sign In to Claude; Sign In with Claude Subscription membuka halaman login di tab my-browser; setelah disetujui tab login tertutup sendiri dan panel siap dipakai
+- [ ] Cancel saat menunggu login: kembali ke kartu Sign In to Claude
+- [ ] Sign Out: diminta konfirmasi dengan peringatan bahwa Claude Code di Terminal dengan profil yang sama ikut keluar
 
 ## Riwayat dan saran address bar
 
@@ -153,11 +153,11 @@ Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`). Riw
 - [ ] Daftar saran tampil rapi di bawah address bar dalam mode terang dan gelap, dan ikut bergeser saat jendela dipindah
 - [ ] ↑ ↓ memilih saran dan mengisi address bar; Enter membuka; klik mouse pada baris juga membuka
 - [ ] Escape pertama menutup daftar, Escape kedua mengembalikan alamat tab
-- [ ] Ketik judul tab lain yang sedang terbuka: muncul "Pindah ke tab"; memilihnya pindah ke tab itu tanpa memuat ulang
+- [ ] Ketik judul tab lain yang sedang terbuka: muncul "Switch to tab"; memilihnya pindah ke tab itu tanpa memuat ulang
 - [ ] Klik beberapa video di YouTube (tanpa memuat ulang halaman): setiap video muncul di Riwayat dengan judul yang benar
 - [ ] Video yang ditidurkan lalu dibuka lagi tidak membuat entri baru (tidak ada `&t=` di Riwayat)
-- [ ] ⌘Y membuka jendela Riwayat yang dikelompokkan per hari; cari, ⌘-klik membuka di tab baru, ✕ menghapus satu halaman
-- [ ] History > Clear History… > Satu jam terakhir: halaman tadi hilang dari Riwayat dan dari saran address bar
+- [ ] ⌘Y membuka jendela History yang dikelompokkan per hari; cari, ⌘-klik membuka di tab baru, ✕ menghapus satu halaman
+- [ ] History > Clear History… > Last hour: halaman tadi hilang dari History dan dari saran address bar
 - [ ] IME Jepang (atau input lain yang menyusun huruf) di address bar tidak dilengkapi selama menyusun
 - [ ] VoiceOver membacakan baris saran
 - [ ] Minta Claude "video YouTube apa yang saya tonton hari ini?": Claude memakai search_history

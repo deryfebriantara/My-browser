@@ -76,7 +76,7 @@ impl HistoryWindow {
             )
         };
         unsafe { window.setReleasedWhenClosed(false) };
-        window.setTitle(&NSString::from_str("Riwayat"));
+        window.setTitle(&NSString::from_str("History"));
         window.setContentMinSize(NSSize::new(520.0, 360.0));
         window.setDelegate(Some(ProtocolObject::from_ref(&*state.ui.target)));
         let weak = Rc::downgrade(state);
@@ -173,7 +173,7 @@ impl HistoryWindow {
                 if deleted {
                     state.save_history_now();
                     state.refresh();
-                    self.post(json!({"t": "toast", "text": "Dihapus dari riwayat"}));
+                    self.post(json!({"t": "toast", "text": "Removed from history"}));
                 }
             }
             Some("clear") => clear_dialog(state),
@@ -184,13 +184,12 @@ impl HistoryWindow {
 
 /// Dialog Hapus Riwayat (dari jendela Riwayat dan menu Riwayat).
 pub fn clear_dialog(state: &Rc<AppState>) {
-    let options: Vec<String> =
-        ["Satu jam terakhir", "Hari ini", "Hari ini dan kemarin", "Semua riwayat"].map(String::from).to_vec();
-    let info = "Halaman yang terakhir dibuka dalam rentang ini dihapus dari riwayat dan saran address bar. \
-                Tab yang terbuka, cookie, login, dan cache tidak ikut dihapus.";
+    let options: Vec<String> = ["Last hour", "Today", "Today and yesterday", "All history"].map(String::from).to_vec();
+    let info = "Pages last visited in this period are removed from history and address bar suggestions. \
+                Open tabs, cookies, sign-ins, and the cache are not affected.";
     let weak = Rc::downgrade(state);
     let shown =
-        dialogs::choose(&state.dialog_window(), "Hapus Riwayat", info, &options, "Hapus Riwayat", move |choice| {
+        dialogs::choose(&state.dialog_window(), "Clear History", info, &options, "Clear History", move |choice| {
             let (Some(state), Some(choice)) = (weak.upgrade(), choice) else { return };
             let now = state.browser.borrow().unix_now();
             let today = start_of_local_day(now, local_time::offset_at(now));
@@ -209,10 +208,11 @@ pub fn clear_dialog(state: &Rc<AppState>) {
             }
             state.save_history_now();
             state.refresh();
-            state.ui.nav.show_notice(&format!("Riwayat dihapus ({removed} halaman)"));
+            let pages = if removed == 1 { "page" } else { "pages" };
+            state.ui.nav.show_notice(&format!("History cleared ({removed} {pages})"));
         });
     if !shown {
-        state.ui.nav.show_notice("Tutup dialog lain dulu, lalu coba Hapus Riwayat lagi");
+        state.ui.nav.show_notice("Close the other dialog first, then try Clear History again");
     }
 }
 

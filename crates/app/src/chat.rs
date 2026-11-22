@@ -177,7 +177,7 @@ impl Chat {
             return;
         }
         if self.account.signed_in() == Some(false) {
-            self.post(json!({"t": "error", "text": "Masuk dulu ke akun Claude untuk bertanya."}));
+            self.post(json!({"t": "error", "text": "Sign in to your Claude account to ask a question."}));
             return;
         }
         self.items.borrow_mut().push(Item::User(text.to_string()));
@@ -185,7 +185,7 @@ impl Chat {
         let starting = self.process.borrow().is_none();
         self.items.borrow_mut().push(Item::Assistant { text: String::new(), tools: Vec::new() });
         self.busy.set(true);
-        self.post(json!({"t": "start", "status": if starting { "Menyalakan Claude…" } else { "" }}));
+        self.post(json!({"t": "start", "status": if starting { "Starting Claude…" } else { "" }}));
 
         let tab = active_tab(state);
         let context = tab.as_ref().map(ActiveTab::as_context);
@@ -214,15 +214,15 @@ impl Chat {
             self.generation.set(self.generation.get() + 1);
             self.process.borrow_mut().take();
         }
-        Err("Pesan tidak bisa dikirim ke Claude Code.".into())
+        Err("Couldn't send the message to Claude Code.".into())
     }
 
     fn spawn(&self, state: &Rc<AppState>) -> Result<Process, String> {
         let settings = state.browser.borrow().settings().clone();
         let data_dir = persistence::data_dir();
         let workdir = data_dir.join("claude-chat");
-        std::fs::create_dir_all(&workdir).map_err(|e| format!("Folder kerja Claude tidak bisa dibuat: {e}"))?;
-        let exe = std::env::current_exe().map_err(|e| format!("Lokasi my-browser tidak terbaca: {e}"))?;
+        std::fs::create_dir_all(&workdir).map_err(|e| format!("Couldn't create Claude's working folder: {e}"))?;
+        let exe = std::env::current_exe().map_err(|e| format!("Couldn't find where my-browser is located: {e}"))?;
         let session = self.session.borrow().clone();
         let args = cc::launch_args(&Launch {
             browser_exe: &exe,
@@ -232,7 +232,7 @@ impl Chat {
         });
         let mut command = claude_command(state)?;
         command.args(&args).current_dir(&workdir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-        let mut child = command.spawn().map_err(|e| format!("Claude Code tidak bisa dijalankan: {e}"))?;
+        let mut child = command.spawn().map_err(|e| format!("Couldn't start Claude Code: {e}"))?;
         let stdin = child.stdin.take().expect("stdin di-pipe");
         let stdout = child.stdout.take().expect("stdout di-pipe");
         let stderr = child.stderr.take().expect("stderr di-pipe");
@@ -312,7 +312,7 @@ impl Chat {
         self.process.borrow_mut().take();
         if self.busy.get() {
             let detail = if stderr.trim().is_empty() { String::new() } else { format!("\n\n{}", stderr.trim()) };
-            self.fail(format!("Claude Code berhenti sebelum selesai menjawab.{detail}"));
+            self.fail(format!("Claude Code stopped before it finished answering.{detail}"));
         }
     }
 
@@ -326,7 +326,7 @@ impl Chat {
                 if !text.is_empty() {
                     text.push_str("\n\n");
                 }
-                text.push_str("*(dihentikan)*");
+                text.push_str("*(stopped)*");
             }
             self.post(json!({"t": "done", "stopped": true}));
         }
@@ -433,12 +433,12 @@ mod tests {
     fn transcript_items_serialize_for_the_panel() {
         let items = [
             Item::User("halo".into()),
-            Item::Assistant { text: "hai".into(), tools: vec!["Membaca halaman".into()] },
+            Item::Assistant { text: "hai".into(), tools: vec!["Reading page".into()] },
             Item::Error("gagal".into()),
         ];
         let json: Vec<Value> = items.iter().map(Item::to_json).collect();
         assert_eq!(json[0], json!({"role": "user", "text": "halo"}));
-        assert_eq!(json[1]["tools"][0], "Membaca halaman");
+        assert_eq!(json[1]["tools"][0], "Reading page");
         assert_eq!(json[2]["role"], "error");
     }
 

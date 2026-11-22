@@ -4,7 +4,7 @@
 // password tidak pernah terisi di situs lain walaupun halaman berpindah
 // sejak pengguna memilih entri.
 if (location.origin !== origin) {
-  return JSON.stringify({ error: 'Halaman sudah berpindah ke situs lain; password tidak diisi.' });
+  return JSON.stringify({ error: 'The page moved to another site; the password was not filled.' });
 }
 function visible(el) {
   var r = el.getBoundingClientRect(), s = getComputedStyle(el);
@@ -35,7 +35,7 @@ if (!user) {
   }
 }
 if (!pw && !(user && username)) {
-  return JSON.stringify({ error: 'Tidak ada kolom login di halaman ini.' });
+  return JSON.stringify({ error: 'No login fields on this page.' });
 }
 if (user && username) set(user, username);
 if (pw) set(pw, password);
