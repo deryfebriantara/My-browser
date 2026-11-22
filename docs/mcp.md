@@ -28,6 +28,7 @@ Claude Code ──stdio JSON-RPC──▶ my-browser --mcp ──control.sock─
 | `list_tabs`, `open_tab`, `close_tab`, `activate_tab` | Mengatur tab | Tidak |
 | `navigate`, `go_back`, `go_forward`, `reload` | Navigasi, menunggu halaman selesai dimuat | Tidak |
 | `sleep_tab`, `memory_usage` | Menidurkan tab, memory per tab | Tidak |
+| `search_history` | Mencari riwayat halaman yang pernah dibuka: URL, judul, waktu terakhir, jumlah kunjungan (lihat `docs/riwayat.md`) | Tidak |
 | `read_page`, `list_elements`, `scroll` | Membaca halaman | Tidak |
 | `screenshot` | Layar tab aktif; `full_page` untuk seluruh halaman (dipotong per 1600 px, maks 6 gambar); `selector` untuk satu elemen (elemen kecil diperbesar 2x) | Tidak |
 | `emulate` | Meniru HP (390×844 + user agent iPhone), tablet, desktop, ukuran khusus, mode gelap/terang; `device=reset` untuk kembali | Tidak |
@@ -71,6 +72,7 @@ Socket kontrol hanya bisa dibuka oleh user macOS yang sama. Itu berarti program 
 - Permintaan pertama menunggu jawaban Anda sampai 35 detik. Kalau Anda menjawab setelah itu, jawabannya tetap berlaku untuk permintaan berikutnya.
 - **Identitas dari kernel**, bukan dari pengakuan program. Pid peer socket menunjuk ke `my-browser --mcp`, dan yang dianggap meminta akses adalah induk proses itu (misalnya `claude`). Program asing yang menjalankan `my-browser --mcp` sendiri akan tampil dengan namanya sendiri.
 - **Panel Tanya Claude** dikenali dari silsilah proses (proses Claude-nya adalah anak browser ini), jadi tidak ditanya. Browser juga membatasinya ke perintah baca saja, sebagai lapisan kedua di atas daftar tool panel.
+- Program yang diizinkan bisa membaca riwayat lewat `search_history`, dan teks dialognya menyebut hal itu. Program yang sudah diizinkan sebelum tool ini ada tidak ditanya ulang.
 - Menu **Claude > Cabut Izin Program MCP** menghapus semua izin; setiap program akan ditanya lagi.
 - Izin disimpan per lokasi program. Setelah Claude Code diperbarui ke lokasi lain (misalnya versi Node di nvm berganti), Anda akan ditanya sekali lagi.
 

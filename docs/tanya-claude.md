@@ -22,7 +22,7 @@ Cara kerjanya: panel menjalankan `claude auth login` untuk profil terpilih. CLI 
 
 ## Yang bisa dan tidak bisa dilakukan Claude di panel
 
-Bisa: membaca teks halaman, memotret tab, melihat daftar tab, memeriksa elemen dan elemen yang ditunjuk, membaca console dan log jaringan, menggulir, mengontrol video YouTube.
+Bisa: membaca teks halaman, memotret tab, melihat daftar tab, mencari riwayat (`search_history`), memeriksa elemen dan elemen yang ditunjuk, membaca console dan log jaringan, menggulir, mengontrol video YouTube.
 
 Tidak bisa: membuka URL atau tab, mengklik, mengetik di halaman, menjalankan JavaScript, mengubah file, menjalankan perintah terminal, atau membuka web. Claude dijalankan tanpa tool bawaan (`--tools ""`), hanya dengan tool baca my-browser, dan tool lain ditolak otomatis (`--permission-prompts none`).
 

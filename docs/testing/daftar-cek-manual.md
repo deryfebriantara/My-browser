@@ -144,3 +144,20 @@ Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
 - [ ] Pilih profil yang belum login (mis. ~/.claude-flash): muncul Masuk ke Claude; Masuk membuka halaman login di tab my-browser; setelah disetujui tab login tertutup sendiri dan panel siap dipakai
 - [ ] Batal saat menunggu login: kembali ke kartu Masuk
 - [ ] Keluar: diminta konfirmasi dengan peringatan bahwa Claude Code di Terminal dengan profil yang sama ikut keluar
+
+## Riwayat dan saran address bar
+
+Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`). Riwayat mulai tercatat sejak build ini.
+
+- [ ] Buka beberapa situs, lalu ketik awal alamat yang tadi diketik (mis. `you`): alamat dilengkapi dengan bagian tambahan terseleksi; mengetik lanjut menimpanya, Backspace menghapusnya
+- [ ] Daftar saran tampil rapi di bawah address bar dalam mode terang dan gelap, dan ikut bergeser saat jendela dipindah
+- [ ] ↑ ↓ memilih saran dan mengisi address bar; Enter membuka; klik mouse pada baris juga membuka
+- [ ] Escape pertama menutup daftar, Escape kedua mengembalikan alamat tab
+- [ ] Ketik judul tab lain yang sedang terbuka: muncul "Pindah ke tab"; memilihnya pindah ke tab itu tanpa memuat ulang
+- [ ] Klik beberapa video di YouTube (tanpa memuat ulang halaman): setiap video muncul di Riwayat dengan judul yang benar
+- [ ] Video yang ditidurkan lalu dibuka lagi tidak membuat entri baru (tidak ada `&t=` di Riwayat)
+- [ ] ⌘Y membuka jendela Riwayat yang dikelompokkan per hari; cari, ⌘-klik membuka di tab baru, ✕ menghapus satu halaman
+- [ ] Riwayat > Hapus Riwayat… > Satu jam terakhir: halaman tadi hilang dari Riwayat dan dari saran address bar
+- [ ] IME Jepang (atau input lain yang menyusun huruf) di address bar tidak dilengkapi selama menyusun
+- [ ] VoiceOver membacakan baris saran
+- [ ] Minta Claude "video YouTube apa yang saya tonton hari ini?": Claude memakai search_history
