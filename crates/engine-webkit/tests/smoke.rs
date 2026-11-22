@@ -317,7 +317,7 @@ fn mouse(page: &engine_webkit::WebKitPage, kind: &str, x: f64, y: f64) {
 }
 
 /// Alat visual: screenshot halaman penuh dan elemen (termasuk di luar
-/// layar), mode gelap/terang, user agent HP, dan mode Tunjuk Elemen.
+/// layar), mode gelap/terang, user agent HP, dan mode Pick Element.
 fn visual_tools(engine: &WebKitEngine) {
     use browser_core::capture;
     use browser_core::engine::{ColorScheme, Rect};
@@ -402,7 +402,7 @@ fn visual_tools(engine: &WebKitEngine) {
     load_and_wait(&page, &events, menu, "http://localhost:8000/");
     let target = json(&page, "JSON.stringify(document.querySelectorAll('a.item')[1].getBoundingClientRect())");
     let (x, y) = (target["x"].as_f64().unwrap() + 5.0, target["y"].as_f64().unwrap() + 5.0);
-    assert!(json(&page, &js::picked_element(None))["error"].as_str().unwrap().contains("Tunjuk Elemen"));
+    assert!(json(&page, &js::picked_element(None))["error"].as_str().unwrap().contains("Pick Element for Claude"));
 
     page.run_script(js::ELEMENT_PICKER);
     spin_until(Duration::from_millis(200), || false);
@@ -419,7 +419,7 @@ fn visual_tools(engine: &WebKitEngine) {
     let same = format!("String(document.querySelector({:?})===document.querySelectorAll('a.item')[1])", selector);
     assert_eq!(evaluate(&page, &same).unwrap(), "true", "selector {selector} tidak menunjuk elemen yang dipilih");
     assert!(!title_becomes(&events, "diklik", Duration::from_millis(300)), "klik saat memilih tidak boleh sampai ke halaman");
-    println!("ok: Tunjuk Elemen: elemen terpilih, selector unik ({selector}), klik tidak sampai ke halaman");
+    println!("ok: Pick Element: elemen terpilih, selector unik ({selector}), klik tidak sampai ke halaman");
 
     page.run_script("var li=document.querySelectorAll('li')[1];li.innerHTML=li.innerHTML;");
     assert_eq!(json(&page, &js::picked_element(None))["text"], "Dua", "elemen yang dirender ulang dicari lewat selector");
@@ -436,7 +436,7 @@ fn visual_tools(engine: &WebKitEngine) {
     mouse(&page, "click", x, y);
     assert!(title_becomes(&events, "diklik", Duration::from_secs(2)), "setelah Esc, klik harus sampai ke halaman lagi");
     assert_eq!(evaluate(&page, "String(!document.querySelector('[data-mb-overlay]'))").unwrap(), "true");
-    println!("ok: Esc membatalkan mode Tunjuk Elemen");
+    println!("ok: Esc membatalkan mode Pick Element");
 }
 
 fn credentials(events: &Rc<RefCell<Vec<PageEvent>>>) -> Vec<(String, String, String)> {

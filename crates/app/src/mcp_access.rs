@@ -13,7 +13,7 @@ use std::rc::Rc;
 use std::sync::mpsc;
 
 pub const DENIED: &str = "Pengguna menolak program ini mengontrol my-browser. Izin bisa diatur ulang lewat menu \
-Claude > Cabut Izin Program MCP di my-browser.";
+Claude > Revoke MCP Client Access di my-browser.";
 
 const OTHER_DIALOG: &str = "Ada dialog lain yang terbuka di my-browser. Selesaikan dulu, lalu coba lagi.";
 
@@ -72,7 +72,7 @@ impl McpAccess {
         }
         info.push_str(
             "\n\nProgram ini akan bisa membaca dan memotret tab, membaca riwayat, membuka halaman, dan mengatur tab. Klik, mengetik, \
-             dan JavaScript tetap butuh menu Claude > Izinkan Claude Berinteraksi. Tolak kalau Anda tidak mengenali \
+             dan JavaScript tetap butuh menu Claude > Allow Claude to Interact. Tolak kalau Anda tidak mengenali \
              program ini.",
         );
         let weak = Rc::downgrade(state);
@@ -126,7 +126,7 @@ impl McpAccess {
         }
     }
 
-    /// Menu Cabut Izin Program MCP: semua program ditanya lagi.
+    /// Menu Revoke MCP Client Access: semua program ditanya lagi.
     pub fn revoke_all(&self, state: &AppState) {
         state.browser.borrow_mut().update_settings(|s| s.mcp_allowed_clients.clear());
         self.denied.borrow_mut().clear();

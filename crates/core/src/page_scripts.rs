@@ -247,10 +247,10 @@ pub fn inspect_element(selector: Option<&str>, element: Option<u32>, styles: Opt
     )
 }
 
-/// Mode "Tunjuk Elemen ke Claude" (lihat `element_picker.js`).
+/// Mode "Pick Element for Claude" (lihat `element_picker.js`).
 pub const ELEMENT_PICKER: &str = include_str!("element_picker.js");
 
-/// Membuang tanda "Terpilih" dari mode Tunjuk Elemen (tampil sebentar setelah
+/// Membuang tanda "Terpilih" dari mode Pick Element (tampil sebentar setelah
 /// memilih) supaya tidak ikut terfoto. Overlay mode pilih yang masih aktif
 /// dibiarkan.
 const CLEAR_PICK_OVERLAY: &str =
@@ -262,7 +262,7 @@ pub fn picked_element(styles: Option<&[String]>) -> String {
     format!(
         "(function(){{{CLEAR_PICK_OVERLAY}var p=window.__mbPicked;\
          if(!p)return JSON.stringify({{error:'Belum ada elemen yang ditunjuk di tab ini. Minta pengguna memilih menu \
-         Claude > Tunjuk Elemen ke Claude (Cmd+Shift+E) di my-browser, lalu klik elemennya.'}});\
+         Claude > Pick Element for Claude (Cmd+Shift+E) di my-browser, lalu klik elemennya.'}});\
          var e=p.el&&p.el.isConnected?p.el:null;\
          if(!e){{try{{e=document.querySelector(p.selector);}}catch(x){{}}}}\
          if(!e)return JSON.stringify({{error:'Elemen yang ditunjuk sudah tidak ada di halaman (halaman berubah). \

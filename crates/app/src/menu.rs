@@ -1,4 +1,4 @@
-//! Menu utama aplikasi (teks Indonesia).
+//! Menu utama aplikasi (teks Inggris).
 
 use crate::actions::ActionTarget;
 use objc2::rc::Retained;
@@ -59,84 +59,84 @@ pub fn build(mtm: MainThreadMarker, target: &ActionTarget) -> Retained<NSMenu> {
     let it = |title, action, key, mods, target, tag| Item { title, action, key, mods, target, tag };
 
     let main = NSMenu::new(mtm);
-    main.addItem(&submenu(mtm, "my-browser", &[it("Keluar my-browser", sel!(terminate:), "q", cmd, None, 0)]));
+    main.addItem(&submenu(mtm, "my-browser", &[it("Quit my-browser", sel!(terminate:), "q", cmd, None, 0)]));
     main.addItem(&submenu(
         mtm,
-        "Berkas",
+        "File",
         &[
-            it("Tab Baru", sel!(newTab:), "t", cmd, t, 0),
-            it("Tutup Tab", sel!(closeActiveTab:), "w", cmd, t, 0),
-            it("Buka Lagi Tab yang Ditutup", sel!(reopenClosedTab:), "t", cmd_shift, t, 0),
-            it("Buka Alamat", sel!(focusAddress:), "l", cmd, t, 0),
+            it("New Tab", sel!(newTab:), "t", cmd, t, 0),
+            it("Close Tab", sel!(closeActiveTab:), "w", cmd, t, 0),
+            it("Reopen Closed Tab", sel!(reopenClosedTab:), "t", cmd_shift, t, 0),
+            it("Open Location", sel!(focusAddress:), "l", cmd, t, 0),
         ],
     ));
     main.addItem(&submenu(
         mtm,
         "Edit",
         &[
-            it("Urungkan", sel!(undo:), "z", cmd, None, 0),
-            it("Ulangi", sel!(redo:), "z", cmd_shift, None, 0),
-            it("Potong", sel!(cut:), "x", cmd, None, 0),
-            it("Salin", sel!(copy:), "c", cmd, None, 0),
-            it("Tempel", sel!(paste:), "v", cmd, None, 0),
-            it("Pilih Semua", sel!(selectAll:), "a", cmd, None, 0),
+            it("Undo", sel!(undo:), "z", cmd, None, 0),
+            it("Redo", sel!(redo:), "z", cmd_shift, None, 0),
+            it("Cut", sel!(cut:), "x", cmd, None, 0),
+            it("Copy", sel!(copy:), "c", cmd, None, 0),
+            it("Paste", sel!(paste:), "v", cmd, None, 0),
+            it("Select All", sel!(selectAll:), "a", cmd, None, 0),
         ],
     ));
     main.addItem(&submenu(
         mtm,
-        "Tampilan",
+        "View",
         &[
-            it("Muat Ulang", sel!(reloadPage:), "r", cmd, t, 0),
-            it("Layar Penuh", sel!(toggleFullScreen:), "f", ctrl_cmd, None, 0),
-            it("Matikan Pemblokir untuk Situs Ini", sel!(toggleBlocker:), "", cmd, t, 0),
+            it("Reload Page", sel!(reloadPage:), "r", cmd, t, 0),
+            it("Enter Full Screen", sel!(toggleFullScreen:), "f", ctrl_cmd, None, 0),
+            it("Disable Blocker for This Site", sel!(toggleBlocker:), "", cmd, t, 0),
         ],
     ));
     main.addItem(&submenu(
         mtm,
-        "Riwayat",
+        "History",
         &[
-            it("Mundur", sel!(goBack:), "[", cmd, t, 0),
-            it("Maju", sel!(goForward:), "]", cmd, t, 0),
+            it("Back", sel!(goBack:), "[", cmd, t, 0),
+            it("Forward", sel!(goForward:), "]", cmd, t, 0),
             it("", sel!(goBack:), "", cmd, t, 0),
-            it("Tampilkan Semua Riwayat", sel!(showHistory:), "y", cmd, t, 0),
-            it("Hapus Riwayat…", sel!(clearHistory:), "", cmd, t, 0),
+            it("Show All History", sel!(showHistory:), "y", cmd, t, 0),
+            it("Clear History…", sel!(clearHistory:), "", cmd, t, 0),
         ],
     ));
 
     let opt_cmd = NSEventModifierFlags::Option | NSEventModifierFlags::Command;
     main.addItem(&submenu(
         mtm,
-        "Password",
+        "Passwords",
         &[
-            it("Isi Password", sel!(fillPassword:), "\\", cmd, t, 0),
-            it("Kelola Password…", sel!(openPasswordManager:), "p", opt_cmd, t, 0),
-            it("Salin Password Acak", sel!(copyGeneratedPassword:), "", cmd, t, 0),
-            it("Kunci Password", sel!(lockPasswords:), "", cmd, t, 0),
+            it("Fill Password", sel!(fillPassword:), "\\", cmd, t, 0),
+            it("Manage Passwords…", sel!(openPasswordManager:), "p", opt_cmd, t, 0),
+            it("Copy Random Password", sel!(copyGeneratedPassword:), "", cmd, t, 0),
+            it("Lock Passwords", sel!(lockPasswords:), "", cmd, t, 0),
         ],
     ));
     main.addItem(&submenu(
         mtm,
         "Claude",
         &[
-            it("Tanya Claude", sel!(toggleChat:), "j", cmd, t, 0),
-            it("Tunjuk Elemen ke Claude", sel!(pickElement:), "e", cmd_shift, t, 0),
-            it("Kembalikan Tampilan Normal", sel!(resetEmulation:), "", cmd, t, 0),
-            it("Izinkan Claude Berinteraksi", sel!(toggleClaudeInteract:), "", cmd, t, 0),
-            it("Cabut Izin Program MCP", sel!(revokeMcpClients:), "", cmd, t, 0),
+            it("Ask Claude", sel!(toggleChat:), "j", cmd, t, 0),
+            it("Pick Element for Claude", sel!(pickElement:), "e", cmd_shift, t, 0),
+            it("Reset Device Emulation", sel!(resetEmulation:), "", cmd, t, 0),
+            it("Allow Claude to Interact", sel!(toggleClaudeInteract:), "", cmd, t, 0),
+            it("Revoke MCP Client Access", sel!(revokeMcpClients:), "", cmd, t, 0),
         ],
     ));
 
     let mut window_items = vec![
-        it("Tab Berikutnya", sel!(nextTab:), "\t", ctrl, t, 0),
-        it("Tab Berikutnya", sel!(nextTab:), "]", cmd_shift, t, 0),
-        it("Tab Sebelumnya", sel!(previousTab:), "\t", ctrl_shift, t, 0),
-        it("Tab Sebelumnya", sel!(previousTab:), "[", cmd_shift, t, 0),
+        it("Next Tab", sel!(nextTab:), "\t", ctrl, t, 0),
+        it("Next Tab", sel!(nextTab:), "]", cmd_shift, t, 0),
+        it("Previous Tab", sel!(previousTab:), "\t", ctrl_shift, t, 0),
+        it("Previous Tab", sel!(previousTab:), "[", cmd_shift, t, 0),
     ];
     const DIGITS: [&str; 9] = ["1", "2", "3", "4", "5", "6", "7", "8", "9"];
-    const TITLES: [&str; 9] = ["Tab 1", "Tab 2", "Tab 3", "Tab 4", "Tab 5", "Tab 6", "Tab 7", "Tab 8", "Tab Terakhir"];
+    const TITLES: [&str; 9] = ["Tab 1", "Tab 2", "Tab 3", "Tab 4", "Tab 5", "Tab 6", "Tab 7", "Tab 8", "Last Tab"];
     for i in 0..9 {
         window_items.push(it(TITLES[i], sel!(selectTabIndex:), DIGITS[i], cmd, t, i as isize));
     }
-    main.addItem(&submenu(mtm, "Jendela", &window_items));
+    main.addItem(&submenu(mtm, "Window", &window_items));
     main
 }

@@ -15,7 +15,7 @@ fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> 
     })
 }
 
-const INTERACTION: &str = " Butuh izin: pengguna harus menyalakan menu Claude > Izinkan Claude Berinteraksi.";
+const INTERACTION: &str = " Butuh izin: pengguna harus menyalakan menu Claude > Allow Claude to Interact.";
 
 pub fn list() -> Vec<Value> {
     vec![
@@ -131,7 +131,7 @@ pub fn list() -> Vec<Value> {
         ),
         tool(
             "get_selection",
-            "Elemen yang ditunjuk pengguna lewat menu Claude > Tunjuk Elemen ke Claude (Cmd+Shift+E): selector unik, teks, posisi, computed style, outerHTML, dan gambar elemennya. Panggil ini kalau pengguna menyebut \"elemen yang saya pilih/tunjuk\".",
+            "Elemen yang ditunjuk pengguna lewat menu Claude > Pick Element for Claude (Cmd+Shift+E): selector unik, teks, posisi, computed style, outerHTML, dan gambar elemennya. Panggil ini kalau pengguna menyebut \"elemen yang saya pilih/tunjuk\".",
             json!({"tab_id": tab_id()}),
             &[],
         ),

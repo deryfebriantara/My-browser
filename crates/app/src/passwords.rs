@@ -351,7 +351,7 @@ impl Passwords {
             match accounts.len() {
                 0 => notice(
                     state,
-                    &format!("Belum ada password untuk {site}. Login seperti biasa untuk menyimpannya, atau tambahkan di Kelola Password."),
+                    &format!("Belum ada password untuk {site}. Login seperti biasa untuk menyimpannya, atau tambahkan lewat Passwords > Manage Passwords…."),
                 ),
                 1 => {
                     let (id, user, password) = accounts.into_iter().next().expect("satu akun");
@@ -384,7 +384,7 @@ impl Passwords {
         }
     }
 
-    /// Menu Salin Password Acak: password baru ke clipboard (dibersihkan sendiri).
+    /// Menu Copy Random Password: password baru ke clipboard (dibersihkan sendiri).
     pub fn copy_generated(&self, state: &AppState) {
         let password = Zeroizing::new(generator::generate(generator::DEFAULT_LENGTH, true));
         copy_secret(&password);

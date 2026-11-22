@@ -10,8 +10,8 @@ my-browser mencatat halaman yang dibuka, menyarankan halaman itu saat Anda menge
   - Tab menerima pelengkapan.
   - Baris **Pindah ke tab** membuka tab yang sudah terbuka, tanpa memuat ulang. Kalau tab asalnya kosong, tab itu ditutup.
   - Baris terakhir selalu **Cari “…”** di mesin pencari.
-- **Jendela Riwayat:** **Riwayat > Tampilkan Semua Riwayat** (⌘Y). Daftar dikelompokkan per hari, bisa dicari. Klik membuka di tab ini, ⌘-klik atau tombol ↗ membuka di tab baru, tombol ✕ menghapus satu halaman.
-- **Hapus Riwayat:** **Riwayat > Hapus Riwayat…** atau tombol di jendela Riwayat. Pilihannya satu jam terakhir, hari ini, hari ini dan kemarin, atau semua riwayat.
+- **Jendela Riwayat:** **History > Show All History** (⌘Y). Daftar dikelompokkan per hari, bisa dicari. Klik membuka di tab ini, ⌘-klik atau tombol ↗ membuka di tab baru, tombol ✕ menghapus satu halaman.
+- **Hapus Riwayat:** **History > Clear History…** atau tombol di jendela Riwayat. Pilihannya satu jam terakhir, hari ini, hari ini dan kemarin, atau semua riwayat.
 
 ## Yang dicatat
 
@@ -72,7 +72,7 @@ Tool MCP `search_history` (baca saja) mencari riwayat. Parameternya `query` (sem
 - Tool ini juga tersedia di panel Tanya Claude, yang hanya mendapat tool baca (`crates/core/src/claude_chat.rs:27`).
 - Program MCP luar tetap harus diizinkan lewat dialog izin program. Teks dialognya menyebut "membaca riwayat".
 - Judul halaman berasal dari situs dan bisa berisi instruksi jahat, jadi hasil tool dan deskripsinya mengingatkan Claude untuk tidak mengikutinya. Panel Tanya Claude tidak bisa membuka URL, jadi riwayat tidak bisa dikirim keluar dari situ.
-- Program MCP yang sudah diizinkan sebelum fitur ini ada otomatis bisa membaca riwayat, tanpa ditanya lagi. Cabut lewat **Claude > Cabut Izin Program MCP** kalau tidak diinginkan.
+- Program MCP yang sudah diizinkan sebelum fitur ini ada otomatis bisa membaca riwayat, tanpa ditanya lagi. Cabut lewat **Claude > Revoke MCP Client Access** kalau tidak diinginkan.
 
 ## Kode
 

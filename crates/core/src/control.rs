@@ -203,7 +203,7 @@ pub enum ControlRequest {
         #[serde(default)]
         tab_id: Option<u64>,
     },
-    /// Elemen yang terakhir ditunjuk pengguna lewat menu Tunjuk Elemen.
+    /// Elemen yang terakhir ditunjuk pengguna lewat menu Pick Element for Claude.
     GetSelection {
         #[serde(default)]
         tab_id: Option<u64>,
@@ -274,7 +274,7 @@ pub enum ControlRequest {
 
 impl ControlRequest {
     /// Aksi yang mengubah isi halaman atas nama pengguna. Hanya dijalankan
-    /// kalau pengguna menyalakan "Izinkan Claude Berinteraksi".
+    /// kalau pengguna menyalakan "Allow Claude to Interact".
     pub fn needs_interaction(&self) -> bool {
         matches!(self, Self::Click { .. } | Self::Type { .. } | Self::RunJs { .. })
     }

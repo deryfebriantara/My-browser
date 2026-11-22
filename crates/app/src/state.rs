@@ -47,7 +47,7 @@ pub struct AppState {
     /// Claude boleh klik, mengetik, dan menjalankan JavaScript lewat MCP.
     /// Selalu mati saat aplikasi dibuka.
     pub claude_interact: Cell<bool>,
-    /// Tab tempat pengguna terakhir memakai Tunjuk Elemen ke Claude.
+    /// Tab tempat pengguna terakhir memakai Pick Element for Claude.
     pub picked_tab: Cell<Option<TabId>>,
     /// Panel Tanya Claude.
     pub chat: Chat,

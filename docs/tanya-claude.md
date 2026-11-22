@@ -4,11 +4,11 @@ Panel chat di kanan jendela untuk bertanya tentang halaman yang sedang dibuka, m
 
 ## Cara pakai
 
-- Buka panel lewat tombol ✦ di kanan nav bar, menu **Claude > Tanya Claude**, atau ⌘J. Tutup dengan cara yang sama.
+- Buka panel lewat tombol ✦ di kanan nav bar, menu **Claude > Ask Claude**, atau ⌘J. Tutup dengan cara yang sama.
 - Ketik pertanyaan lalu Enter (Shift+Enter untuk baris baru). Tombol **Berhenti** atau Esc menghentikan jawaban.
 - **Baru** memulai percakapan baru.
 - Setiap pertanyaan otomatis membawa judul dan URL tab aktif, jadi "halaman ini" selalu merujuk ke tab yang sedang Anda lihat.
-- Untuk bertanya tentang satu elemen: pilih elemennya dulu lewat **Claude > Tunjuk Elemen ke Claude** (⌘⇧E), lalu tanya "jelaskan elemen yang saya tunjuk".
+- Untuk bertanya tentang satu elemen: pilih elemennya dulu lewat **Claude > Pick Element for Claude** (⌘⇧E), lalu tanya "jelaskan elemen yang saya tunjuk".
 
 ## Akun dan masuk
 

@@ -17,7 +17,7 @@ pub type Reply = Box<dyn FnOnce(ControlResponse)>;
 const SCREENSHOT_WIDTH: f64 = 1280.0;
 
 const INTERACTION_OFF: &str = "Interaksi Claude dimatikan. Minta pengguna menyalakan menu \
-Claude > Izinkan Claude Berinteraksi di my-browser, lalu coba lagi.";
+Claude > Allow Claude to Interact di my-browser, lalu coba lagi.";
 
 fn ok(value: Value) -> ControlResponse {
     ControlResponse::Ok(value)

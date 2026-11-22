@@ -5,10 +5,10 @@ my-browser menyimpan password dalam vault terenkripsi yang hanya bisa dibuka den
 ## Cara pakai
 
 - **Menyimpan:** login di sebuah situs seperti biasa. Setelah form dikirim, muncul tawaran "Simpan password untuk github.com?". Pilihannya **Simpan**, **Jangan Sekarang**, atau **Jangan untuk Situs Ini**. Pertama kali menyimpan, Anda diminta membuat master password (minimal 10 karakter).
-- **Mengisi:** di halaman login, tekan ⌘\ atau pilih **Password > Isi Password**. Kalau ada beberapa akun untuk situs itu, pilih salah satu. Login bertahap (misalnya Google): tekan ⌘\ di langkah username, lalu sekali lagi di langkah password.
-- **Kelola:** **Password > Kelola Password…** (⌥⌘P) untuk mencari, melihat, menyalin, menambah, mengedit, dan menghapus password, impor dan ekspor CSV, serta mengganti master password.
-- **Password acak:** **Password > Salin Password Acak** menyalin password 20 karakter ke clipboard, misalnya untuk form daftar. Di jendela Kelola, tombol **Buat acak** mengisi kolom password.
-- **Kunci:** **Password > Kunci Password**.
+- **Mengisi:** di halaman login, tekan ⌘\ atau pilih **Passwords > Fill Password**. Kalau ada beberapa akun untuk situs itu, pilih salah satu. Login bertahap (misalnya Google): tekan ⌘\ di langkah username, lalu sekali lagi di langkah password.
+- **Kelola:** **Passwords > Manage Passwords…** (⌥⌘P) untuk mencari, melihat, menyalin, menambah, mengedit, dan menghapus password, impor dan ekspor CSV, serta mengganti master password.
+- **Password acak:** **Passwords > Copy Random Password** menyalin password 20 karakter ke clipboard, misalnya untuk form daftar. Di jendela Kelola, tombol **Buat acak** mengisi kolom password.
+- **Kunci:** **Passwords > Lock Passwords**.
 
 ## Enkripsi
 
@@ -45,7 +45,7 @@ Kunci vault dibungkus terpisah, jadi mengganti master password tidak perlu menge
 
 ## Impor dari browser lain
 
-**Kelola Password > Impor CSV** menerima ekspor Chrome, Safari/app Passwords (File > Ekspor), Firefox, dan Bitwarden. Akun yang sama (situs dan username) diperbarui passwordnya. Setelah impor, hapus berkas CSV itu (juga dari Sampah), karena isinya password tanpa enkripsi.
+Di jendela **Passwords > Manage Passwords…**, tombol **Impor CSV** menerima ekspor Chrome, Safari/app Passwords (File > Ekspor), Firefox, dan Bitwarden. Akun yang sama (situs dan username) diperbarui passwordnya. Setelah impor, hapus berkas CSV itu (juga dari Sampah), karena isinya password tanpa enkripsi.
 
 ## Rencana: Touch ID
 

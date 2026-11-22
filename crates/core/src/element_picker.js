@@ -1,4 +1,4 @@
-// Mode "Tunjuk Elemen ke Claude". Pengguna mengarahkan kursor (elemen di
+// Mode "Pick Element for Claude". Pengguna mengarahkan kursor (elemen di
 // bawahnya disorot) lalu klik. Elemen itu disimpan di window.__mbPicked untuk
 // dibaca get_selection. Esc membatalkan. Selama mode ini, klik dan tekan
 // mouse tidak diteruskan ke halaman, supaya tombol atau link tidak ikut jalan.

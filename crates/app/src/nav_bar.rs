@@ -72,9 +72,9 @@ impl NavBar {
         notice.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinXMargin);
         notice.setHidden(true);
 
-        let claude = icon_button(mtm, &symbol("sparkles", "Tanya Claude"), target, sel!(toggleChat:), width - CLAUDE_W + 2.0);
+        let claude = icon_button(mtm, &symbol("sparkles", "Ask Claude"), target, sel!(toggleChat:), width - CLAUDE_W + 2.0);
         claude.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinXMargin);
-        claude.setToolTip(Some(&NSString::from_str("Tanya Claude (Cmd+J)")));
+        claude.setToolTip(Some(&NSString::from_str("Ask Claude (⌘J)")));
 
         for view in [&*back, &*forward, &*reload, &*claude] {
             bar.addSubview(view);

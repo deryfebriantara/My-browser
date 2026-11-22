@@ -33,10 +33,10 @@ Catatan: dicek pengguna pada 2026-11-15, semua lancar. GATE lulus.
 - [ ] Judul window mengikuti judul tab aktif
 - [ ] Link `target=_blank` membuka tab baru di sebelahnya dan langsung aktif
 - [ ] Tombol layar penuh YouTube berfungsi
-- [ ] Menu Berkas: Tab Baru ⌘T, Tutup Tab ⌘W, Buka Lagi Tab yang Ditutup ⇧⌘T, Buka Alamat ⌘L
-- [ ] Menu Tampilan: Muat Ulang ⌘R, Layar Penuh ⌃⌘F
-- [ ] Menu Riwayat: Mundur ⌘[, Maju ⌘]
-- [ ] Menu Jendela: Tab Berikutnya ⌃⇥ dan ⇧⌘], Tab Sebelumnya ⌃⇧⇥ dan ⇧⌘[, ⌘1 sampai ⌘9
+- [ ] Menu File: New Tab ⌘T, Close Tab ⌘W, Reopen Closed Tab ⇧⌘T, Open Location ⌘L
+- [ ] Menu View: Reload Page ⌘R, Enter Full Screen ⌃⌘F
+- [ ] Menu History: Back ⌘[, Forward ⌘]
+- [ ] Menu Window: Next Tab ⌃⇥ dan ⇧⌘], Previous Tab ⌃⇧⇥ dan ⇧⌘[, ⌘1 sampai ⌘9
 
 ## Task 9: Tab tidur, memory pressure, sesi
 
@@ -56,14 +56,14 @@ Untuk uji manual, tutup browser dulu (⌘Q), set `"sleep_idle_secs": 20` di `~/L
 ## Task 10: Pemblokir iklan
 
 - [ ] https://www.detik.com menampilkan lebih sedikit iklan dibanding Safari tanpa content blocker
-- [ ] Tampilan > Matikan Pemblokir untuk Situs Ini: halaman dimuat ulang dan iklan muncul lagi; centang menu ikut berubah
+- [ ] View > Disable Blocker for This Site: halaman dimuat ulang dan iklan muncul lagi; centang menu ikut berubah
 - [ ] Menu itu nonaktif di tab kosong
 - [ ] YouTube masih memutar video dan login tetap ada
 - [ ] Iklan video YouTube yang bisa dilewati menampilkan tombol "Lewati" (perbaikan 2026-11-20)
 - [ ] github.com dan Gmail tampil utuh (aturan sembunyi umum tidak berlaku di situs generichide)
 - [ ] Skip iklan YouTube otomatis: iklan yang bisa dilewati hilang dalam sekitar 1 detik; iklan yang tidak bisa dilewati bisu dan selesai dalam 1-2 detik
 - [ ] Setelah iklan, kecepatan video (mis. 1,5x) dan suara kembali seperti sebelumnya
-- [ ] Tampilan > Matikan Pemblokir untuk Situs Ini di YouTube: iklan diputar normal lagi; nyalakan lagi: iklan dilewati lagi
+- [ ] View > Disable Blocker for This Site di YouTube: iklan diputar normal lagi; nyalakan lagi: iklan dilewati lagi
 
 ## Task 11: Download
 
@@ -90,14 +90,14 @@ Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`), lal
 - [ ] Minta Claude "buka youtube.com di tab baru": tab terbuka di browser
 - [ ] Minta Claude membaca halaman aktif dan membuat screenshot
 - [ ] Minta Claude mengklik sesuatu: ditolak dengan pesan untuk menyalakan izin
-- [ ] Nyalakan Claude > Izinkan Claude Berinteraksi: judul window berpenanda, klik berhasil, pemberitahuan "Claude: klik elemen ..." muncul
+- [ ] Nyalakan Claude > Allow Claude to Interact: judul window berpenanda, klik berhasil, pemberitahuan "Claude: klik elemen ..." muncul
 - [ ] Matikan lagi: klik ditolak lagi
 - [ ] Tutup browser (⌘Q), lalu minta Claude melihat daftar tab: browser terbuka otomatis
 - [ ] Minta Claude membuat website kecil, menjalankannya di localhost, lalu memeriksanya: Claude memakai console_logs, network_log, dan screenshot, lalu memperbaiki error yang ditemukan
-- [ ] Pilih Claude > Tunjuk Elemen ke Claude (⌘⇧E), arahkan kursor: elemen disorot dengan label ukuran; klik sebuah tombol: tombolnya tidak ikut jalan, tanda "Terpilih" muncul sebentar. Lalu minta Claude "lihat elemen yang saya pilih": Claude menyebut elemen yang benar dan bisa melihat gambarnya
-- [ ] Mode Tunjuk Elemen lalu tekan Esc: sorotan hilang, klik berikutnya berjalan normal
-- [ ] Minta Claude "cek tampilan HP dan mode gelap": halaman tampil selebar HP di tengah atas jendela, pemberitahuan "Claude: HP 390×844, mode gelap" muncul; setelah Claude selesai (atau lewat menu Claude > Kembalikan Tampilan Normal) tampilan kembali penuh
-- [ ] Menu Kembalikan Tampilan Normal nonaktif (abu-abu) di tab yang tidak diemulasi
+- [ ] Pilih Claude > Pick Element for Claude (⌘⇧E), arahkan kursor: elemen disorot dengan label ukuran; klik sebuah tombol: tombolnya tidak ikut jalan, tanda "Terpilih" muncul sebentar. Lalu minta Claude "lihat elemen yang saya pilih": Claude menyebut elemen yang benar dan bisa melihat gambarnya
+- [ ] Mode Pick Element for Claude lalu tekan Esc: sorotan hilang, klik berikutnya berjalan normal
+- [ ] Minta Claude "cek tampilan HP dan mode gelap": halaman tampil selebar HP di tengah atas jendela, pemberitahuan "Claude: HP 390×844, mode gelap" muncul; setelah Claude selesai (atau lewat menu Claude > Reset Device Emulation) tampilan kembali penuh
+- [ ] Menu Reset Device Emulation nonaktif (abu-abu) di tab yang tidak diemulasi
 - [ ] Minta Claude "screenshot seluruh halaman" di halaman panjang: Claude menerima beberapa gambar dan bisa menjelaskan bagian bawah halaman
 - [ ] Minta Claude memakai check_page setelah mengubah kode situs lokal: satu panggilan berisi ringkasan error, request gagal, dan screenshot
 
@@ -120,10 +120,10 @@ Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
 
 - [ ] Login di sebuah situs: muncul "Simpan password untuk …?"; Simpan meminta membuat master password (ditolak kalau < 10 karakter atau kedua isian beda)
 - [ ] Keluar lalu buka halaman login lagi, tekan ⌘\: username dan password terisi, situs bisa dipakai login
-- [ ] Password > Kunci Password, lalu ⌘\: diminta master password; master password salah ditolak dengan pesan, yang benar langsung mengisi
+- [ ] Passwords > Lock Passwords, lalu ⌘\: diminta master password; master password salah ditolak dengan pesan, yang benar langsung mengisi
 - [ ] Login dengan password berbeda: muncul "Perbarui password untuk …?"
 - [ ] "Jangan untuk Situs Ini": login berikutnya di situs itu tidak ditanya lagi
-- [ ] Kelola Password: cari, Lihat (tersembunyi lagi setelah 20 detik), Salin (clipboard kosong lagi setelah 30 detik), Edit, Hapus (minta konfirmasi), Tambah dengan Buat acak
+- [ ] Passwords > Manage Passwords…: cari, Lihat (tersembunyi lagi setelah 20 detik), Salin (clipboard kosong lagi setelah 30 detik), Edit, Hapus (minta konfirmasi), Tambah dengan Buat acak
 - [ ] Impor CSV dari Chrome atau app Passwords: jumlah yang diimpor sesuai, muncul pengingat untuk menghapus berkas CSV
 - [ ] Ekspor CSV: meminta master password lagi; master password salah membatalkan ekspor
 - [ ] Ganti master password: master password lama salah ditolak; setelah diganti, kunci lalu buka dengan yang baru berhasil dan yang lama ditolak
@@ -137,7 +137,7 @@ Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
 
 - [ ] Mulai sesi Claude Code baru dan minta Claude melihat daftar tab: my-browser maju ke depan dengan dialog "Izinkan Claude Code mengontrol my-browser?" yang menampilkan folder proyek sesi itu
 - [ ] Selalu Izinkan: Claude langsung mendapat daftar tab; sesi Claude Code berikutnya tidak ditanya lagi
-- [ ] Claude > Cabut Izin Program MCP: permintaan berikutnya ditanya lagi
+- [ ] Claude > Revoke MCP Client Access: permintaan berikutnya ditanya lagi
 - [ ] Tolak: Claude mendapat pesan penolakan; permintaan berikutnya langsung ditolak sampai browser dibuka ulang
 - [ ] Panel Tanya Claude tetap bisa membaca halaman tanpa dialog izin
 - [ ] Panel menampilkan email, paket, dan profil di bawah judul; pilihan profil mengganti akun dan memulai percakapan baru
@@ -157,7 +157,7 @@ Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`). Riw
 - [ ] Klik beberapa video di YouTube (tanpa memuat ulang halaman): setiap video muncul di Riwayat dengan judul yang benar
 - [ ] Video yang ditidurkan lalu dibuka lagi tidak membuat entri baru (tidak ada `&t=` di Riwayat)
 - [ ] ⌘Y membuka jendela Riwayat yang dikelompokkan per hari; cari, ⌘-klik membuka di tab baru, ✕ menghapus satu halaman
-- [ ] Riwayat > Hapus Riwayat… > Satu jam terakhir: halaman tadi hilang dari Riwayat dan dari saran address bar
+- [ ] History > Clear History… > Satu jam terakhir: halaman tadi hilang dari Riwayat dan dari saran address bar
 - [ ] IME Jepang (atau input lain yang menyusun huruf) di address bar tidak dilengkapi selama menyusun
 - [ ] VoiceOver membacakan baris saran
 - [ ] Minta Claude "video YouTube apa yang saya tonton hari ini?": Claude memakai search_history
