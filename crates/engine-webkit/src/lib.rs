@@ -6,18 +6,18 @@ mod download_names;
 mod downloads;
 mod emitter;
 mod observer;
-mod scripts;
 mod page;
 mod panel;
 mod passwords;
+mod scripts;
 pub mod user_agent;
 
+use blocker::Blocker;
 use browser_core::engine::{Engine, PageEvent};
+use downloads::DownloadCenter;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
 use objc2_foundation::NSString;
-use blocker::Blocker;
-use downloads::DownloadCenter;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -34,8 +34,8 @@ pub struct WebKitEngine {
 
 impl WebKitEngine {
     pub fn new(mtm: MainThreadMarker) -> Self {
-        let version = user_agent::installed_safari_version()
-            .unwrap_or_else(|| user_agent::FALLBACK_SAFARI_VERSION.to_string());
+        let version =
+            user_agent::installed_safari_version().unwrap_or_else(|| user_agent::FALLBACK_SAFARI_VERSION.to_string());
         Self {
             mtm,
             app_name: NSString::from_str(&user_agent::safari_application_name(&version)),

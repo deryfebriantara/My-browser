@@ -158,9 +158,15 @@ impl PasswordManager {
         let id = message["id"].as_str().unwrap_or_default().to_string();
         match message["t"].as_str() {
             Some("ready") => {
-                if state.passwords.is_unlocked() { self.unlocked(state) } else { self.locked(state) }
+                if state.passwords.is_unlocked() {
+                    self.unlocked(state)
+                } else {
+                    self.locked(state)
+                }
             }
-            Some("unlock") => state.passwords.with_vault(state, "untuk mengelola password", |s, v| s.password_manager.changed(s, v)),
+            Some("unlock") => {
+                state.passwords.with_vault(state, "untuk mengelola password", |s, v| s.password_manager.changed(s, v))
+            }
             Some("reveal") => state.passwords.with_vault(state, "untuk melihat password", move |s, v| {
                 if let Some(e) = v.get(&id) {
                     s.password_manager.post(json!({"t": "secret", "id": id, "password": e.password}));
@@ -194,8 +200,13 @@ impl PasswordManager {
 
     fn save(&self, state: &Rc<AppState>, message: &Value) {
         let field = |k: &str| Zeroizing::new(message[k].as_str().unwrap_or_default().to_string());
-        let (id, url, username, password, note) =
-            (message["id"].as_str().map(String::from), field("url"), field("username"), field("password"), field("note"));
+        let (id, url, username, password, note) = (
+            message["id"].as_str().map(String::from),
+            field("url"),
+            field("username"),
+            field("password"),
+            field("note"),
+        );
         state.passwords.with_vault(state, "untuk menyimpan password", move |s, v| {
             let manager = &s.password_manager;
             let form_error = |text: &str| manager.post(json!({"t": "form_error", "text": text}));
@@ -242,7 +253,10 @@ impl PasswordManager {
         state.passwords.with_vault(state, "untuk menghapus password", move |s, v| {
             let Some(entry) = v.get(&id) else { return };
             let title = format!("Hapus password untuk {}?", entry.host());
-            let info = format!("Akun: {}. Penghapusan tidak bisa dibatalkan.", if entry.username.is_empty() { "(tanpa username)" } else { &entry.username });
+            let info = format!(
+                "Akun: {}. Penghapusan tidak bisa dibatalkan.",
+                if entry.username.is_empty() { "(tanpa username)" } else { &entry.username }
+            );
             let weak = Rc::downgrade(s);
             dialogs::confirm(&s.dialog_window(), &title, &info, &["Hapus", "Batal"], move |choice| {
                 let Some(state) = weak.upgrade() else { return };
@@ -269,7 +283,9 @@ impl PasswordManager {
         let Some(mtm) = MainThreadMarker::new() else { return };
         let panel = NSOpenPanel::openPanel(mtm);
         panel.setCanChooseFiles(true);
-        panel.setMessage(Some(&NSString::from_str("Pilih berkas CSV ekspor password (Chrome, Safari/Passwords, Firefox, Bitwarden)")));
+        panel.setMessage(Some(&NSString::from_str(
+            "Pilih berkas CSV ekspor password (Chrome, Safari/Passwords, Firefox, Bitwarden)",
+        )));
         if panel.runModal() != NSModalResponseOK {
             return;
         }
@@ -306,22 +322,31 @@ impl PasswordManager {
         let info = "Berkas CSV hasil ekspor berisi semua password tanpa enkripsi. Siapa pun yang mendapat berkas itu bisa \
                     membaca semuanya. Masukkan master password untuk melanjutkan.";
         let weak = Rc::downgrade(state);
-        dialogs::ask_secrets(&state.dialog_window(), "Ekspor Password", info, &["Master password"], "Lanjut", move |values| {
-            let (Some(state), Some(mut values)) = (weak.upgrade(), values) else { return };
-            let master = values.remove(0);
-            let file = match vault::load(&vault_path()) {
-                Ok(Some(file)) => file,
-                _ => return state.password_manager.toast("Belum ada vault password."),
-            };
-            background::run(
-                move || Vault::unlock(&file, &master),
-                move |result| match result {
-                    Ok(verified) => state.password_manager.write_export(&state, &verified),
-                    Err(VaultError::WrongPassword) => state.password_manager.toast("Master password salah; ekspor dibatalkan."),
-                    Err(e) => state.password_manager.toast(&e.to_string()),
-                },
-            );
-        });
+        dialogs::ask_secrets(
+            &state.dialog_window(),
+            "Ekspor Password",
+            info,
+            &["Master password"],
+            "Lanjut",
+            move |values| {
+                let (Some(state), Some(mut values)) = (weak.upgrade(), values) else { return };
+                let master = values.remove(0);
+                let file = match vault::load(&vault_path()) {
+                    Ok(Some(file)) => file,
+                    _ => return state.password_manager.toast("Belum ada vault password."),
+                };
+                background::run(
+                    move || Vault::unlock(&file, &master),
+                    move |result| match result {
+                        Ok(verified) => state.password_manager.write_export(&state, &verified),
+                        Err(VaultError::WrongPassword) => {
+                            state.password_manager.toast("Master password salah; ekspor dibatalkan.")
+                        }
+                        Err(e) => state.password_manager.toast(&e.to_string()),
+                    },
+                );
+            },
+        );
     }
 
     fn write_export(&self, _state: &Rc<AppState>, vault: &Vault) {
@@ -341,7 +366,9 @@ impl PasswordManager {
             .open(&path)
             .and_then(|mut f| f.write_all(text.as_bytes()));
         match written {
-            Ok(()) => self.toast(&format!("{} password diekspor. Hapus berkasnya setelah dipakai.", vault.entries().len())),
+            Ok(()) => {
+                self.toast(&format!("{} password diekspor. Hapus berkasnya setelah dipakai.", vault.entries().len()))
+            }
             Err(e) => self.toast(&format!("Ekspor gagal: {e}")),
         }
     }
@@ -362,7 +389,8 @@ impl PasswordManager {
             });
             return;
         }
-        let mut info = format!("Master password baru minimal {MIN_MASTER} karakter dan tidak bisa dipulihkan kalau lupa.");
+        let mut info =
+            format!("Master password baru minimal {MIN_MASTER} karakter dan tidak bisa dipulihkan kalau lupa.");
         if let Some(error) = error {
             info = format!("{error}\n\n{info}");
         }
@@ -382,7 +410,9 @@ impl PasswordManager {
             };
             background::run(
                 move || {
-                    let outcome = match Vault::unlock(&file, &current).and_then(|_| vault.change_master(&new, KdfParams::DEFAULT)) {
+                    let outcome = match Vault::unlock(&file, &current)
+                        .and_then(|_| vault.change_master(&new, KdfParams::DEFAULT))
+                    {
                         Err(VaultError::WrongPassword) => Change::WrongCurrent,
                         Err(e) => Change::Failed(e.to_string()),
                         Ok(()) => match vault::save(&vault_path(), &vault.to_file()) {
@@ -402,7 +432,9 @@ impl PasswordManager {
                     state.passwords.put_vault(vault);
                     match outcome {
                         Change::Done => state.password_manager.toast("Master password diganti"),
-                        Change::WrongCurrent => state.password_manager.change_master(&state, Some("Master password sekarang salah.")),
+                        Change::WrongCurrent => {
+                            state.password_manager.change_master(&state, Some("Master password sekarang salah."))
+                        }
                         Change::Failed(e) => state.password_manager.toast(&e),
                     }
                 },
@@ -418,8 +450,24 @@ mod tests {
     #[test]
     fn list_for_the_window_never_contains_passwords() {
         let mut v = Vault::create("master-panjang", KdfParams { m_kib: 64, t: 1, p: 1 }).unwrap();
-        v.add(NewEntry { origin: "https://b.example".into(), username: "u2".into(), password: "rahasia-b".into(), note: String::new() }, 1);
-        v.add(NewEntry { origin: "https://a.example".into(), username: "u1".into(), password: "rahasia-a".into(), note: "n".into() }, 1);
+        v.add(
+            NewEntry {
+                origin: "https://b.example".into(),
+                username: "u2".into(),
+                password: "rahasia-b".into(),
+                note: String::new(),
+            },
+            1,
+        );
+        v.add(
+            NewEntry {
+                origin: "https://a.example".into(),
+                username: "u1".into(),
+                password: "rahasia-a".into(),
+                note: "n".into(),
+            },
+            1,
+        );
         let list = entries_json(&v);
         let text = list.to_string();
         assert!(!text.contains("rahasia"), "{text}");

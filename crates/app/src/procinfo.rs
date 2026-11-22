@@ -13,7 +13,13 @@ pub fn peer_pid(conn: &UnixStream) -> Option<pid_t> {
     let mut len = size_of::<pid_t>() as libc::socklen_t;
     // SAFETY: buffer seukuran pid_t, panjang diberikan.
     let rc = unsafe {
-        libc::getsockopt(conn.as_raw_fd(), libc::SOL_LOCAL, libc::LOCAL_PEERPID, &mut pid as *mut pid_t as *mut c_void, &mut len)
+        libc::getsockopt(
+            conn.as_raw_fd(),
+            libc::SOL_LOCAL,
+            libc::LOCAL_PEERPID,
+            &mut pid as *mut pid_t as *mut c_void,
+            &mut len,
+        )
     };
     (rc == 0 && pid > 0).then_some(pid)
 }
@@ -39,11 +45,13 @@ pub fn working_dir(pid: pid_t) -> Option<String> {
     // SAFETY: seperti parent_pid.
     let mut info: libc::proc_vnodepathinfo = unsafe { std::mem::zeroed() };
     let size = size_of::<libc::proc_vnodepathinfo>() as c_int;
-    let n = unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDVNODEPATHINFO, 0, &mut info as *mut _ as *mut c_void, size) };
+    let n =
+        unsafe { libc::proc_pidinfo(pid, libc::PROC_PIDVNODEPATHINFO, 0, &mut info as *mut _ as *mut c_void, size) };
     if n != size {
         return None;
     }
-    let raw: Vec<u8> = info.pvi_cdir.vip_path.iter().flatten().map(|&c: &c_char| c as u8).take_while(|&b| b != 0).collect();
+    let raw: Vec<u8> =
+        info.pvi_cdir.vip_path.iter().flatten().map(|&c: &c_char| c as u8).take_while(|&b| b != 0).collect();
     (!raw.is_empty()).then(|| String::from_utf8_lossy(&raw).into_owned())
 }
 
@@ -105,7 +113,10 @@ mod tests {
         // Dilihat dari "browser" lain (pid 1): proses test ini program biasa.
         let identified = identify(me, 1, 7).unwrap();
         assert_eq!(identified.id, 7);
-        assert!(matches!(identified.kind, ClientKind::External { ref path } if path.contains("my_browser")), "{identified:?}");
+        assert!(
+            matches!(identified.kind, ClientKind::External { ref path } if path.contains("my_browser")),
+            "{identified:?}"
+        );
         // Dilihat dari induknya sendiri: proses anak browser = panel.
         let parent = parent_pid(me).unwrap();
         assert_eq!(identify(me, parent, 8).unwrap().kind, ClientKind::Panel);

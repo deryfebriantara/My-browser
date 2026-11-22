@@ -26,11 +26,8 @@ pub struct AppUsage {
 pub fn group(procs: &[ProcInfo], apps: &[&str]) -> Vec<AppUsage> {
     apps.iter()
         .map(|&app| {
-            let mains: Vec<i32> = procs
-                .iter()
-                .filter(|p| p.name == app && p.responsible_pid == p.pid)
-                .map(|p| p.pid)
-                .collect();
+            let mains: Vec<i32> =
+                procs.iter().filter(|p| p.name == app && p.responsible_pid == p.pid).map(|p| p.pid).collect();
             let processes: Vec<ProcInfo> =
                 procs.iter().filter(|p| mains.contains(&p.responsible_pid)).cloned().collect();
             let footprint = processes.iter().map(|p| p.footprint).sum();

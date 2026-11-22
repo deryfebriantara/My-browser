@@ -9,10 +9,10 @@ mod control;
 mod control_server;
 #[cfg(debug_assertions)]
 mod debug_ui;
-mod mcp_access;
 mod dialogs;
 mod history_window;
 mod local_time;
+mod mcp_access;
 mod memory_pressure;
 mod menu;
 mod nav_bar;

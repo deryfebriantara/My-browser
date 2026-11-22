@@ -173,9 +173,9 @@ fn generichide_rule(domains: Vec<String>) -> Option<Value> {
     let mut trigger = Map::new();
     trigger.insert("url-filter".into(), Value::String(".*".into()));
     put_domains(&mut trigger, "if-domain", domains);
-    trigger.contains_key("if-domain").then(|| {
-        serde_json::json!({ "trigger": trigger, "action": { "type": "ignore-previous-rules" } })
-    })
+    trigger
+        .contains_key("if-domain")
+        .then(|| serde_json::json!({ "trigger": trigger, "action": { "type": "ignore-previous-rules" } }))
 }
 
 /// Mengonversi teks filter menjadi daftar-daftar aturan WebKit siap tulis,
@@ -241,18 +241,23 @@ mod tests {
         let (rules, _) = convert("||ads.example.com^\n##.ad-banner\n@@||good.example.com^\n");
         assert!(rules.iter().any(|r| r["action"]["type"] == "block"
             && r["trigger"]["url-filter"].as_str().unwrap().contains("ads\\.example\\.com")));
-        assert!(rules.iter().any(|r| r["action"]["type"] == "css-display-none" && r["action"]["selector"] == ".ad-banner"));
+        assert!(
+            rules.iter().any(|r| r["action"]["type"] == "css-display-none" && r["action"]["selector"] == ".ad-banner")
+        );
         assert!(rules.iter().any(|r| r["action"]["type"] == "ignore-previous-rules"));
     }
 
     #[test]
     fn chunk_appends_all_exceptions_to_every_chunk() {
-        let block = |i: usize| serde_json::json!({"trigger": {"url-filter": format!("a{i}")}, "action": {"type": "block"}});
+        let block =
+            |i: usize| serde_json::json!({"trigger": {"url-filter": format!("a{i}")}, "action": {"type": "block"}});
         let ignore = |i: usize| serde_json::json!({"trigger": {"url-filter": format!("b{i}")}, "action": {"type": "ignore-previous-rules"}});
         let rules: Vec<_> = (0..120_000).map(block).chain((0..1_000).map(ignore)).collect();
         let chunks = chunk(rules, 50_000);
         assert!(chunks.iter().all(|c| c.len() <= 50_000));
-        assert!(chunks.iter().all(|c| c[c.len() - 1_000..].iter().all(|r| r["action"]["type"] == "ignore-previous-rules")));
+        assert!(
+            chunks.iter().all(|c| c[c.len() - 1_000..].iter().all(|r| r["action"]["type"] == "ignore-previous-rules"))
+        );
         let blocks: usize = chunks.iter().map(|c| c.len() - 1_000).sum();
         assert_eq!(blocks, 120_000);
     }
@@ -319,12 +324,15 @@ mod tests {
         let needle = "*www.youtube.com";
         let list = lists.iter().find(|l| !css(l, ".ad").is_empty()).expect("ada daftar berisi .ad");
         let ad = list.iter().position(|r| r["action"]["selector"] == ".ad").unwrap();
-        let gh = list.iter().position(|r| is_generichide(r, needle)).expect("generichide di daftar yang sama dengan .ad");
+        let gh =
+            list.iter().position(|r| is_generichide(r, needle)).expect("generichide di daftar yang sama dengan .ad");
         assert!(gh > ad);
         for list in &lists {
             if let Some(gh) = list.iter().position(|r| is_generichide(r, needle)) {
                 assert!(
-                    list[..gh].iter().all(|r| r["action"]["type"] == "css-display-none" && r["trigger"].get("if-domain").is_none()),
+                    list[..gh]
+                        .iter()
+                        .all(|r| r["action"]["type"] == "css-display-none" && r["trigger"].get("if-domain").is_none()),
                     "hanya aturan sembunyi umum yang boleh berada sebelum generichide: {list:?}"
                 );
             }
@@ -338,7 +346,10 @@ mod tests {
     fn generichide_with_domain_option() {
         let lists = build_lists("##.ad\n@@$generichide,domain=a.com|b.com\n", MAX_RULES_PER_LIST).0;
         let list = lists.iter().find(|l| !css(l, ".ad").is_empty()).unwrap();
-        let gh = list.iter().position(|r| is_generichide(r, "*a.com") && is_generichide(r, "*b.com")).expect("generichide per domain");
+        let gh = list
+            .iter()
+            .position(|r| is_generichide(r, "*a.com") && is_generichide(r, "*b.com"))
+            .expect("generichide per domain");
         assert!(gh > list.iter().position(|r| r["action"]["selector"] == ".ad").unwrap());
     }
 
@@ -348,7 +359,8 @@ mod tests {
         text.push_str("@@||www.youtube.com^$generichide\n@@||good.example.com^\n||ads.example.com^\n");
         let lists = build_lists(&text, 6).0;
         assert!(lists.iter().all(|l| l.len() <= 6), "{:?}", lists.iter().map(Vec::len).collect::<Vec<_>>());
-        let generic: usize = lists.iter().map(|l| l.iter().filter(|r| r["action"]["type"] == "css-display-none").count()).sum();
+        let generic: usize =
+            lists.iter().map(|l| l.iter().filter(|r| r["action"]["type"] == "css-display-none").count()).sum();
         assert_eq!(generic, 10);
         for list in lists.iter().filter(|l| l.iter().any(|r| r["action"]["type"] == "css-display-none")) {
             let last_css = list.iter().rposition(|r| r["action"]["type"] == "css-display-none").unwrap();
@@ -361,7 +373,9 @@ mod tests {
 
     #[test]
     fn chunk_without_exceptions_splits_by_max() {
-        let rules: Vec<_> = (0..120_001).map(|i| serde_json::json!({"trigger": {"url-filter": format!("a{i}")}, "action": {"type": "block"}})).collect();
+        let rules: Vec<_> = (0..120_001)
+            .map(|i| serde_json::json!({"trigger": {"url-filter": format!("a{i}")}, "action": {"type": "block"}}))
+            .collect();
         let sizes: Vec<usize> = chunk(rules, 50_000).iter().map(Vec::len).collect();
         assert_eq!(sizes, vec![50_000, 50_000, 20_001]);
     }

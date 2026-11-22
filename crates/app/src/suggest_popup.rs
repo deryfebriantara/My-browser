@@ -10,7 +10,8 @@ use objc2::runtime::Bool;
 use objc2::{MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
 use objc2_app_kit::{
     NSAutoresizingMaskOptions, NSBackingStoreType, NSBox, NSBoxType, NSButton, NSColor, NSEvent, NSFont, NSImage,
-    NSImageView, NSLineBreakMode, NSTextField, NSTitlePosition, NSView, NSWindow, NSWindowOrderingMode, NSWindowStyleMask,
+    NSImageView, NSLineBreakMode, NSTextField, NSTitlePosition, NSView, NSWindow, NSWindowOrderingMode,
+    NSWindowStyleMask,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 
@@ -82,9 +83,13 @@ impl SuggestPopup {
         background.setBorderWidth(1.0);
         background.setBorderColor(&NSColor::separatorColor());
         background.setFillColor(&NSColor::windowBackgroundColor());
-        background.setAutoresizingMask(NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable);
+        background.setAutoresizingMask(
+            NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
+        );
         let rows_view = NSView::initWithFrame(NSView::alloc(mtm), rect);
-        rows_view.setAutoresizingMask(NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable);
+        rows_view.setAutoresizingMask(
+            NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
+        );
         content.addSubview(&background);
         content.addSubview(&rows_view);
         window.setContentView(Some(&content));
@@ -101,12 +106,20 @@ impl SuggestPopup {
     }
 
     /// Menampilkan `rows` di bawah `anchor`, dengan baris `selected` disorot.
-    pub fn show(&self, rows: &[Suggestion], selected: usize, anchor: &NSTextField, parent: &NSWindow, target: &ActionTarget) {
+    pub fn show(
+        &self,
+        rows: &[Suggestion],
+        selected: usize,
+        anchor: &NSTextField,
+        parent: &NSWindow,
+        target: &ActionTarget,
+    ) {
         let field = anchor.convertRect_toView(anchor.bounds(), None);
         let field = parent.convertRectToScreen(field);
         let width = field.size.width + 8.0;
         let height = rows.len() as f64 * ROW_HEIGHT + 2.0 * PADDING;
-        let frame = NSRect::new(NSPoint::new(field.origin.x - 4.0, field.origin.y - 3.0 - height), NSSize::new(width, height));
+        let frame =
+            NSRect::new(NSPoint::new(field.origin.x - 4.0, field.origin.y - 3.0 - height), NSSize::new(width, height));
         self.window.setFrame_display(frame, false);
         self.render(rows, selected, width, height, target);
         if self.window.parentWindow().is_none() {
@@ -162,10 +175,22 @@ impl SuggestPopup {
             // Halaman tanpa judul: alamatnya cukup ditulis sekali, di tengah baris.
             let single = row.detail.is_empty() || row.detail == row.title;
             let title_y = if single { y + 10.0 } else { y + 17.0 };
-            let title = label(mtm, &row.title, 13.0, &title_color, NSRect::new(NSPoint::new(text_x, title_y), NSSize::new(text_w, 16.0)));
+            let title = label(
+                mtm,
+                &row.title,
+                13.0,
+                &title_color,
+                NSRect::new(NSPoint::new(text_x, title_y), NSSize::new(text_w, 16.0)),
+            );
             self.rows_view.addSubview(&title);
             if !single {
-                let detail = label(mtm, &row.detail, 11.0, &detail_color, NSRect::new(NSPoint::new(text_x, y + 3.0), NSSize::new(text_w, 14.0)));
+                let detail = label(
+                    mtm,
+                    &row.detail,
+                    11.0,
+                    &detail_color,
+                    NSRect::new(NSPoint::new(text_x, y + 3.0), NSSize::new(text_w, 14.0)),
+                );
                 self.rows_view.addSubview(&detail);
             }
 

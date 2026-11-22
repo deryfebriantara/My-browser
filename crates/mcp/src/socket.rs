@@ -39,10 +39,7 @@ impl SocketTransport {
             return Err("Browser my-browser tidak berjalan. Buka my-browser dulu.".into());
         };
         self.launched = true;
-        std::process::Command::new("open")
-            .arg(&app)
-            .status()
-            .map_err(|e| format!("Gagal membuka my-browser: {e}"))?;
+        std::process::Command::new("open").arg(&app).status().map_err(|e| format!("Gagal membuka my-browser: {e}"))?;
         let start = Instant::now();
         while start.elapsed() < LAUNCH_TIMEOUT {
             std::thread::sleep(Duration::from_millis(250));

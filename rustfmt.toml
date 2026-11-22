@@ -1,0 +1,3 @@
+# Gaya kode: baris sampai 120 karakter, mengikuti gaya yang sudah dipakai.
+max_width = 120
+use_small_heuristics = "Max"

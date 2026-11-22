@@ -175,16 +175,22 @@ pub fn parse_line(line: &str) -> Vec<ChatEvent> {
     let Ok(event) = serde_json::from_str::<Value>(line) else { return Vec::new() };
     let text = |v: &Value| v.as_str().unwrap_or_default().to_string();
     match (event["type"].as_str(), event["subtype"].as_str()) {
-        (Some("system"), Some("init")) => event["session_id"].as_str().map(|id| ChatEvent::Session(id.into())).into_iter().collect(),
+        (Some("system"), Some("init")) => {
+            event["session_id"].as_str().map(|id| ChatEvent::Session(id.into())).into_iter().collect()
+        }
         (Some("stream_event"), _) => {
             let inner = &event["event"];
             match inner["type"].as_str() {
                 Some("content_block_start") => match inner["content_block"]["type"].as_str() {
                     Some("text") => vec![ChatEvent::TextStart],
-                    Some("tool_use") => vec![ChatEvent::Tool(tool_label(inner["content_block"]["name"].as_str().unwrap_or_default()))],
+                    Some("tool_use") => {
+                        vec![ChatEvent::Tool(tool_label(inner["content_block"]["name"].as_str().unwrap_or_default()))]
+                    }
                     _ => Vec::new(),
                 },
-                Some("content_block_delta") if inner["delta"]["type"] == "text_delta" => vec![ChatEvent::Text(text(&inner["delta"]["text"]))],
+                Some("content_block_delta") if inner["delta"]["type"] == "text_delta" => {
+                    vec![ChatEvent::Text(text(&inner["delta"]["text"]))]
+                }
                 _ => Vec::new(),
             }
         }
@@ -278,7 +284,11 @@ pub fn find_login_url(text: &str) -> Option<String> {
 /// Petunjuk tambahan untuk error yang bisa diperbaiki pengguna.
 pub fn error_hint(error: &str, config_dir: &str) -> Option<String> {
     let lower = error.to_lowercase();
-    if lower.contains("not logged in") || lower.contains("auth login") || lower.contains("/login") || lower.contains("authenticate") {
+    if lower.contains("not logged in")
+        || lower.contains("auth login")
+        || lower.contains("/login")
+        || lower.contains("authenticate")
+    {
         return Some(format!(
             "Login Claude Code untuk profil {config_dir} belum ada atau kedaluwarsa. Buka Terminal, jalankan \
              `CLAUDE_CONFIG_DIR={config_dir} claude`, lalu ketik /login. Profil lain bisa dipilih lewat \
@@ -295,7 +305,8 @@ mod tests {
     #[test]
     fn candidates_prefer_configured_path_then_known_locations_then_newest_nvm() {
         let home = Path::new("/Users/a");
-        let list = claude_candidates(home, Some("~/bin/claude"), &["v18.20.8".into(), "v22.19.0".into(), "v20.19.5".into()]);
+        let list =
+            claude_candidates(home, Some("~/bin/claude"), &["v18.20.8".into(), "v22.19.0".into(), "v20.19.5".into()]);
         assert_eq!(list[0], PathBuf::from("/Users/a/bin/claude"));
         assert_eq!(list[1], PathBuf::from("/Users/a/.local/bin/claude"));
         let nvm: Vec<_> = list.iter().filter(|p| p.to_string_lossy().contains(".nvm")).collect();
@@ -319,10 +330,14 @@ mod tests {
         let allowed = value("--allowedTools");
         assert!(allowed.contains("mcp__my-browser__read_page") && allowed.contains("mcp__my-browser__get_selection"));
         for risky in ["navigate", "open_tab", "click", "type", "run_js", "emulate", "check_page", "close_tab"] {
-            assert!(!allowed.split(',').any(|t| t == format!("mcp__my-browser__{risky}")), "{risky} tidak boleh diizinkan");
+            assert!(
+                !allowed.split(',').any(|t| t == format!("mcp__my-browser__{risky}")),
+                "{risky} tidak boleh diizinkan"
+            );
         }
         assert!(!args.contains(&"--resume".to_string()));
-        let resumed = launch_args(&Launch { browser_exe: exe, data_dir: data, resume: Some("abc"), model: Some("sonnet") });
+        let resumed =
+            launch_args(&Launch { browser_exe: exe, data_dir: data, resume: Some("abc"), model: Some("sonnet") });
         assert!(resumed.windows(2).any(|w| w == ["--resume", "abc"]));
         assert!(resumed.windows(2).any(|w| w == ["--model", "sonnet"]));
     }
@@ -388,7 +403,8 @@ mod tests {
 
     #[test]
     fn failed_turns_carry_the_error_and_a_login_hint() {
-        let line = r#"{"type":"result","subtype":"success","is_error":true,"result":"Not logged in · Please run /login"}"#;
+        let line =
+            r#"{"type":"result","subtype":"success","is_error":true,"result":"Not logged in · Please run /login"}"#;
         assert_eq!(parse_line(line), vec![ChatEvent::Done { error: Some("Not logged in · Please run /login".into()) }]);
         let hint = error_hint("Failed to authenticate: run `claude auth login`", "~/.claude").unwrap();
         assert!(hint.contains("CLAUDE_CONFIG_DIR=~/.claude claude") && hint.contains("/login"));
@@ -399,7 +415,8 @@ mod tests {
 
     #[test]
     fn auth_status_is_summarized_without_extra_fields() {
-        let max = r#"{"loggedIn":true,"authMethod":"claude.ai","email":"d@mail","subscriptionType":"max","orgName":"x"}"#;
+        let max =
+            r#"{"loggedIn":true,"authMethod":"claude.ai","email":"d@mail","subscriptionType":"max","orgName":"x"}"#;
         assert_eq!(
             parse_auth_status(max),
             Some(Account { logged_in: true, email: Some("d@mail".into()), plan: Some("Max".into()) })
@@ -414,7 +431,9 @@ mod tests {
     #[test]
     fn profiles_are_found_and_labelled() {
         let names: Vec<String> =
-            [".claude-work", ".claude.json", ".claude", ".claude-flash", ".claude-", ".claudex", ".claude-a b"].map(String::from).to_vec();
+            [".claude-work", ".claude.json", ".claude", ".claude-flash", ".claude-", ".claudex", ".claude-a b"]
+                .map(String::from)
+                .to_vec();
         assert_eq!(profile_dirs(&names), vec!["~/.claude", "~/.claude-flash", "~/.claude-work"]);
         assert_eq!(profile_label("~/.claude"), "utama");
         assert_eq!(profile_label("/Users/a/.claude-work"), "work");

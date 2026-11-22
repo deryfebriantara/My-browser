@@ -101,7 +101,9 @@ impl PanelView {
         unsafe { config.setUserContentController(&controller) };
         let alive = Rc::new(Cell::new(true));
         let bridge = Bridge::new(mtm, Rc::from(on_message), alive.clone());
-        unsafe { controller.addScriptMessageHandler_name(ProtocolObject::from_ref(&*bridge), &NSString::from_str(HANDLER)) };
+        unsafe {
+            controller.addScriptMessageHandler_name(ProtocolObject::from_ref(&*bridge), &NSString::from_str(HANDLER))
+        };
         let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(380.0, 600.0));
         let webview = unsafe { WKWebView::initWithFrame_configuration(WKWebView::alloc(mtm), frame, &config) };
         unsafe { webview.setNavigationDelegate(Some(ProtocolObject::from_ref(&*bridge))) };

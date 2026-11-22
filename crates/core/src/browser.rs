@@ -173,7 +173,13 @@ impl<E: Engine> Browser<E> {
     }
 
     /// Pencarian riwayat untuk MCP dan jendela Riwayat.
-    pub fn search_history(&self, query: &str, since: Option<u64>, offset: usize, limit: usize) -> (Vec<&HistoryEntry>, usize) {
+    pub fn search_history(
+        &self,
+        query: &str,
+        since: Option<u64>,
+        offset: usize,
+        limit: usize,
+    ) -> (Vec<&HistoryEntry>, usize) {
         self.history.search(query, since, offset, limit)
     }
 
@@ -211,7 +217,9 @@ impl<E: Engine> Browser<E> {
                 true
             }
             SuggestionKind::Search => self.navigate_url(active, suggestion.url.clone(), false, now),
-            SuggestionKind::Url | SuggestionKind::History => self.navigate_url(active, suggestion.url.clone(), true, now),
+            SuggestionKind::Url | SuggestionKind::History => {
+                self.navigate_url(active, suggestion.url.clone(), true, now)
+            }
         }
     }
 
@@ -755,40 +763,73 @@ impl<E: Engine> Browser<E> {
 #[cfg(test)]
 mod tests {
     use super::*;
-use crate::engine::{Engine, JsTag, Page, PageEvent};
-    use crate::session::{SavedTab, SessionFile, SESSION_VERSION};
+    use crate::engine::Rect;
+    use crate::engine::{Engine, JsTag, Page, PageEvent};
+    use crate::session::{SESSION_VERSION, SavedTab, SessionFile};
     use crate::settings::Settings;
     use crate::sleep::Pressure;
     use crate::tabs::{TabId, Url};
-    use crate::engine::Rect;
     use std::cell::RefCell;
     use std::rc::Rc;
     use std::time::{Duration, Instant};
 
     #[derive(Debug, Clone, PartialEq)]
-    enum Call { Load(String), Reload, Stop, Back, Forward, Activity, Number(JsTag), Script(String), MobileUa(bool), Scheme(ColorScheme) }
+    enum Call {
+        Load(String),
+        Reload,
+        Stop,
+        Back,
+        Forward,
+        Activity,
+        Number(JsTag),
+        Script(String),
+        MobileUa(bool),
+        Scheme(ColorScheme),
+    }
 
     #[derive(Default)]
-    struct Log { calls: Vec<Call>, live: usize, exceptions: Vec<String> }
+    struct Log {
+        calls: Vec<Call>,
+        live: usize,
+        exceptions: Vec<String>,
+    }
     type Shared = Rc<RefCell<Log>>;
 
     struct FakeEngine(Shared);
     struct FakePage(Shared);
 
     impl Drop for FakePage {
-        fn drop(&mut self) { self.0.borrow_mut().live -= 1; }
+        fn drop(&mut self) {
+            self.0.borrow_mut().live -= 1;
+        }
     }
 
     impl Page for FakePage {
         type View = ();
-        fn load(&self, url: &Url) { self.0.borrow_mut().calls.push(Call::Load(url.to_string())); }
-        fn go_back(&self) { self.0.borrow_mut().calls.push(Call::Back); }
-        fn go_forward(&self) { self.0.borrow_mut().calls.push(Call::Forward); }
-        fn reload(&self) { self.0.borrow_mut().calls.push(Call::Reload); }
-        fn stop(&self) { self.0.borrow_mut().calls.push(Call::Stop); }
-        fn request_activity(&self) { self.0.borrow_mut().calls.push(Call::Activity); }
-        fn request_number(&self, tag: JsTag, _script: &str) { self.0.borrow_mut().calls.push(Call::Number(tag)); }
-        fn run_script(&self, script: &str) { self.0.borrow_mut().calls.push(Call::Script(script.into())); }
+        fn load(&self, url: &Url) {
+            self.0.borrow_mut().calls.push(Call::Load(url.to_string()));
+        }
+        fn go_back(&self) {
+            self.0.borrow_mut().calls.push(Call::Back);
+        }
+        fn go_forward(&self) {
+            self.0.borrow_mut().calls.push(Call::Forward);
+        }
+        fn reload(&self) {
+            self.0.borrow_mut().calls.push(Call::Reload);
+        }
+        fn stop(&self) {
+            self.0.borrow_mut().calls.push(Call::Stop);
+        }
+        fn request_activity(&self) {
+            self.0.borrow_mut().calls.push(Call::Activity);
+        }
+        fn request_number(&self, tag: JsTag, _script: &str) {
+            self.0.borrow_mut().calls.push(Call::Number(tag));
+        }
+        fn run_script(&self, script: &str) {
+            self.0.borrow_mut().calls.push(Call::Script(script.into()));
+        }
         fn evaluate(&self, script: &str, _reply: Box<dyn FnOnce(Result<String, String>)>) {
             self.0.borrow_mut().calls.push(Call::Script(script.into()));
         }
@@ -797,10 +838,23 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         }
         fn snapshot(&self, _max_width: f64, _reply: Box<dyn FnOnce(Result<Vec<u8>, String>)>) {}
         fn capture(&self, _area: Rect, _scale: f64, _reply: Box<dyn FnOnce(Result<Vec<u8>, String>)>) {}
-        fn set_mobile_user_agent(&self, mobile: bool) { self.0.borrow_mut().calls.push(Call::MobileUa(mobile)); }
-        fn set_color_scheme(&self, scheme: ColorScheme) { self.0.borrow_mut().calls.push(Call::Scheme(scheme)); }
-        fn fill_login(&self, _origin: &str, _username: &str, _password: &crate::engine::Secret, _reply: Box<dyn FnOnce(Result<String, String>)>) {}
-        fn process_id(&self) -> Option<i32> { None }
+        fn set_mobile_user_agent(&self, mobile: bool) {
+            self.0.borrow_mut().calls.push(Call::MobileUa(mobile));
+        }
+        fn set_color_scheme(&self, scheme: ColorScheme) {
+            self.0.borrow_mut().calls.push(Call::Scheme(scheme));
+        }
+        fn fill_login(
+            &self,
+            _origin: &str,
+            _username: &str,
+            _password: &crate::engine::Secret,
+            _reply: Box<dyn FnOnce(Result<String, String>)>,
+        ) {
+        }
+        fn process_id(&self) -> Option<i32> {
+            None
+        }
         fn view(&self) {}
     }
 
@@ -810,12 +864,18 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
             self.0.borrow_mut().live += 1;
             FakePage(self.0.clone())
         }
-        fn set_blocker_exceptions(&self, hosts: &[String]) { self.0.borrow_mut().exceptions = hosts.to_vec(); }
+        fn set_blocker_exceptions(&self, hosts: &[String]) {
+            self.0.borrow_mut().exceptions = hosts.to_vec();
+        }
         fn set_global_sink(&self, _sink: Box<dyn Fn(PageEvent)>) {}
     }
 
-    fn u(s: &str) -> Url { Url::parse(s).unwrap() }
-    fn secs(n: u64) -> Duration { Duration::from_secs(n) }
+    fn u(s: &str) -> Url {
+        Url::parse(s).unwrap()
+    }
+    fn secs(n: u64) -> Duration {
+        Duration::from_secs(n)
+    }
 
     /// Tab latar tidur setelah 300 detik, paling banyak 3 tab bangun (angka
     /// kecil supaya test mudah dibaca; bawaannya lebih longgar).
@@ -823,7 +883,14 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         let log = Shared::default();
         let t0 = Instant::now();
         let settings = Settings { sleep_idle_secs: 300, max_awake: 3, ..Settings::default() };
-        let b = Browser::new(FakeEngine(log.clone()), settings, session, History::new(), Box::new(|_| Box::new(|_| {})), t0);
+        let b = Browser::new(
+            FakeEngine(log.clone()),
+            settings,
+            session,
+            History::new(),
+            Box::new(|_| Box::new(|_| {})),
+            t0,
+        );
         (b, log, t0)
     }
 
@@ -836,7 +903,9 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         (a, b.tabs().active())
     }
 
-    fn has(log: &Shared, call: Call) -> bool { log.borrow().calls.contains(&call) }
+    fn has(log: &Shared, call: Call) -> bool {
+        log.borrow().calls.contains(&call)
+    }
 
     #[test]
     fn navigate_creates_page_and_loads_parsed_url() {
@@ -968,7 +1037,10 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         assert!(has(&log, Call::Number(JsTag::VideoTime)));
         b.handle_event(yt, PageEvent::Number { tag: JsTag::VideoTime, value: Some(125.7) }, t);
         b.handle_event(yt, PageEvent::Activity { media: false, draft: false }, t);
-        assert_eq!(b.tabs().get(yt).unwrap().url.as_ref().unwrap().as_str(), "https://www.youtube.com/watch?v=abc&t=125s");
+        assert_eq!(
+            b.tabs().get(yt).unwrap().url.as_ref().unwrap().as_str(),
+            "https://www.youtube.com/watch?v=abc&t=125s"
+        );
     }
 
     /// (url, title, visit_count, typed_count) semua entri riwayat, terbaru dulu.
@@ -1006,7 +1078,11 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         b.handle_event(a, PageEvent::LoadFinished, t0);
         let h = hist(&b);
         assert_eq!((h[0].0.as_str(), h[0].3), ("https://b.com/x", 0), "link bukan ketikan");
-        assert_eq!((h[1].0.as_str(), h[1].3), ("https://www.google.com/search?q=resep+nasi", 0), "pencarian bukan ketikan");
+        assert_eq!(
+            (h[1].0.as_str(), h[1].3),
+            ("https://www.google.com/search?q=resep+nasi", 0),
+            "pencarian bukan ketikan"
+        );
     }
 
     #[test]
@@ -1041,7 +1117,10 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         b.handle_event(a, PageEvent::SameDocumentNavigation(u("https://www.youtube.com/watch?v=1#komentar")), t0);
         let h = hist(&b);
         assert_eq!(h.len(), 2);
-        assert_eq!((h[0].0.as_str(), h[0].1.as_str(), h[0].2), ("https://www.youtube.com/watch?v=1", "Video Satu - YouTube", 1));
+        assert_eq!(
+            (h[0].0.as_str(), h[0].1.as_str(), h[0].2),
+            ("https://www.youtube.com/watch?v=1", "Video Satu - YouTube", 1)
+        );
     }
 
     #[test]
@@ -1168,7 +1247,11 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         assert!(b.open_suggestion(&s, t0));
         assert_eq!(b.tabs().active(), a);
         assert!(b.tabs().get(blank).is_none(), "tab kosong asal ditutup");
-        assert_eq!(log.borrow().calls.iter().filter(|c| matches!(c, Call::Load(_))).count(), loads, "tidak memuat ulang");
+        assert_eq!(
+            log.borrow().calls.iter().filter(|c| matches!(c, Call::Load(_))).count(),
+            loads,
+            "tidak memuat ulang"
+        );
     }
 
     #[test]
@@ -1411,7 +1494,10 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         b.take_changes();
         b.handle_event(a, PageEvent::LoadFailed("Could not connect to the server.".into()), t0);
         assert!(!b.tabs().get(a).unwrap().loading);
-        assert!(b.take_changes().contains(&UiChange::Notice("Gagal memuat halaman: Could not connect to the server.".into())));
+        assert!(
+            b.take_changes()
+                .contains(&UiChange::Notice("Gagal memuat halaman: Could not connect to the server.".into()))
+        );
     }
 
     #[test]
@@ -1558,7 +1644,8 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
         let calls = log.borrow().calls.clone();
         let load = calls.iter().position(|c| matches!(c, Call::Load(_))).expect("tab dimuat ulang");
         let ua = calls.iter().position(|c| *c == Call::MobileUa(true)).expect("user agent HP dipasang lagi");
-        let scheme = calls.iter().position(|c| *c == Call::Scheme(ColorScheme::Dark)).expect("mode gelap dipasang lagi");
+        let scheme =
+            calls.iter().position(|c| *c == Call::Scheme(ColorScheme::Dark)).expect("mode gelap dipasang lagi");
         assert!(ua < load && scheme < load, "emulasi harus dipasang sebelum memuat: {calls:?}");
         let _ = active;
     }

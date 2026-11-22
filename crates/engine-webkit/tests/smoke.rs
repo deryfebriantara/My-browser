@@ -41,7 +41,9 @@ fn fake_player(ad_showing: bool, skip_button: bool) -> String {
     } else {
         ""
     };
-    format!(r#"<title>start</title><div id="movie_player" class="{class}"><video></video><div class="video-ads ytp-ad-module">{button}</div></div>"#)
+    format!(
+        r#"<title>start</title><div id="movie_player" class="{class}"><video></video><div class="video-ads ytp-ad-module">{button}</div></div>"#
+    )
 }
 
 fn load_and_wait(page: &engine_webkit::WebKitPage, events: &Rc<RefCell<Vec<PageEvent>>>, html: &str, base: &str) {
@@ -89,7 +91,11 @@ fn youtube_ad_skip(engine: &WebKitEngine) {
     page.run_script("document.getElementById('movie_player').classList.add('ad-showing')");
     spin_until(Duration::from_secs(1), || false);
     let state = "(function(){var v=document.querySelector('video');return v.playbackRate*10+(v.muted?1:0)})()";
-    assert_eq!(number(&page, &events, state), Some(161.0), "iklan tanpa tombol Lewati tidak dibisukan dan dipercepat 16x");
+    assert_eq!(
+        number(&page, &events, state),
+        Some(161.0),
+        "iklan tanpa tombol Lewati tidak dibisukan dan dipercepat 16x"
+    );
     page.run_script("document.getElementById('movie_player').classList.remove('ad-showing')");
     spin_until(Duration::from_secs(1), || false);
     assert_eq!(number(&page, &events, state), Some(15.0), "kecepatan 1,5x dan suara pengguna tidak dikembalikan");
@@ -97,10 +103,16 @@ fn youtube_ad_skip(engine: &WebKitEngine) {
 
     engine.set_blocker_exceptions(&["youtube.com".to_string()]);
     load_and_wait(&page, &events, &fake_player(true, true), YT);
-    assert!(!title_becomes(&events, "skipped", Duration::from_secs(2)), "skip iklan tetap aktif saat pemblokir dimatikan untuk YouTube");
+    assert!(
+        !title_becomes(&events, "skipped", Duration::from_secs(2)),
+        "skip iklan tetap aktif saat pemblokir dimatikan untuk YouTube"
+    );
     engine.set_blocker_exceptions(&[]);
     load_and_wait(&page, &events, &fake_player(true, true), YT);
-    assert!(title_becomes(&events, "skipped", Duration::from_secs(3)), "skip iklan tidak aktif lagi setelah pengecualian dicabut");
+    assert!(
+        title_becomes(&events, "skipped", Duration::from_secs(3)),
+        "skip iklan tidak aktif lagi setelah pengecualian dicabut"
+    );
     println!("ok: skip iklan ikut pengecualian pemblokir");
 }
 
@@ -172,9 +184,15 @@ fn developer_tools(engine: &WebKitEngine) {
 
     let net = json(&page, &js::network_log(false, None, false, 50));
     let entries = net["entries"].as_array().unwrap();
-    let data_fetch = entries.iter().find(|e| e["type"] == "fetch" && e["url"].as_str().unwrap().starts_with("data:")).expect("fetch data tercatat");
+    let data_fetch = entries
+        .iter()
+        .find(|e| e["type"] == "fetch" && e["url"].as_str().unwrap().starts_with("data:"))
+        .expect("fetch data tercatat");
     assert_eq!(data_fetch["status"], 200);
-    assert!(data_fetch["body"].as_str().unwrap_or_default().contains("ok"), "isi respons situs lokal disimpan: {data_fetch}");
+    assert!(
+        data_fetch["body"].as_str().unwrap_or_default().contains("ok"),
+        "isi respons situs lokal disimpan: {data_fetch}"
+    );
     let xhr = entries.iter().find(|e| e["type"] == "xhr").expect("xhr tercatat");
     assert_eq!(xhr["body"], "xhr-ok", "{xhr}");
     let failed = json(&page, &js::network_log(true, None, false, 50));
@@ -247,7 +265,10 @@ fn page_scripts(engine: &WebKitEngine) {
     println!("ok: type_text dan click");
 
     let blocked = json_async(&page, &js::run_js("document.querySelector('input[type=password]').value"));
-    assert!(blocked["error"].as_str().unwrap().contains("password"), "run_js harus diblokir selama password terisi: {blocked}");
+    assert!(
+        blocked["error"].as_str().unwrap().contains("password"),
+        "run_js harus diblokir selama password terisi: {blocked}"
+    );
     page.run_script("document.querySelector('input[type=password]').value = ''");
     println!("ok: run_js diblokir di halaman dengan kolom password terisi");
     assert_eq!(json_async(&page, &js::run_js("document.title.length"))["result"], 16);
@@ -369,7 +390,10 @@ fn visual_tools(engine: &WebKitEngine) {
     let window = unsafe {
         objc2_app_kit::NSWindow::initWithContentRect_styleMask_backing_defer(
             objc2::MainThreadOnly::alloc(mtm),
-            objc2_foundation::NSRect::new(objc2_foundation::NSPoint::new(0.0, 0.0), objc2_foundation::NSSize::new(800.0, 600.0)),
+            objc2_foundation::NSRect::new(
+                objc2_foundation::NSPoint::new(0.0, 0.0),
+                objc2_foundation::NSSize::new(800.0, 600.0),
+            ),
             objc2_app_kit::NSWindowStyleMask::Titled,
             objc2_app_kit::NSBackingStoreType::Buffered,
             false,
@@ -418,16 +442,26 @@ fn visual_tools(engine: &WebKitEngine) {
     assert!(picked["document_box"]["width"].as_f64().unwrap() > 0.0);
     let same = format!("String(document.querySelector({:?})===document.querySelectorAll('a.item')[1])", selector);
     assert_eq!(evaluate(&page, &same).unwrap(), "true", "selector {selector} tidak menunjuk elemen yang dipilih");
-    assert!(!title_becomes(&events, "diklik", Duration::from_millis(300)), "klik saat memilih tidak boleh sampai ke halaman");
+    assert!(
+        !title_becomes(&events, "diklik", Duration::from_millis(300)),
+        "klik saat memilih tidak boleh sampai ke halaman"
+    );
     println!("ok: Pick Element: elemen terpilih, selector unik ({selector}), klik tidak sampai ke halaman");
 
     page.run_script("var li=document.querySelectorAll('li')[1];li.innerHTML=li.innerHTML;");
-    assert_eq!(json(&page, &js::picked_element(None))["text"], "Dua", "elemen yang dirender ulang dicari lewat selector");
+    assert_eq!(
+        json(&page, &js::picked_element(None))["text"],
+        "Dua",
+        "elemen yang dirender ulang dicari lewat selector"
+    );
 
     page.run_script(js::ELEMENT_PICKER);
     spin_until(Duration::from_millis(200), || false);
     mouse(&page, "click", x, y);
-    assert!(spin_until(Duration::from_secs(3), || evaluate(&page, overlay).unwrap() == "false"), "tanda Terpilih tidak hilang sendiri");
+    assert!(
+        spin_until(Duration::from_secs(3), || evaluate(&page, overlay).unwrap() == "false"),
+        "tanda Terpilih tidak hilang sendiri"
+    );
 
     page.run_script(js::ELEMENT_PICKER);
     spin_until(Duration::from_millis(200), || false);
@@ -479,7 +513,11 @@ fn password_scripts(engine: &WebKitEngine) {
     page.run_script("document.getElementById('u').value='dery'; document.getElementById('p').value='rahasia-1'; document.getElementById('b').click();");
     assert!(spin_until(Duration::from_secs(3), || !credentials(&events).is_empty()), "login tidak tertangkap");
     spin_until(Duration::from_millis(400), || false);
-    assert_eq!(credentials(&events), vec![("https://example.com".into(), "dery".into(), "rahasia-1".into())], "satu kali saja (klik dan submit)");
+    assert_eq!(
+        credentials(&events),
+        vec![("https://example.com".into(), "dery".into(), "rahasia-1".into())],
+        "satu kali saja (klik dan submit)"
+    );
     let shown = format!("{:?}", events.borrow());
     assert!(!shown.contains("rahasia-1"), "password tercetak lewat Debug");
     println!("ok: password: login tertangkap sekali dengan origin dari frame, tidak tercetak di log");
@@ -497,8 +535,14 @@ fn password_scripts(engine: &WebKitEngine) {
     assert!(wrong["error"].is_string(), "{wrong}");
     assert_eq!(evaluate(&page, "document.getElementById('p').value").unwrap(), "", "terisi di origin lain");
     let filled = fill("https://example.com", "baru", "isi-2");
-    assert_eq!((filled["filled_password"].clone(), filled["filled_username"].clone()), (serde_json::json!(true), serde_json::json!(true)));
-    assert_eq!(evaluate(&page, "document.getElementById('u').value + '|' + document.getElementById('p').value").unwrap(), "baru|isi-2");
+    assert_eq!(
+        (filled["filled_password"].clone(), filled["filled_username"].clone()),
+        (serde_json::json!(true), serde_json::json!(true))
+    );
+    assert_eq!(
+        evaluate(&page, "document.getElementById('u').value + '|' + document.getElementById('p').value").unwrap(),
+        "baru|isi-2"
+    );
     assert_eq!(evaluate(&page, "String(window.inputs > 0)").unwrap(), "true", "event input untuk framework");
     println!("ok: password: diisi hanya di origin yang sama, dengan event input");
 
@@ -545,7 +589,10 @@ fn same_document_navigation(engine: &WebKitEngine) {
     load_and_wait(&page, &events, "<title>C</title><p>c</p>", "https://mb-history.test/c");
     let ev = events.borrow();
     assert!(ev.contains(&PageEvent::UrlChanged(url("https://mb-history.test/c"))), "muat halaman: {ev:?}");
-    assert!(!ev.iter().any(|e| matches!(e, PageEvent::SameDocumentNavigation(_))), "muat halaman bukan SameDocumentNavigation: {ev:?}");
+    assert!(
+        !ev.iter().any(|e| matches!(e, PageEvent::SameDocumentNavigation(_))),
+        "muat halaman bukan SameDocumentNavigation: {ev:?}"
+    );
     println!("ok: muat halaman baru -> UrlChanged");
 }
 
@@ -553,7 +600,8 @@ fn same_document_navigation(engine: &WebKitEngine) {
 fn activity(page: &engine_webkit::WebKitPage, events: &Rc<RefCell<Vec<PageEvent>>>) -> (bool, bool) {
     events.borrow_mut().clear();
     page.request_activity();
-    let replied = spin_until(Duration::from_secs(5), || events.borrow().iter().any(|e| matches!(e, PageEvent::Activity { .. })));
+    let replied =
+        spin_until(Duration::from_secs(5), || events.borrow().iter().any(|e| matches!(e, PageEvent::Activity { .. })));
     assert!(replied, "request_activity tidak dibalas");
     events
         .borrow()
@@ -584,7 +632,8 @@ fn drafts(engine: &WebKitEngine) {
     // execCommand('insertText') lewat jalur editing WebKit, jadi event input-nya
     // isTrusted seperti ketikan keyboard.
     let type_into = |id: &str, text: &str| {
-        let js = format!("document.getElementById('{id}').focus();document.execCommand('insertText',false,'{text}');'ok'");
+        let js =
+            format!("document.getElementById('{id}').focus();document.execCommand('insertText',false,'{text}');'ok'");
         evaluate(&page, &js).expect("mengetik");
     };
 
@@ -638,18 +687,28 @@ fn panel_bridge(mtm: MainThreadMarker) {
     // Pool per langkah, seperti event loop AppKit di aplikasi: objek yang
     // di-autorelease saat membuat webview harus dikuras supaya bisa bebas.
     let panel = objc2::rc::autoreleasepool(|_| {
-        engine_webkit::PanelView::new(mtm, html, Box::new(move |text| sink.borrow_mut().push(serde_json::from_str(&text).unwrap())))
+        engine_webkit::PanelView::new(
+            mtm,
+            html,
+            Box::new(move |text| sink.borrow_mut().push(serde_json::from_str(&text).unwrap())),
+        )
     });
     let has = |t: &str| inbox.borrow().iter().any(|m| m["t"] == t);
     assert!(spin_until(Duration::from_secs(10), || has("ready")), "panel tidak mengirim ready");
-    objc2::rc::autoreleasepool(|_| panel.send(&serde_json::json!({"t": "echo", "text": "halo \u{2028} \"kutip\" </script>"}).to_string()));
+    objc2::rc::autoreleasepool(|_| {
+        panel.send(&serde_json::json!({"t": "echo", "text": "halo \u{2028} \"kutip\" </script>"}).to_string())
+    });
     assert!(spin_until(Duration::from_secs(5), || has("echo")), "pesan ke panel tidak sampai");
     assert_eq!(inbox.borrow().iter().find(|m| m["t"] == "echo").unwrap()["got"], "halo \u{2028} \"kutip\" </script>");
     println!("ok: panel: pesan dua arah (termasuk U+2028, kutip, dan </script>)");
 
     objc2::rc::autoreleasepool(|_| panel.send(r#"{"t":"go"}"#));
     assert!(spin_until(Duration::from_secs(5), || has("href")), "panel tidak melapor");
-    assert_eq!(inbox.borrow().iter().find(|m| m["t"] == "href").unwrap()["href"], "about:blank", "panel tidak boleh berpindah halaman");
+    assert_eq!(
+        inbox.borrow().iter().find(|m| m["t"] == "href").unwrap()["href"],
+        "about:blank",
+        "panel tidak boleh berpindah halaman"
+    );
     println!("ok: panel: navigasi ke situs lain diblokir");
 
     let weak = objc2::rc::autoreleasepool(|_| objc2::rc::Weak::from(&*panel.view()));
@@ -761,7 +820,9 @@ fn main() {
     // memanggil completion handler penghapusan tanpa cek nil, jadi handler
     // kosong membuat proses crash.
     let base = std::env::temp_dir().join(format!("mb-smoke-blocklist-{}", std::process::id()));
-    let rule = |sel: &str| format!(r#"[{{"trigger":{{"url-filter":".*"}},"action":{{"type":"css-display-none","selector":"{sel}"}}}}]"#);
+    let rule = |sel: &str| {
+        format!(r#"[{{"trigger":{{"url-filter":".*"}},"action":{{"type":"css-display-none","selector":"{sel}"}}}}]"#)
+    };
     for (name, sel) in [("a", ".mb-smoke-a"), ("b", ".mb-smoke-b")] {
         std::fs::create_dir_all(base.join(name)).unwrap();
         std::fs::write(base.join(name).join("blocklist-0.json"), rule(sel)).unwrap();

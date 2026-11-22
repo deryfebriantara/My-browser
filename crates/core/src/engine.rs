@@ -77,13 +77,22 @@ pub enum PageEvent {
     TitleChanged(String),
     LoadingChanged(bool),
     LoadFinished,
-    NavState { can_back: bool, can_forward: bool },
+    NavState {
+        can_back: bool,
+        can_forward: bool,
+    },
     OpenInNewTab(Url),
     /// Balasan `request_activity`. `media`: memutar media, memakai
     /// kamera/mikrofon, atau sedang download. `draft`: ada teks yang sudah
     /// diketik pengguna di frame utama tapi belum dikirim.
-    Activity { media: bool, draft: bool },
-    Number { tag: JsTag, value: Option<f64> },
+    Activity {
+        media: bool,
+        draft: bool,
+    },
+    Number {
+        tag: JsTag,
+        value: Option<f64>,
+    },
     /// Navigasi terakhir berubah menjadi download; halaman tidak berganti.
     DownloadStarted,
     DownloadFinished(PathBuf),
@@ -93,7 +102,11 @@ pub enum PageEvent {
     ProcessCrashed,
     /// Pengguna mengirim form login di frame utama. `origin` berasal dari
     /// frame pengirim (bukan dari halaman), jadi tidak bisa dipalsukan.
-    CredentialSubmitted { origin: String, username: String, password: Secret },
+    CredentialSubmitted {
+        origin: String,
+        username: String,
+        password: Secret,
+    },
 }
 
 /// Satu halaman. Melepas (`Drop`) page berarti melepas halaman dan memory-nya.
@@ -130,7 +143,13 @@ pub trait Page {
     /// `origin`. Dijalankan di dunia script terpisah yang tidak terlihat
     /// oleh script halaman. Balasan JSON (`filled_password`,
     /// `filled_username`) atau `{"error": ...}`; tidak pernah sinkron.
-    fn fill_login(&self, origin: &str, username: &str, password: &Secret, reply: Box<dyn FnOnce(Result<String, String>)>);
+    fn fill_login(
+        &self,
+        origin: &str,
+        username: &str,
+        password: &Secret,
+        reply: Box<dyn FnOnce(Result<String, String>)>,
+    );
     /// Pid proses yang merender halaman ini, kalau mesin mengetahuinya.
     fn process_id(&self) -> Option<i32>;
     fn view(&self) -> Self::View;

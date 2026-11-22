@@ -137,9 +137,14 @@ fn dispatch(request: ControlRequest, kind: ClientKind) -> ControlResponse {
             return;
         };
         objc2::rc::autoreleasepool(|_| {
-            control::handle(&state, request, &kind, Box::new(move |response| {
-                let _ = tx.send(response);
-            }));
+            control::handle(
+                &state,
+                request,
+                &kind,
+                Box::new(move |response| {
+                    let _ = tx.send(response);
+                }),
+            );
         });
     });
     rx.recv_timeout(REQUEST_TIMEOUT)

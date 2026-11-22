@@ -2,7 +2,9 @@
 
 use crate::state::{AppState, display_title};
 use browser_core::capture::{self, Plan};
-use browser_core::control::{ControlRequest as R, ControlResponse, Device, LogLevel, TabInfo, WaitState, emulation_for};
+use browser_core::control::{
+    ControlRequest as R, ControlResponse, Device, LogLevel, TabInfo, WaitState, emulation_for,
+};
 use browser_core::engine::{ColorScheme, Emulation, Page, Rect};
 use browser_core::mcp_access::ClientKind;
 use browser_core::page_scripts as js;
@@ -179,7 +181,9 @@ pub fn handle(state: &Rc<AppState>, request: R, kind: &ClientKind, reply: Reply)
                 let requested = state.browser.borrow_mut().request_sleep(id);
                 state.refresh();
                 reply(if requested {
-                    ok(json!({"requested": true, "note": "Tab ditidurkan dalam sekejap kalau tidak sedang memutar media dan tidak berisi teks yang belum dikirim pengguna. Cek dengan list_tabs."}))
+                    ok(
+                        json!({"requested": true, "note": "Tab ditidurkan dalam sekejap kalau tidak sedang memutar media dan tidak berisi teks yang belum dikirim pengguna. Cek dengan list_tabs."}),
+                    )
                 } else {
                     err("Tab aktif, tab kosong, atau tab yang sudah tidur tidak bisa ditidurkan.")
                 })
@@ -272,7 +276,8 @@ fn screenshot(state: &AppState, tab_id: Option<u64>, reply: Reply) {
     }
 }
 
-const RERENDER_NOTE: &str = "Gambar dirender ulang dari halaman (bukan foto layar): video dan canvas WebGL bisa kosong.";
+const RERENDER_NOTE: &str =
+    "Gambar dirender ulang dari halaman (bukan foto layar): video dan canvas WebGL bisa kosong.";
 
 type Tiles = Box<dyn FnOnce(Result<Vec<String>, String>)>;
 
@@ -307,7 +312,13 @@ fn rect_of(value: &Value) -> Option<Rect> {
 
 /// Menjalankan script yang menghasilkan JSON di tab tujuan, lalu meneruskan
 /// datanya (atau error) ke `then` bersama id tab.
-fn with_page_json(state: &Rc<AppState>, tab_id: Option<u64>, script: &str, then: impl FnOnce(TabId, Value) + 'static, reply: Reply) {
+fn with_page_json(
+    state: &Rc<AppState>,
+    tab_id: Option<u64>,
+    script: &str,
+    then: impl FnOnce(TabId, Value) + 'static,
+    reply: Reply,
+) {
     let id = match target(state, tab_id) {
         Ok(id) => id,
         Err(e) => return reply(e),
@@ -418,7 +429,8 @@ fn get_selection(state: &Rc<AppState>, tab_id: Option<u64>, reply: Reply) {
         &js::picked_element(None),
         move |id, mut info| {
             info["tab_id"] = json!(id.0);
-            let Some(area) = info.get("document_box").and_then(rect_of).filter(|r| r.width > 0.0 && r.height > 0.0) else {
+            let Some(area) = info.get("document_box").and_then(rect_of).filter(|r| r.width > 0.0 && r.height > 0.0)
+            else {
                 info["image_note"] = json!("Elemen tidak terlihat (ukurannya nol), jadi tanpa gambar.");
                 return reply(ok(info));
             };
@@ -436,7 +448,9 @@ fn get_selection(state: &Rc<AppState>, tab_id: Option<u64>, reply: Reply) {
                         Err(e) => info["image_note"] = json!(e),
                     }
                     if truncated {
-                        info["image_note"] = json!("Elemen tinggi; gambar hanya bagian atasnya. Pakai screenshot dengan selector untuk seluruhnya.");
+                        info["image_note"] = json!(
+                            "Elemen tinggi; gambar hanya bagian atasnya. Pakai screenshot dengan selector untuk seluruhnya."
+                        );
                     }
                     reply(ok(info))
                 }),
@@ -561,13 +575,13 @@ fn memory_usage(state: &AppState) -> Value {
             json!({"id": t.id.0, "title": display_title(t), "asleep": !t.awake, "pid": pid, "memory_mb": memory})
         })
         .collect();
-    let processes: Vec<Value> = procs
-        .iter()
-        .map(|p| json!({"pid": p.pid, "name": p.name, "memory_mb": megabytes(p.footprint)}))
-        .collect();
+    let processes: Vec<Value> =
+        procs.iter().map(|p| json!({"pid": p.pid, "name": p.name, "memory_mb": megabytes(p.footprint)})).collect();
     let mut out = json!({"total_mb": megabytes(total), "processes": processes, "tabs": tabs});
     if !procs.iter().any(|p| p.name.contains("WebKit.GPU")) {
-        out["note"] = json!("Proses GPU dan jaringan WebKit hanya terhitung kalau my-browser dibuka lewat Finder atau perintah open.");
+        out["note"] = json!(
+            "Proses GPU dan jaringan WebKit hanya terhitung kalau my-browser dibuka lewat Finder atau perintah open."
+        );
     }
     out
 }
@@ -577,7 +591,8 @@ fn base64(bytes: &[u8]) -> String {
     const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
-        let n = (chunk[0] as u32) << 16 | (*chunk.get(1).unwrap_or(&0) as u32) << 8 | *chunk.get(2).unwrap_or(&0) as u32;
+        let n =
+            (chunk[0] as u32) << 16 | (*chunk.get(1).unwrap_or(&0) as u32) << 8 | *chunk.get(2).unwrap_or(&0) as u32;
         for i in 0..4 {
             if i <= chunk.len() {
                 out.push(TABLE[(n >> (18 - 6 * i) & 63) as usize] as char);
@@ -595,7 +610,8 @@ mod tests {
 
     #[test]
     fn base64_matches_rfc4648_vectors() {
-        let cases = [("", ""), ("f", "Zg=="), ("fo", "Zm8="), ("foo", "Zm9v"), ("foob", "Zm9vYg=="), ("foobar", "Zm9vYmFy")];
+        let cases =
+            [("", ""), ("f", "Zg=="), ("fo", "Zm8="), ("foo", "Zm9v"), ("foob", "Zm9vYg=="), ("foobar", "Zm9vYmFy")];
         for (input, expected) in cases {
             assert_eq!(base64(input.as_bytes()), expected, "{input}");
         }
@@ -622,7 +638,10 @@ mod tests {
 
     #[test]
     fn page_script_errors_become_control_errors() {
-        assert_eq!(script_result(Ok(r#"{"error":"Elemen 3 tidak ditemukan"}"#.into())), err("Elemen 3 tidak ditemukan"));
+        assert_eq!(
+            script_result(Ok(r#"{"error":"Elemen 3 tidak ditemukan"}"#.into())),
+            err("Elemen 3 tidak ditemukan")
+        );
         assert_eq!(script_result(Ok(r#"{"title":"x"}"#.into())), ok(json!({"title": "x"})));
         assert_eq!(script_result(Ok("bukan json".into())), ok(json!("bukan json")));
         assert!(matches!(script_result(Err("rusak".into())), ControlResponse::Error(m) if m.contains("rusak")));

@@ -140,7 +140,12 @@ impl TabList {
         let index = self.index_of(id)?;
         let tab = self.tabs.remove(index);
         if tab.url.is_some() {
-            self.closed.push(ClosedTab { index, url: tab.url.clone(), title: tab.title.clone(), scroll_y: tab.scroll_y });
+            self.closed.push(ClosedTab {
+                index,
+                url: tab.url.clone(),
+                title: tab.title.clone(),
+                scroll_y: tab.scroll_y,
+            });
             if self.closed.len() > MAX_CLOSED {
                 self.closed.remove(0);
             }
@@ -242,7 +247,9 @@ mod tests {
     use super::*;
     use std::time::{Duration, Instant};
 
-    fn u(s: &str) -> Url { Url::parse(s).unwrap() }
+    fn u(s: &str) -> Url {
+        Url::parse(s).unwrap()
+    }
     fn urls(list: &TabList) -> Vec<Option<String>> {
         list.iter().map(|t| t.url.as_ref().map(|u| u.to_string())).collect()
     }
@@ -256,7 +263,10 @@ mod tests {
         let b = l.open(Some(u("https://b.com/")), t0, false);
         assert_eq!(l.active(), a);
         let n = l.open(Some(u("https://n.com/")), t0, true);
-        assert_eq!(urls(&l), vec![Some("https://a.com/".into()), Some("https://n.com/".into()), Some("https://b.com/".into())]);
+        assert_eq!(
+            urls(&l),
+            vec![Some("https://a.com/".into()), Some("https://n.com/".into()), Some("https://b.com/".into())]
+        );
         assert_eq!(l.active(), n);
         assert_ne!(n, b);
     }
@@ -320,7 +330,9 @@ mod tests {
             l.close(id, t0);
         }
         let mut n = 0;
-        while l.reopen_closed(t0).is_some() { n += 1; }
+        while l.reopen_closed(t0).is_some() {
+            n += 1;
+        }
         assert_eq!(n, 20);
     }
 

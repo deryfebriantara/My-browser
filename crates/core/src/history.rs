@@ -345,7 +345,10 @@ mod tests {
         assert_eq!(key("https://example.com/?utm_source=x&id=7&fbclid=abc").unwrap(), "https://example.com/?id=7");
         assert_eq!(key("https://example.com/?utm_source=x").unwrap(), "https://example.com/");
         // Query tanpa parameter yang dibuang tidak disusun ulang.
-        assert_eq!(key("https://example.com/cari?q=nasi+goreng%21").unwrap(), "https://example.com/cari?q=nasi+goreng%21");
+        assert_eq!(
+            key("https://example.com/cari?q=nasi+goreng%21").unwrap(),
+            "https://example.com/cari?q=nasi+goreng%21"
+        );
     }
 
     #[test]

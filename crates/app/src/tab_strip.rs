@@ -39,12 +39,15 @@ impl TabStrip {
     pub fn build(mtm: MainThreadMarker, width: f64, y: f64) -> TabStrip {
         let frame = NSRect::new(NSPoint::new(0.0, y), NSSize::new(width, HEIGHT));
         let scroll = NSScrollView::initWithFrame(NSScrollView::alloc(mtm), frame);
-        scroll.setAutoresizingMask(NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewMinYMargin);
+        scroll.setAutoresizingMask(
+            NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewMinYMargin,
+        );
         scroll.setHasHorizontalScroller(true);
         scroll.setHasVerticalScroller(false);
         scroll.setAutohidesScrollers(true);
         scroll.setDrawsBackground(false);
-        let doc = NSView::initWithFrame(NSView::alloc(mtm), NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(width, HEIGHT)));
+        let doc =
+            NSView::initWithFrame(NSView::alloc(mtm), NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(width, HEIGHT)));
         scroll.setDocumentView(Some(&doc));
         TabStrip { scroll, doc }
     }
@@ -67,7 +70,8 @@ impl TabStrip {
         for (i, tab) in tabs.iter().enumerate() {
             let x = w * i as f64;
             let title = NSString::from_str(&tab.title);
-            let button = unsafe { NSButton::buttonWithTitle_target_action(&title, Some(target), Some(sel!(selectTab:)), mtm) };
+            let button =
+                unsafe { NSButton::buttonWithTitle_target_action(&title, Some(target), Some(sel!(selectTab:)), mtm) };
             button.setButtonType(NSButtonType::PushOnPushOff);
             button.setBezelStyle(NSBezelStyle::AccessoryBarAction);
             button.setState(if tab.active { NSControlStateValueOn } else { NSControlStateValueOff });
@@ -83,7 +87,12 @@ impl TabStrip {
             self.doc.addSubview(&button);
 
             let close = unsafe {
-                NSButton::buttonWithImage_target_action(&symbol("xmark", "Tutup tab"), Some(target), Some(sel!(closeTabButton:)), mtm)
+                NSButton::buttonWithImage_target_action(
+                    &symbol("xmark", "Tutup tab"),
+                    Some(target),
+                    Some(sel!(closeTabButton:)),
+                    mtm,
+                )
             };
             close.setBordered(false);
             close.setTag(tab.id as isize);

@@ -23,7 +23,10 @@ pub enum Effect {
     /// Ganti isi field, kursor di akhir.
     ReplaceText(String),
     /// Kembalikan teks ketikan pengguna, dengan `tail` terseleksi di akhirnya.
-    RestoreTyped { typed: String, tail: String },
+    RestoreTyped {
+        typed: String,
+        tail: String,
+    },
     Show,
     Select(usize),
     Hide,
@@ -195,7 +198,10 @@ mod tests {
     #[test]
     fn typing_completes_inline_and_shows_rows() {
         let mut e = AddressEdit::default();
-        assert_eq!(typed(&mut e, "yo"), vec![Effect::AppendInline("utube.com".into()), Effect::Show, Effect::Select(0)]);
+        assert_eq!(
+            typed(&mut e, "yo"),
+            vec![Effect::AppendInline("utube.com".into()), Effect::Show, Effect::Select(0)]
+        );
         // Mengetik di atas ekor yang terseleksi melengkapi lagi.
         assert_eq!(typed(&mut e, "you")[0], Effect::AppendInline("tube.com".into()));
     }

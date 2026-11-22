@@ -203,17 +203,44 @@ pub fn wait_for(selector: Option<&str>, text: Option<&str>, state: WaitState, ti
 
 /// Properti CSS bawaan untuk `inspect_element`.
 const DEFAULT_STYLES: &[&str] = &[
-    "display", "position", "top", "left", "width", "height", "margin", "padding", "box-sizing", "color",
-    "background-color", "font-family", "font-size", "font-weight", "line-height", "text-align", "border",
-    "border-radius", "opacity", "visibility", "overflow", "z-index", "flex-direction", "justify-content",
-    "align-items", "gap", "grid-template-columns",
+    "display",
+    "position",
+    "top",
+    "left",
+    "width",
+    "height",
+    "margin",
+    "padding",
+    "box-sizing",
+    "color",
+    "background-color",
+    "font-family",
+    "font-size",
+    "font-weight",
+    "line-height",
+    "text-align",
+    "border",
+    "border-radius",
+    "opacity",
+    "visibility",
+    "overflow",
+    "z-index",
+    "flex-direction",
+    "justify-content",
+    "align-items",
+    "gap",
+    "grid-template-columns",
 ];
 
 /// Fungsi JavaScript `inspect(e)` yang menghasilkan detail satu elemen.
 /// Disisipkan di akhir script; deklarasi fungsi di-hoist.
 fn inspect_fn(styles: Option<&[String]>) -> String {
     let names: Vec<String> = match styles {
-        Some(list) => list.iter().filter(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')).cloned().collect(),
+        Some(list) => list
+            .iter()
+            .filter(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'))
+            .cloned()
+            .collect(),
         None => DEFAULT_STYLES.iter().map(|s| s.to_string()).collect(),
     };
     let names = serde_json::to_string(&names).expect("daftar string selalu bisa diserialisasi");
@@ -309,7 +336,10 @@ mod tests {
         let js = run_js("document.title = \"x\"");
         assert!(js.contains(r#"(0,eval)("document.title = \"x\"")"#), "{js}");
         assert!(js.contains("await r"));
-        assert!(js.starts_with("if(Array.prototype.some.call(document.querySelectorAll('input[type=password]')"), "pengaman password dulu");
+        assert!(
+            js.starts_with("if(Array.prototype.some.call(document.querySelectorAll('input[type=password]')"),
+            "pengaman password dulu"
+        );
     }
 
     #[test]

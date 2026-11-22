@@ -3,9 +3,9 @@
 //! Script skip iklan YouTube ikut dipasang dan dilepas bersama daftar aturan
 //! (lihat `scripts`).
 
+use crate::scripts;
 use block2::RcBlock;
 use browser_core::blocking::host_matches;
-use crate::scripts;
 use objc2::MainThreadMarker;
 use objc2::rc::{Retained, Weak};
 use objc2_foundation::{NSArray, NSError, NSString};

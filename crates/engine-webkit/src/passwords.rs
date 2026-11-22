@@ -32,7 +32,8 @@ define_class!(
                 return;
             }
             let security = unsafe { frame.securityOrigin() };
-            let (scheme, host, port) = unsafe { (security.protocol().to_string(), security.host().to_string(), security.port()) };
+            let (scheme, host, port) =
+                unsafe { (security.protocol().to_string(), security.host().to_string(), security.port()) };
             let origin = if port == 0 { format!("{scheme}://{host}") } else { format!("{scheme}://{host}:{port}") };
             let Ok(body) = unsafe { message.body() }.downcast::<NSString>() else { return };
             let Ok(value) = serde_json::from_str::<serde_json::Value>(&body.to_string()) else { return };

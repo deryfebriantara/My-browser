@@ -20,7 +20,9 @@ use objc2_app_kit::{
     NSPasteboard, NSPasteboardTypeString, NSWorkspace, NSWorkspaceScreensDidSleepNotification,
     NSWorkspaceSessionDidResignActiveNotification, NSWorkspaceWillSleepNotification,
 };
-use objc2_foundation::{NSDistributedNotificationCenter, NSNotification, NSObjectProtocol, NSOperationQueue, NSString, NSTimer};
+use objc2_foundation::{
+    NSDistributedNotificationCenter, NSNotification, NSObjectProtocol, NSOperationQueue, NSString, NSTimer,
+};
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -138,19 +140,34 @@ impl Passwords {
         let workspace = NSWorkspace::sharedWorkspace().notificationCenter();
         let main = NSOperationQueue::mainQueue();
         let mut observers = self.observers.borrow_mut();
-        for name in unsafe { [NSWorkspaceScreensDidSleepNotification, NSWorkspaceSessionDidResignActiveNotification, NSWorkspaceWillSleepNotification] } {
+        for name in unsafe {
+            [
+                NSWorkspaceScreensDidSleepNotification,
+                NSWorkspaceSessionDidResignActiveNotification,
+                NSWorkspaceWillSleepNotification,
+            ]
+        } {
             let block = make(state);
-            observers.push(unsafe { workspace.addObserverForName_object_queue_usingBlock(Some(name), None, Some(&main), &block) });
+            observers.push(unsafe {
+                workspace.addObserverForName_object_queue_usingBlock(Some(name), None, Some(&main), &block)
+            });
         }
         let distributed = NSDistributedNotificationCenter::defaultCenter();
         let block = make(state);
         let name = NSString::from_str("com.apple.screenIsLocked");
-        observers.push(unsafe { distributed.addObserverForName_object_queue_usingBlock(Some(&name), None, Some(&main), &block) });
+        observers.push(unsafe {
+            distributed.addObserverForName_object_queue_usingBlock(Some(&name), None, Some(&main), &block)
+        });
     }
 
     /// Menjalankan `then` dengan vault terbuka. Kalau perlu, membuat vault
     /// baru atau meminta master password dulu; `reason` tampil di dialog.
-    pub fn with_vault(&self, state: &Rc<AppState>, reason: &str, then: impl FnOnce(&Rc<AppState>, &mut Vault) + 'static) {
+    pub fn with_vault(
+        &self,
+        state: &Rc<AppState>,
+        reason: &str,
+        then: impl FnOnce(&Rc<AppState>, &mut Vault) + 'static,
+    ) {
         let open = self.vault.borrow_mut().take();
         if let Some(mut vault) = open {
             // Vault dikeluarkan selama `then` berjalan, supaya `then` boleh
@@ -181,31 +198,44 @@ impl Passwords {
         }
         let weak = Rc::downgrade(state);
         let reason = reason.to_string();
-        dialogs::ask_secrets(&state.dialog_window(), "Buka Kunci Password", &info, &["Master password"], "Buka", move |values| {
-            let (Some(state), Some(mut values)) = (weak.upgrade(), values) else { return };
-            let master = values.remove(0);
-            if master.is_empty() {
-                state.passwords.unlock_flow(&state, &reason, file, then, Some("Master password kosong."));
-                return;
-            }
-            state.passwords.unlocking.set(true);
-            let copy = file.clone();
-            background::run(
-                move || Vault::unlock(&copy, &master),
-                move |result| {
-                    state.passwords.unlocking.set(false);
-                    match result {
-                        Ok(vault) => state.passwords.opened(&state, vault, then),
-                        Err(VaultError::WrongPassword) => {
-                            state.passwords.unlock_flow(&state, &reason, file, then, Some("Master password salah."))
+        dialogs::ask_secrets(
+            &state.dialog_window(),
+            "Buka Kunci Password",
+            &info,
+            &["Master password"],
+            "Buka",
+            move |values| {
+                let (Some(state), Some(mut values)) = (weak.upgrade(), values) else { return };
+                let master = values.remove(0);
+                if master.is_empty() {
+                    state.passwords.unlock_flow(&state, &reason, file, then, Some("Master password kosong."));
+                    return;
+                }
+                state.passwords.unlocking.set(true);
+                let copy = file.clone();
+                background::run(
+                    move || Vault::unlock(&copy, &master),
+                    move |result| {
+                        state.passwords.unlocking.set(false);
+                        match result {
+                            Ok(vault) => state.passwords.opened(&state, vault, then),
+                            Err(VaultError::WrongPassword) => {
+                                state.passwords.unlock_flow(&state, &reason, file, then, Some("Master password salah."))
+                            }
+                            Err(e) => {
+                                dialogs::confirm(
+                                    &state.dialog_window(),
+                                    "Vault password tidak bisa dibuka",
+                                    &e.to_string(),
+                                    &["OK"],
+                                    |_| {},
+                                );
+                            }
                         }
-                        Err(e) => {
-                            dialogs::confirm(&state.dialog_window(), "Vault password tidak bisa dibuka", &e.to_string(), &["OK"], |_| {});
-                        }
-                    }
-                },
-            );
-        });
+                    },
+                );
+            },
+        );
     }
 
     fn create_flow(&self, state: &Rc<AppState>, reason: &str, then: Then, error: Option<&str>) {
@@ -219,41 +249,54 @@ impl Passwords {
         let weak = Rc::downgrade(state);
         let reason = reason.to_string();
         let placeholders = ["Master password", "Ulangi master password"];
-        dialogs::ask_secrets(&state.dialog_window(), "Buat Master Password", &info, &placeholders, "Buat", move |values| {
-            let (Some(state), Some(values)) = (weak.upgrade(), values) else { return };
-            let (first, second): (&Zeroizing<String>, &Zeroizing<String>) = (&values[0], &values[1]);
-            let problem = if first.chars().count() < MIN_MASTER {
-                Some("Master password terlalu pendek.")
-            } else if first != second {
-                Some("Kedua master password tidak sama.")
-            } else {
-                None
-            };
-            if let Some(problem) = problem {
-                state.passwords.create_flow(&state, &reason, then, Some(problem));
-                return;
-            }
-            let master = first.clone();
-            state.passwords.unlocking.set(true);
-            background::run(
-                move || Vault::create(&master, KdfParams::DEFAULT),
-                move |result| {
-                    state.passwords.unlocking.set(false);
-                    // Jangan pernah menimpa vault yang sudah ada.
-                    let saved = match result {
-                        _ if vault_path().exists() => Err("Vault password sudah ada.".to_string()),
-                        Ok(vault) => persist(&vault).map(|_| vault),
-                        Err(e) => Err(e.to_string()),
-                    };
-                    match saved {
-                        Ok(vault) => state.passwords.opened(&state, vault, then),
-                        Err(e) => {
-                            dialogs::confirm(&state.dialog_window(), "Vault password tidak bisa dibuat", &e, &["OK"], |_| {});
+        dialogs::ask_secrets(
+            &state.dialog_window(),
+            "Buat Master Password",
+            &info,
+            &placeholders,
+            "Buat",
+            move |values| {
+                let (Some(state), Some(values)) = (weak.upgrade(), values) else { return };
+                let (first, second): (&Zeroizing<String>, &Zeroizing<String>) = (&values[0], &values[1]);
+                let problem = if first.chars().count() < MIN_MASTER {
+                    Some("Master password terlalu pendek.")
+                } else if first != second {
+                    Some("Kedua master password tidak sama.")
+                } else {
+                    None
+                };
+                if let Some(problem) = problem {
+                    state.passwords.create_flow(&state, &reason, then, Some(problem));
+                    return;
+                }
+                let master = first.clone();
+                state.passwords.unlocking.set(true);
+                background::run(
+                    move || Vault::create(&master, KdfParams::DEFAULT),
+                    move |result| {
+                        state.passwords.unlocking.set(false);
+                        // Jangan pernah menimpa vault yang sudah ada.
+                        let saved = match result {
+                            _ if vault_path().exists() => Err("Vault password sudah ada.".to_string()),
+                            Ok(vault) => persist(&vault).map(|_| vault),
+                            Err(e) => Err(e.to_string()),
+                        };
+                        match saved {
+                            Ok(vault) => state.passwords.opened(&state, vault, then),
+                            Err(e) => {
+                                dialogs::confirm(
+                                    &state.dialog_window(),
+                                    "Vault password tidak bisa dibuat",
+                                    &e,
+                                    &["OK"],
+                                    |_| {},
+                                );
+                            }
                         }
-                    }
-                },
-            );
-        });
+                    },
+                );
+            },
+        );
     }
 
     fn opened(&self, state: &Rc<AppState>, mut vault: Vault, then: Then) {
@@ -268,7 +311,14 @@ impl Passwords {
     pub fn on_credential(&self, state: &Rc<AppState>, origin: String, username: String, password: Secret) {
         let Some(origin) = origin_of(&origin) else { return };
         let settings = state.browser.borrow().settings().clone();
-        let offer = decide(self.vault.borrow().as_ref(), &self.known.borrow(), &settings, &origin, &username, password.expose());
+        let offer = decide(
+            self.vault.borrow().as_ref(),
+            &self.known.borrow(),
+            &settings,
+            &origin,
+            &username,
+            password.expose(),
+        );
         let Some(offer) = offer else { return };
         if dialogs::is_open() || self.unlocking.get() {
             return;
@@ -278,7 +328,8 @@ impl Passwords {
             Offer::Update(_) => (format!("Perbarui password untuk {site}?"), "Perbarui"),
             _ => (format!("Simpan password untuk {site}?"), "Simpan"),
         };
-        let mut info = if username.is_empty() { "Akun tanpa username.".to_string() } else { format!("Akun: {username}") };
+        let mut info =
+            if username.is_empty() { "Akun tanpa username.".to_string() } else { format!("Akun: {username}") };
         if !vault_path().exists() {
             info.push_str("\n\nPassword disimpan terenkripsi dan dikunci dengan master password yang akan Anda buat.");
         }
@@ -420,7 +471,11 @@ fn fill(state: &Rc<AppState>, tab: TabId, origin: String, id: String, username: 
             if let Some(error) = value["error"].as_str() {
                 notice(&state, error);
             } else if value["filled_password"] == true || value["filled_username"] == true {
-                let message = if username.is_empty() { "Password diisi".to_string() } else { format!("Login diisi untuk {username}") };
+                let message = if username.is_empty() {
+                    "Password diisi".to_string()
+                } else {
+                    format!("Login diisi untuk {username}")
+                };
                 notice(&state, &message);
                 state.passwords.mark_used(&state, &id);
             } else {
@@ -466,11 +521,22 @@ mod tests {
         let none = HashSet::new();
         let v = vault_with("https://github.com", "dery", "pw");
         assert_eq!(decide(Some(&v), &none, &settings, "https://github.com", "dery", "pw"), None, "sudah tersimpan");
-        assert!(matches!(decide(Some(&v), &none, &settings, "https://github.com", "dery", "baru"), Some(Offer::Update(_))));
+        assert!(matches!(
+            decide(Some(&v), &none, &settings, "https://github.com", "dery", "baru"),
+            Some(Offer::Update(_))
+        ));
         assert_eq!(decide(Some(&v), &none, &settings, "https://github.com", "lain", "x"), Some(Offer::Save));
-        assert_eq!(decide(None, &none, &settings, "https://github.com", "dery", "pw"), Some(Offer::Save), "terkunci, belum diketahui");
+        assert_eq!(
+            decide(None, &none, &settings, "https://github.com", "dery", "pw"),
+            Some(Offer::Save),
+            "terkunci, belum diketahui"
+        );
         let known: HashSet<_> = [("https://github.com".to_string(), "dery".to_string())].into();
-        assert_eq!(decide(None, &known, &settings, "https://github.com", "dery", "pw"), None, "terkunci, akun diketahui");
+        assert_eq!(
+            decide(None, &known, &settings, "https://github.com", "dery", "pw"),
+            None,
+            "terkunci, akun diketahui"
+        );
     }
 
     #[test]

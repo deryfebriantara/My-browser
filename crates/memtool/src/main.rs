@@ -16,12 +16,7 @@ fn main() {
 
     let procs = sys::list_processes();
     for usage in group(&procs, &apps) {
-        println!(
-            "{:<20} {:>3} proses  {:>9.1} MB",
-            usage.app,
-            usage.processes.len(),
-            usage.footprint as f64 / MB
-        );
+        println!("{:<20} {:>3} proses  {:>9.1} MB", usage.app, usage.processes.len(), usage.footprint as f64 / MB);
         if detail {
             let mut list = usage.processes.clone();
             list.sort_by_key(|p| std::cmp::Reverse(p.footprint));

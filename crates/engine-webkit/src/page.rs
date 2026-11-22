@@ -19,12 +19,12 @@ use objc2_app_kit::{
     NSImageCompressionFactor, NSPDFImageRep, NSRectFill, NSView,
 };
 use objc2_foundation::{
-    NSData, NSDictionary, NSError, NSKeyValueObservingOptions, NSNumber, NSObjectNSKeyValueObserverRegistration, NSPoint, NSRect, NSSize,
-    NSString, NSURL, NSURLRequest,
+    NSData, NSDictionary, NSError, NSKeyValueObservingOptions, NSNumber, NSObjectNSKeyValueObserverRegistration,
+    NSPoint, NSRect, NSSize, NSString, NSURL, NSURLRequest,
 };
 use objc2_web_kit::{
-    WKContentWorld, WKMediaCaptureState, WKMediaPlaybackState, WKPDFConfiguration, WKSnapshotConfiguration, WKUserContentController,
-    WKWebView, WKWebViewConfiguration, WKWebsiteDataStore,
+    WKContentWorld, WKMediaCaptureState, WKMediaPlaybackState, WKPDFConfiguration, WKSnapshotConfiguration,
+    WKUserContentController, WKWebView, WKWebViewConfiguration, WKWebsiteDataStore,
 };
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -119,7 +119,8 @@ impl WebKitPage {
         };
 
         let busy: Rc<Cell<usize>> = Rc::default();
-        let delegate = Delegate::new(mtm, emitter.clone(), blocker, controller.clone(), blocking, downloads, busy.clone());
+        let delegate =
+            Delegate::new(mtm, emitter.clone(), blocker, controller.clone(), blocking, downloads, busy.clone());
         unsafe {
             webview.setNavigationDelegate(Some(ProtocolObject::from_ref(&*delegate)));
             webview.setUIDelegate(Some(ProtocolObject::from_ref(&*delegate)));
@@ -191,7 +192,8 @@ impl Page for WebKitPage {
                     || self.webview.microphoneCaptureState() == WKMediaCaptureState::Active
             };
         // Dua pertanyaan berjalan bersamaan; event dikirim saat jawaban kedua datang.
-        let replies = Rc::new(RefCell::new(ActivityReplies { media: None, draft: None, emitter: self.emitter.clone() }));
+        let replies =
+            Rc::new(RefCell::new(ActivityReplies { media: None, draft: None, emitter: self.emitter.clone() }));
         let media_replies = replies.clone();
         let media = RcBlock::new(move |state: WKMediaPlaybackState| {
             media_replies.borrow_mut().media = Some(busy || state == WKMediaPlaybackState::Playing);
@@ -220,9 +222,8 @@ impl Page for WebKitPage {
     fn request_number(&self, tag: JsTag, script: &str) {
         let emitter = self.emitter.clone();
         let block = RcBlock::new(move |result: *mut AnyObject, _error: *mut NSError| {
-            let value = unsafe { result.as_ref() }
-                .and_then(|obj| obj.downcast_ref::<NSNumber>())
-                .map(|n| n.doubleValue());
+            let value =
+                unsafe { result.as_ref() }.and_then(|obj| obj.downcast_ref::<NSNumber>()).map(|n| n.doubleValue());
             emitter.emit(PageEvent::Number { tag, value });
         });
         unsafe {
@@ -289,7 +290,9 @@ impl Page for WebKitPage {
             let Some(reply) = reply.borrow_mut().take() else { return };
             objc2::rc::autoreleasepool(|_| {
                 let result = match (unsafe { data.as_ref() }, unsafe { error.as_ref() }) {
-                    (Some(data), _) => rasterize(data, scale).ok_or_else(|| "PDF halaman tidak bisa diubah menjadi gambar".to_string()),
+                    (Some(data), _) => {
+                        rasterize(data, scale).ok_or_else(|| "PDF halaman tidak bisa diubah menjadi gambar".to_string())
+                    }
                     (None, Some(error)) => Err(error.localizedDescription().to_string()),
                     (None, None) => Err("hasil render kosong".to_string()),
                 };
@@ -315,7 +318,13 @@ impl Page for WebKitPage {
         self.webview.setAppearance(appearance.as_deref());
     }
 
-    fn fill_login(&self, origin: &str, username: &str, password: &Secret, reply: Box<dyn FnOnce(Result<String, String>)>) {
+    fn fill_login(
+        &self,
+        origin: &str,
+        username: &str,
+        password: &Secret,
+        reply: Box<dyn FnOnce(Result<String, String>)>,
+    ) {
         let mtm = MainThreadMarker::from(&*self.webview);
         let world = unsafe { WKContentWorld::worldWithName(&NSString::from_str(PASSWORD_WORLD), mtm) };
         // Nilai dikirim sebagai argumen fungsi, bukan disisipkan ke teks script.
@@ -451,8 +460,12 @@ impl Drop for WebKitPage {
             }
             self.webview.setNavigationDelegate(None);
             self.webview.setUIDelegate(None);
-            let world = WKContentWorld::worldWithName(&NSString::from_str(PASSWORD_WORLD), MainThreadMarker::from(&*self.webview));
-            self.controller.removeScriptMessageHandlerForName_contentWorld(&NSString::from_str(PASSWORD_HANDLER), &world);
+            let world = WKContentWorld::worldWithName(
+                &NSString::from_str(PASSWORD_WORLD),
+                MainThreadMarker::from(&*self.webview),
+            );
+            self.controller
+                .removeScriptMessageHandlerForName_contentWorld(&NSString::from_str(PASSWORD_HANDLER), &world);
         }
         self.webview.removeFromSuperview();
         DROPPED.with(|d| d.borrow_mut().push(objc2::rc::Weak::from(&*self.webview)));

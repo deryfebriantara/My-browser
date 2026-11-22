@@ -406,7 +406,12 @@ mod tests {
         );
         assert_eq!(
             parse(json!({"cmd": "inspect_element", "element": 4, "styles": ["color"]})),
-            ControlRequest::InspectElement { selector: None, element: Some(4), styles: Some(vec!["color".into()]), tab_id: None }
+            ControlRequest::InspectElement {
+                selector: None,
+                element: Some(4),
+                styles: Some(vec!["color".into()]),
+                tab_id: None
+            }
         );
     }
 
@@ -437,14 +442,20 @@ mod tests {
     fn emulation_presets_and_overrides() {
         let none = Emulation::default();
         let phone = emulation_for(none, Some(Device::Mobile), None, None, None).unwrap();
-        assert_eq!(phone, Emulation { viewport: Some((390.0, 844.0)), mobile: true, color_scheme: ColorScheme::System });
+        assert_eq!(
+            phone,
+            Emulation { viewport: Some((390.0, 844.0)), mobile: true, color_scheme: ColorScheme::System }
+        );
         let dark = emulation_for(phone, None, None, None, Some(ColorScheme::Dark)).unwrap();
         assert_eq!(dark, Emulation { color_scheme: ColorScheme::Dark, ..phone }, "warna saja: perangkat tetap");
         let narrow = emulation_for(dark, None, Some(360), None, None).unwrap();
         assert_eq!(narrow.viewport, Some((360.0, 844.0)), "lebar saja: tinggi tetap");
         assert!(narrow.mobile);
         let custom = emulation_for(none, None, Some(1024), Some(768), None).unwrap();
-        assert_eq!(custom, Emulation { viewport: Some((1024.0, 768.0)), mobile: false, color_scheme: ColorScheme::System });
+        assert_eq!(
+            custom,
+            Emulation { viewport: Some((1024.0, 768.0)), mobile: false, color_scheme: ColorScheme::System }
+        );
         let tablet = emulation_for(phone, Some(Device::Tablet), None, None, None).unwrap();
         assert_eq!((tablet.viewport, tablet.mobile), (Some((820.0, 1180.0)), false));
     }
@@ -475,8 +486,17 @@ mod tests {
         assert!(parse(json!({"cmd": "type", "element": 1, "text": "a"})).needs_interaction());
         assert!(parse(json!({"cmd": "run_js", "code": "1"})).needs_interaction());
         for cmd in [
-            "list_tabs", "memory_usage", "read_page", "list_elements", "screenshot",
-            "console_logs", "network_log", "wait_for", "inspect_element", "get_selection", "search_history",
+            "list_tabs",
+            "memory_usage",
+            "read_page",
+            "list_elements",
+            "screenshot",
+            "console_logs",
+            "network_log",
+            "wait_for",
+            "inspect_element",
+            "get_selection",
+            "search_history",
         ] {
             assert!(!parse(json!({"cmd": cmd})).needs_interaction(), "{cmd}");
         }

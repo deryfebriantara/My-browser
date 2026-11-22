@@ -32,9 +32,5 @@ fn main() {
         let path = out.join(format!("blocklist-{i}.json"));
         std::fs::write(&path, serde_json::to_vec(list).expect("JSON")).expect("bisa menulis");
     }
-    println!(
-        "{} berkas filter, {skipped} filter dilewati, {} daftar berukuran {sizes:?}",
-        files.len(),
-        chunks.len()
-    );
+    println!("{} berkas filter, {skipped} filter dilewati, {} daftar berukuran {sizes:?}", files.len(), chunks.len());
 }

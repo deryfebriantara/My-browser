@@ -49,7 +49,9 @@ fn wait_kind(request: &ControlRequest) -> Wait {
         | ControlRequest::Reload { .. }
         | ControlRequest::OpenTab { .. }
         | ControlRequest::ActivateTab { .. } => Wait::Load,
-        ControlRequest::Click { .. } | ControlRequest::Type { submit: true, .. } | ControlRequest::Emulate { .. } => Wait::Maybe,
+        ControlRequest::Click { .. } | ControlRequest::Type { submit: true, .. } | ControlRequest::Emulate { .. } => {
+            Wait::Maybe
+        }
         _ => Wait::None,
     }
 }
@@ -337,7 +339,6 @@ fn initialize(params: &Value) -> Value {
     })
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -370,7 +371,9 @@ mod tests {
     }
 
     fn tool(s: &mut Server<Fake>, name: &str, args: Value) -> Value {
-        call(s, json!({"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": name, "arguments": args}}))["result"].clone()
+        call(s, json!({"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": name, "arguments": args}}))
+            ["result"]
+            .clone()
     }
 
     fn tab(id: u64, active: bool, loading: bool, loads: u64) -> TabInfo {
@@ -384,12 +387,18 @@ mod tests {
     #[test]
     fn initialize_echoes_supported_version_and_lists_tools_capability() {
         let mut s = server(|_| unreachable!());
-        let r = call(&mut s, json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-03-26"}}));
+        let r = call(
+            &mut s,
+            json!({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {"protocolVersion": "2025-03-26"}}),
+        );
         assert_eq!(r["id"], 1);
         assert_eq!(r["result"]["protocolVersion"], "2025-03-26");
         assert_eq!(r["result"]["serverInfo"]["name"], "my-browser");
         assert!(r["result"]["capabilities"]["tools"].is_object());
-        let r = call(&mut s, json!({"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {"protocolVersion": "1999-01-01"}}));
+        let r = call(
+            &mut s,
+            json!({"jsonrpc": "2.0", "id": 2, "method": "initialize", "params": {"protocolVersion": "1999-01-01"}}),
+        );
         assert_eq!(r["result"]["protocolVersion"], PROTOCOL_VERSIONS[0]);
     }
 
@@ -467,7 +476,10 @@ mod tests {
             _ => Err("Browser tidak berjalan".into()),
         });
         let r = tool(&mut s, "run_js", json!({"code": "1"}));
-        assert_eq!((r["isError"].clone(), r["content"][0]["text"].clone()), (json!(true), json!("Interaksi dimatikan")));
+        assert_eq!(
+            (r["isError"].clone(), r["content"][0]["text"].clone()),
+            (json!(true), json!("Interaksi dimatikan"))
+        );
         let r = tool(&mut s, "memory_usage", json!({}));
         assert_eq!(r["content"][0]["text"], "Browser tidak berjalan");
     }
@@ -581,9 +593,11 @@ mod tests {
             }
             ControlRequest::Reload { .. } => Ok(ControlResponse::Ok(json!({"tab_id": 3}))),
             ControlRequest::WaitFor { tab_id: Some(3), .. } => Ok(ControlResponse::Ok(json!({"found": true}))),
-            ControlRequest::ConsoleLogs { level: Some(LogLevel::Warn), tab_id: Some(3), .. } => Ok(ControlResponse::Ok(json!({
-                "entries": [{"level": "error", "message": "ReferenceError: x"}, {"level": "warn", "message": "awas"}]
-            }))),
+            ControlRequest::ConsoleLogs { level: Some(LogLevel::Warn), tab_id: Some(3), .. } => {
+                Ok(ControlResponse::Ok(json!({
+                    "entries": [{"level": "error", "message": "ReferenceError: x"}, {"level": "warn", "message": "awas"}]
+                })))
+            }
             ControlRequest::NetworkLog { failed_only: true, tab_id: Some(3), .. } => {
                 Ok(ControlResponse::Ok(json!({"entries": [{"url": "http://localhost:5173/api", "status": 500}]})))
             }

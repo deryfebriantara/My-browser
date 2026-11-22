@@ -86,7 +86,9 @@ mod tests {
     use crate::tabs::{TabList, Url};
     use std::time::Instant;
 
-    fn u(s: &str) -> Url { Url::parse(s).unwrap() }
+    fn u(s: &str) -> Url {
+        Url::parse(s).unwrap()
+    }
 
     #[test]
     fn corrupt_or_old_session_is_none() {
@@ -122,10 +124,8 @@ mod tests {
         let p = d.path().join("session.json");
         l.to_session().save(&p).unwrap();
         let back = TabList::from_session(&SessionFile::load(&p).unwrap(), t0);
-        let got: Vec<(String, String, f64, bool)> = back
-            .iter()
-            .map(|t| (t.url.as_ref().unwrap().to_string(), t.title.clone(), t.scroll_y, t.awake))
-            .collect();
+        let got: Vec<(String, String, f64, bool)> =
+            back.iter().map(|t| (t.url.as_ref().unwrap().to_string(), t.title.clone(), t.scroll_y, t.awake)).collect();
         assert_eq!(
             got,
             vec![
@@ -158,7 +158,8 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let p = d.path().join("session.json");
         SessionFile { version: SESSION_VERSION, active_index: None, tabs: vec![] }.save(&p).unwrap();
-        let names: Vec<String> = std::fs::read_dir(d.path()).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+        let names: Vec<String> =
+            std::fs::read_dir(d.path()).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
         assert_eq!(names, vec!["session.json".to_string()]);
     }
 }

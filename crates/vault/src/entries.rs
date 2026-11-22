@@ -62,7 +62,10 @@ pub struct NewEntry {
 
 impl std::fmt::Debug for NewEntry {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("NewEntry").field("origin", &self.origin).field("username", &self.username).finish_non_exhaustive()
+        f.debug_struct("NewEntry")
+            .field("origin", &self.origin)
+            .field("username", &self.username)
+            .finish_non_exhaustive()
     }
 }
 
@@ -111,7 +114,12 @@ mod tests {
         };
         assert!(!format!("{e:?}").contains("sangat-rahasia"));
         assert_eq!(e.host(), "a.example");
-        let n = NewEntry { origin: "o".into(), username: "u".into(), password: "sangat-rahasia".into(), note: String::new() };
+        let n = NewEntry {
+            origin: "o".into(),
+            username: "u".into(),
+            password: "sangat-rahasia".into(),
+            note: String::new(),
+        };
         assert!(!format!("{n:?}").contains("sangat-rahasia"));
     }
 

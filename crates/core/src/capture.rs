@@ -74,7 +74,10 @@ mod tests {
     #[test]
     fn long_page_is_split_into_tiles() {
         let plan = full_page(800.0, 4000.0);
-        assert_eq!(plan.tiles, vec![r(0.0, 0.0, 800.0, 1600.0), r(0.0, 1600.0, 800.0, 1600.0), r(0.0, 3200.0, 800.0, 800.0)]);
+        assert_eq!(
+            plan.tiles,
+            vec![r(0.0, 0.0, 800.0, 1600.0), r(0.0, 1600.0, 800.0, 1600.0), r(0.0, 3200.0, 800.0, 800.0)]
+        );
         assert!(!plan.truncated);
     }
 

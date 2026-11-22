@@ -14,23 +14,23 @@ use crate::passwords::Passwords;
 use crate::persistence;
 use crate::tab_strip::TabInfo;
 use crate::window::Ui;
+use block2::RcBlock;
 use browser_core::browser::{Browser, SinkFactory, UiChange};
+use browser_core::engine::Engine;
 use browser_core::engine::{Emulation, Page};
 use browser_core::history::History;
-use browser_core::suggest::Suggestion;
 use browser_core::page_scripts::ELEMENT_PICKER;
 use browser_core::session::SessionFile;
 use browser_core::settings::Settings;
 use browser_core::sleep::Pressure;
+use browser_core::suggest::Suggestion;
 use browser_core::tabs::{Tab, TabId};
 use engine_webkit::WebKitEngine;
 use objc2::MainThreadMarker;
-use objc2_foundation::{NSBundle, NSString};
-use std::path::PathBuf;
-use block2::RcBlock;
-use browser_core::engine::Engine;
 use objc2_foundation::NSRunLoop;
+use objc2_foundation::{NSBundle, NSString};
 use std::cell::{Cell, RefCell};
+use std::path::PathBuf;
 use std::rc::{Rc, Weak};
 use std::time::{Duration, Instant};
 
@@ -115,7 +115,12 @@ fn sink_factory(weak: Weak<AppState>) -> SinkFactory {
 }
 
 impl AppState {
-    pub fn new(mtm: MainThreadMarker, settings: Settings, session: Option<&SessionFile>, history: History) -> Rc<AppState> {
+    pub fn new(
+        mtm: MainThreadMarker,
+        settings: Settings,
+        session: Option<&SessionFile>,
+        history: History,
+    ) -> Rc<AppState> {
         Rc::new_cyclic(|weak: &Weak<AppState>| {
             let target = ActionTarget::new(mtm, weak.clone());
             let ui = Ui::build(mtm, target);

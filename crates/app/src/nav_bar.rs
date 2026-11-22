@@ -1,11 +1,11 @@
 //! Nav bar: mundur, maju, muat ulang/berhenti, address field.
 
 use crate::actions::ActionTarget;
+use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject, Sel};
 use objc2::{MainThreadMarker, MainThreadOnly, sel};
 use objc2_app_kit::{NSAutoresizingMaskOptions, NSButton, NSImage, NSTextField, NSView};
-use block2::RcBlock;
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString, NSTimer};
 use std::cell::Cell;
 use std::ptr::NonNull;
@@ -48,8 +48,11 @@ fn icon_button(mtm: MainThreadMarker, image: &NSImage, target: &AnyObject, actio
 impl NavBar {
     /// Membangun nav bar selebar `width`, menempel di tepi atas.
     pub fn build(mtm: MainThreadMarker, width: f64, y: f64, target: &ActionTarget) -> (Retained<NSView>, NavBar) {
-        let bar = NSView::initWithFrame(NSView::alloc(mtm), NSRect::new(NSPoint::new(0.0, y), NSSize::new(width, HEIGHT)));
-        bar.setAutoresizingMask(NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewMinYMargin);
+        let bar =
+            NSView::initWithFrame(NSView::alloc(mtm), NSRect::new(NSPoint::new(0.0, y), NSSize::new(width, HEIGHT)));
+        bar.setAutoresizingMask(
+            NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewMinYMargin,
+        );
 
         let reload_icon = symbol("arrow.clockwise", "Muat ulang");
         let stop_icon = symbol("xmark", "Berhenti");
@@ -72,7 +75,8 @@ impl NavBar {
         notice.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinXMargin);
         notice.setHidden(true);
 
-        let claude = icon_button(mtm, &symbol("sparkles", "Ask Claude"), target, sel!(toggleChat:), width - CLAUDE_W + 2.0);
+        let claude =
+            icon_button(mtm, &symbol("sparkles", "Ask Claude"), target, sel!(toggleChat:), width - CLAUDE_W + 2.0);
         claude.setAutoresizingMask(NSAutoresizingMaskOptions::ViewMinXMargin);
         claude.setToolTip(Some(&NSString::from_str("Ask Claude (⌘J)")));
 

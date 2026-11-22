@@ -9,9 +9,9 @@ use crate::state::AppState;
 use block2::RcBlock;
 use browser_core::history::{HistoryEntry, display_url, start_of_local_day};
 use engine_webkit::PanelView;
+use objc2::MainThreadOnly;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject};
-use objc2::MainThreadOnly;
 use objc2_app_kit::{NSBackingStoreType, NSWindow, NSWindowStyleMask};
 use objc2_foundation::{NSPoint, NSRect, NSRunLoop, NSSize, NSString};
 use serde_json::{Value, json};
@@ -189,27 +189,28 @@ pub fn clear_dialog(state: &Rc<AppState>) {
     let info = "Halaman yang terakhir dibuka dalam rentang ini dihapus dari riwayat dan saran address bar. \
                 Tab yang terbuka, cookie, login, dan cache tidak ikut dihapus.";
     let weak = Rc::downgrade(state);
-    let shown = dialogs::choose(&state.dialog_window(), "Hapus Riwayat", info, &options, "Hapus Riwayat", move |choice| {
-        let (Some(state), Some(choice)) = (weak.upgrade(), choice) else { return };
-        let now = state.browser.borrow().unix_now();
-        let today = start_of_local_day(now, local_time::offset_at(now));
-        let since = match choice {
-            0 => Some(now.saturating_sub(3600)),
-            1 => Some(today),
-            2 => {
-                let yesterday = today.saturating_sub(1);
-                Some(start_of_local_day(yesterday, local_time::offset_at(yesterday)))
+    let shown =
+        dialogs::choose(&state.dialog_window(), "Hapus Riwayat", info, &options, "Hapus Riwayat", move |choice| {
+            let (Some(state), Some(choice)) = (weak.upgrade(), choice) else { return };
+            let now = state.browser.borrow().unix_now();
+            let today = start_of_local_day(now, local_time::offset_at(now));
+            let since = match choice {
+                0 => Some(now.saturating_sub(3600)),
+                1 => Some(today),
+                2 => {
+                    let yesterday = today.saturating_sub(1);
+                    Some(start_of_local_day(yesterday, local_time::offset_at(yesterday)))
+                }
+                _ => None,
+            };
+            let removed = state.browser.borrow_mut().clear_history_since(since);
+            if since.is_none() {
+                persistence::remove_history_leftovers();
             }
-            _ => None,
-        };
-        let removed = state.browser.borrow_mut().clear_history_since(since);
-        if since.is_none() {
-            persistence::remove_history_leftovers();
-        }
-        state.save_history_now();
-        state.refresh();
-        state.ui.nav.show_notice(&format!("Riwayat dihapus ({removed} halaman)"));
-    });
+            state.save_history_now();
+            state.refresh();
+            state.ui.nav.show_notice(&format!("Riwayat dihapus ({removed} halaman)"));
+        });
     if !shown {
         state.ui.nav.show_notice("Tutup dialog lain dulu, lalu coba Hapus Riwayat lagi");
     }

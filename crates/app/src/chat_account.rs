@@ -177,8 +177,13 @@ impl ChatAccount {
         background::run(
             move || {
                 let mut command = command?;
-                let out = command.args(["auth", "status", "--json"]).stdin(Stdio::null()).output().map_err(|e| e.to_string())?;
-                cc::parse_auth_status(&String::from_utf8_lossy(&out.stdout)).ok_or_else(|| "Status akun tidak terbaca.".to_string())
+                let out = command
+                    .args(["auth", "status", "--json"])
+                    .stdin(Stdio::null())
+                    .output()
+                    .map_err(|e| e.to_string())?;
+                cc::parse_auth_status(&String::from_utf8_lossy(&out.stdout))
+                    .ok_or_else(|| "Status akun tidak terbaca.".to_string())
             },
             move |result: Result<Account, String>| {
                 let Some(state) = weak.upgrade() else { return };
@@ -223,7 +228,9 @@ impl ChatAccount {
         let bin = dir.join("bin");
         std::fs::create_dir_all(&bin).map_err(|e| format!("Folder login tidak bisa dibuat: {e}"))?;
         let shim = bin.join("open");
-        std::fs::write(&shim, OPEN_SHIM).and_then(|_| std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o700))).map_err(|e| e.to_string())?;
+        std::fs::write(&shim, OPEN_SHIM)
+            .and_then(|_| std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o700)))
+            .map_err(|e| e.to_string())?;
         let generation = self.generation.get() + 1;
         self.generation.set(generation);
         let urls = dir.join(format!("urls-{generation}.txt"));
@@ -250,8 +257,10 @@ impl ChatAccount {
         std::thread::spawn(move || {
             let start = Instant::now();
             while start.elapsed() < LOGIN_WAIT {
-                if let Some(url) = std::fs::read_to_string(&file).ok().and_then(|t| t.lines().next().map(String::from)) {
-                    DispatchQueue::main().exec_async(move || with_chat(|s| s.chat.account.open_login_tab(s, generation, url)));
+                if let Some(url) = std::fs::read_to_string(&file).ok().and_then(|t| t.lines().next().map(String::from))
+                {
+                    DispatchQueue::main()
+                        .exec_async(move || with_chat(|s| s.chat.account.open_login_tab(s, generation, url)));
                     return;
                 }
                 std::thread::sleep(Duration::from_millis(200));
@@ -264,7 +273,8 @@ impl ChatAccount {
                 if let Some(url) = cc::find_login_url(&line) {
                     std::thread::spawn(move || {
                         std::thread::sleep(Duration::from_millis(1500));
-                        DispatchQueue::main().exec_async(move || with_chat(|s| s.chat.account.open_login_tab(s, generation, url)));
+                        DispatchQueue::main()
+                            .exec_async(move || with_chat(|s| s.chat.account.open_login_tab(s, generation, url)));
                     });
                 }
                 output.push_str(&line);
@@ -288,7 +298,9 @@ impl ChatAccount {
         let tab = state.browser.borrow_mut().open_tab(&url, true, Instant::now());
         state.refresh();
         self.login_tab.set(tab);
-        *self.note.borrow_mut() = Some("Halaman login dibuka di tab baru. Masuk dan setujui di sana; panel ini lanjut sendiri setelahnya.".into());
+        *self.note.borrow_mut() = Some(
+            "Halaman login dibuka di tab baru. Masuk dan setujui di sana; panel ini lanjut sendiri setelahnya.".into(),
+        );
         self.post(state);
     }
 
@@ -299,7 +311,8 @@ impl ChatAccount {
         let Some(mut login) = self.login.borrow_mut().take() else { return };
         let success = login.child.wait().is_ok_and(|s| s.success());
         drop(login);
-        let _ = std::fs::remove_file(persistence::data_dir().join("claude-login").join(format!("urls-{generation}.txt")));
+        let _ =
+            std::fs::remove_file(persistence::data_dir().join("claude-login").join(format!("urls-{generation}.txt")));
         self.phase.set(Phase::Checking);
         *self.note.borrow_mut() = None;
         if success {
@@ -307,7 +320,12 @@ impl ChatAccount {
             *self.message.borrow_mut() = None;
             state.ui.nav.show_notice("Berhasil masuk ke Claude");
         } else {
-            let detail = output.lines().rev().find(|l| !l.trim().is_empty() && !l.contains("Paste code")).unwrap_or("").to_string();
+            let detail = output
+                .lines()
+                .rev()
+                .find(|l| !l.trim().is_empty() && !l.contains("Paste code"))
+                .unwrap_or("")
+                .to_string();
             *self.message.borrow_mut() = Some(format!("Login tidak selesai. {detail}").trim().to_string());
         }
         self.refresh(state);
@@ -316,8 +334,23 @@ impl ChatAccount {
     /// Menutup tab login kalau masih di halaman login atau callback.
     fn close_login_tab(&self, state: &Rc<AppState>) {
         let Some(tab) = self.login_tab.take() else { return };
-        let host = state.browser.borrow().tabs().get(tab).and_then(|t| t.url.as_ref().and_then(|u| u.host_str().map(String::from)));
-        if host.is_some_and(|h| matches!(h.as_str(), "localhost" | "127.0.0.1" | "claude.ai" | "claude.com" | "platform.claude.com" | "console.anthropic.com")) {
+        let host = state
+            .browser
+            .borrow()
+            .tabs()
+            .get(tab)
+            .and_then(|t| t.url.as_ref().and_then(|u| u.host_str().map(String::from)));
+        if host.is_some_and(|h| {
+            matches!(
+                h.as_str(),
+                "localhost"
+                    | "127.0.0.1"
+                    | "claude.ai"
+                    | "claude.com"
+                    | "platform.claude.com"
+                    | "console.anthropic.com"
+            )
+        }) {
             state.close_tab(tab.0);
         }
     }
@@ -346,23 +379,35 @@ impl ChatAccount {
             "Logout berlaku untuk profil {profile}: Claude Code di Terminal yang memakai profil ini juga ikut keluar."
         );
         let weak = Rc::downgrade(state);
-        dialogs::confirm(&state.dialog_window(), "Keluar dari akun Claude?", &info, &["Keluar", "Batal"], move |choice| {
-            let Some(state) = weak.upgrade() else { return };
-            if choice != 0 {
-                return;
-            }
-            state.chat.reset_conversation();
-            let command = claude_command(&state);
-            let weak = Rc::downgrade(&state);
-            background::run(
-                move || command.and_then(|mut c| c.args(["auth", "logout"]).stdin(Stdio::null()).output().map_err(|e| e.to_string())).map(|_| ()),
-                move |_result: Result<(), String>| {
-                    if let Some(state) = weak.upgrade() {
-                        state.chat.account.refresh(&state);
-                    }
-                },
-            );
-        });
+        dialogs::confirm(
+            &state.dialog_window(),
+            "Keluar dari akun Claude?",
+            &info,
+            &["Keluar", "Batal"],
+            move |choice| {
+                let Some(state) = weak.upgrade() else { return };
+                if choice != 0 {
+                    return;
+                }
+                state.chat.reset_conversation();
+                let command = claude_command(&state);
+                let weak = Rc::downgrade(&state);
+                background::run(
+                    move || {
+                        command
+                            .and_then(|mut c| {
+                                c.args(["auth", "logout"]).stdin(Stdio::null()).output().map_err(|e| e.to_string())
+                            })
+                            .map(|_| ())
+                    },
+                    move |_result: Result<(), String>| {
+                        if let Some(state) = weak.upgrade() {
+                            state.chat.account.refresh(&state);
+                        }
+                    },
+                );
+            },
+        );
     }
 
     /// Ganti profil Claude Code. Percakapan dimulai baru, karena sesi

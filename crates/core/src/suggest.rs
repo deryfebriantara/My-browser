@@ -290,7 +290,8 @@ fn inline_candidate(query: &str, history: &History, now: u64) -> Option<Inline> 
     if nq.is_empty() {
         return None;
     }
-    let scheme_ok = |e: &HistoryEntry| scheme.is_none_or(|s| e.url.strip_prefix(s).is_some_and(|r| r.starts_with("://")));
+    let scheme_ok =
+        |e: &HistoryEntry| scheme.is_none_or(|s| e.url.strip_prefix(s).is_some_and(|r| r.starts_with("://")));
 
     if nq.contains('/') {
         // Tahap alamat: hanya halaman yang pernah diketik.
@@ -469,7 +470,8 @@ mod tests {
 
     #[test]
     fn short_words_must_start_a_word() {
-        let h = history(&[("https://www.youtube.com/", "YouTube", 1, 0, 0), ("https://ubuntu.com/", "Ubuntu", 1, 0, 0)]);
+        let h =
+            history(&[("https://www.youtube.com/", "YouTube", 1, 0, 0), ("https://ubuntu.com/", "Ubuntu", 1, 0, 0)]);
         let t = run("ub", &h);
         assert!(titles(&t).contains(&"Ubuntu"));
         assert!(!titles(&t).contains(&"YouTube"));
@@ -505,13 +507,15 @@ mod tests {
     fn at_most_eight_rows_with_search_last() {
         let entries: Vec<(String, String)> =
             (0..20).map(|i| (format!("https://belajar{i}.com/"), format!("Belajar {i}"))).collect();
-        let list: Vec<(&str, &str, u32, u32, u64)> = entries.iter().map(|(u, t)| (u.as_str(), t.as_str(), 1, 0, 0)).collect();
+        let list: Vec<(&str, &str, u32, u32, u64)> =
+            entries.iter().map(|(u, t)| (u.as_str(), t.as_str(), 1, 0, 0)).collect();
         let s = suggest("belajar", &history(&list), &[], G, false, NOW);
         assert_eq!(s.rows.len(), MAX_ROWS);
         assert_eq!(s.rows[0].kind, SuggestionKind::Search);
         let pages: Vec<(String, String)> =
             (0..20).map(|i| (format!("https://belajar.com/bab{i}"), format!("Bab {i}"))).collect();
-        let list: Vec<(&str, &str, u32, u32, u64)> = pages.iter().map(|(u, t)| (u.as_str(), t.as_str(), 1, 0, 0)).collect();
+        let list: Vec<(&str, &str, u32, u32, u64)> =
+            pages.iter().map(|(u, t)| (u.as_str(), t.as_str(), 1, 0, 0)).collect();
         let s = suggest("belajar.com", &history(&list), &[], G, false, NOW);
         assert_eq!(s.rows.len(), MAX_ROWS);
         assert_eq!(s.rows[0].kind, SuggestionKind::Url);
@@ -545,7 +549,12 @@ mod tests {
     fn suggest_10k_is_fast() {
         let mut h = History::new();
         for i in 0..10_000u64 {
-            h.record(&format!("https://situs{i}.example.com/halaman/{i}?q=x"), &format!("Judul halaman nomor {i}"), i % 7 == 0, NOW - i * 60);
+            h.record(
+                &format!("https://situs{i}.example.com/halaman/{i}?q=x"),
+                &format!("Judul halaman nomor {i}"),
+                i % 7 == 0,
+                NOW - i * 60,
+            );
         }
         let start = std::time::Instant::now();
         let mut rows = 0;

@@ -16,10 +16,7 @@ pub fn unique_path(dir: &Path, suggested: &str, exists: impl Fn(&Path) -> bool) 
         Some((stem, ext)) if !stem.is_empty() => (stem, format!(".{ext}")),
         _ => (name, String::new()),
     };
-    (1..)
-        .map(|n| dir.join(format!("{stem} ({n}){ext}")))
-        .find(|p| !exists(p))
-        .expect("penghitung tidak terbatas")
+    (1..).map(|n| dir.join(format!("{stem} ({n}){ext}"))).find(|p| !exists(p)).expect("penghitung tidak terbatas")
 }
 
 #[cfg(test)]

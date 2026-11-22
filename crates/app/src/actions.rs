@@ -277,7 +277,9 @@ impl ActionTarget {
     /// Seperti `with`, hanya untuk notifikasi dari address field.
     fn with_address(&self, notification: &NSNotification, f: impl FnOnce(&Rc<AppState>)) {
         self.with(|s| {
-            if notification.object().is_some_and(|o| std::ptr::eq(Retained::as_ptr(&o).cast::<u8>(), Retained::as_ptr(&s.ui.nav.address).cast())) {
+            if notification.object().is_some_and(|o| {
+                std::ptr::eq(Retained::as_ptr(&o).cast::<u8>(), Retained::as_ptr(&s.ui.nav.address).cast())
+            }) {
                 f(s);
             }
         });
@@ -286,7 +288,10 @@ impl ActionTarget {
     /// Seperti `with`, hanya untuk notifikasi dari jendela utama.
     fn with_main_window(&self, notification: &NSNotification, f: impl FnOnce(&Rc<AppState>)) {
         self.with(|s| {
-            if notification.object().is_some_and(|o| std::ptr::eq(Retained::as_ptr(&o).cast::<u8>(), Retained::as_ptr(&s.ui.window).cast())) {
+            if notification
+                .object()
+                .is_some_and(|o| std::ptr::eq(Retained::as_ptr(&o).cast::<u8>(), Retained::as_ptr(&s.ui.window).cast()))
+            {
                 f(s);
             }
         });

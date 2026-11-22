@@ -5,7 +5,9 @@
 use block2::RcBlock;
 use objc2::rc::Retained;
 use objc2::{MainThreadMarker, MainThreadOnly};
-use objc2_app_kit::{NSAlert, NSAlertFirstButtonReturn, NSModalResponse, NSPopUpButton, NSSecureTextField, NSView, NSWindow};
+use objc2_app_kit::{
+    NSAlert, NSAlertFirstButtonReturn, NSModalResponse, NSPopUpButton, NSSecureTextField, NSView, NSWindow,
+};
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 use std::cell::{Cell, RefCell};
 use zeroize::Zeroizing;
@@ -39,7 +41,11 @@ fn alert(mtm: MainThreadMarker, title: &str, info: &str, buttons: &[&str]) -> Re
 #[cfg(debug_assertions)]
 fn selftest(alert: &NSAlert) -> Option<String> {
     let master = std::env::var("MYBROWSER_DIALOG_SELFTEST").ok()?;
-    eprintln!("[selftest] dialog: {} | {}", alert.messageText(), alert.informativeText().to_string().replace('\n', " "));
+    eprintln!(
+        "[selftest] dialog: {} | {}",
+        alert.messageText(),
+        alert.informativeText().to_string().replace('\n', " ")
+    );
     Some(master)
 }
 
@@ -73,7 +79,13 @@ fn present(window: &NSWindow, alert: &NSAlert, done: impl FnOnce(usize) + 'stati
 }
 
 /// Sheet dengan tombol-tombol. `false` kalau sheet lain masih terbuka.
-pub fn confirm(window: &NSWindow, title: &str, info: &str, buttons: &[&str], done: impl FnOnce(usize) + 'static) -> bool {
+pub fn confirm(
+    window: &NSWindow,
+    title: &str,
+    info: &str,
+    buttons: &[&str],
+    done: impl FnOnce(usize) + 'static,
+) -> bool {
     let Some(mtm) = MainThreadMarker::new() else { return false };
     present(window, &alert(mtm, title, info, buttons), done)
 }
@@ -92,7 +104,8 @@ pub fn ask_secrets(
     let Some(mtm) = MainThreadMarker::new() else { return false };
     let alert = alert(mtm, title, info, &[confirm, "Batal"]);
     let height = ROW_H * placeholders.len() as f64;
-    let accessory = NSView::initWithFrame(NSView::alloc(mtm), NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(FIELD_W, height)));
+    let accessory =
+        NSView::initWithFrame(NSView::alloc(mtm), NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(FIELD_W, height)));
     let fields: Vec<Retained<NSSecureTextField>> = placeholders
         .iter()
         .enumerate()
@@ -119,7 +132,8 @@ pub fn ask_secrets(
         }
     }
     present(window, &alert, move |button| {
-        let values = (button == 0).then(|| fields.iter().map(|f| Zeroizing::new(f.stringValue().to_string())).collect());
+        let values =
+            (button == 0).then(|| fields.iter().map(|f| Zeroizing::new(f.stringValue().to_string())).collect());
         for field in &fields {
             field.setStringValue(&NSString::from_str(""));
         }

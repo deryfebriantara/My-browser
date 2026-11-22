@@ -33,9 +33,8 @@ fn name_of(pid: pid_t) -> Option<String> {
 
 fn footprint_of(pid: pid_t) -> Option<u64> {
     let mut info: libc::rusage_info_v4 = unsafe { std::mem::zeroed() };
-    let rc = unsafe {
-        libc::proc_pid_rusage(pid, libc::RUSAGE_INFO_V4, &mut info as *mut _ as *mut libc::rusage_info_t)
-    };
+    let rc =
+        unsafe { libc::proc_pid_rusage(pid, libc::RUSAGE_INFO_V4, &mut info as *mut _ as *mut libc::rusage_info_t) };
     (rc == 0).then_some(info.ri_phys_footprint)
 }
 

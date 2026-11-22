@@ -451,7 +451,10 @@ mod tests {
         let fake = dir.join("claude");
         std::fs::write(&fake, "").unwrap();
         assert_eq!(find_claude(Path::new("/tidak/ada"), Some(fake.to_str().unwrap())), Some(fake.clone()));
-        assert_ne!(find_claude(Path::new("/tidak/ada"), Some("/tidak/ada/claude")), Some(PathBuf::from("/tidak/ada/claude")));
+        assert_ne!(
+            find_claude(Path::new("/tidak/ada"), Some("/tidak/ada/claude")),
+            Some(PathBuf::from("/tidak/ada/claude"))
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -90,7 +90,8 @@ impl std::error::Error for VaultError {}
 
 /// Associated data untuk bungkusan kunci dan isi: versi dan parameter KDF.
 fn header_aad(kdf: &Kdf, part: &str) -> Vec<u8> {
-    format!("my-browser-vault|v{VERSION}|{}|m{}|t{}|p{}|{}|{part}", kdf.alg, kdf.m_kib, kdf.t, kdf.p, kdf.salt).into_bytes()
+    format!("my-browser-vault|v{VERSION}|{}|m{}|t{}|p{}|{}|{part}", kdf.alg, kdf.m_kib, kdf.t, kdf.p, kdf.salt)
+        .into_bytes()
 }
 
 fn sealed(nonce: [u8; crypto::NONCE_LEN], ct: Vec<u8>) -> Sealed {
@@ -145,7 +146,8 @@ impl Vault {
             &header_aad(&file.kdf, "key"),
         )
         .ok_or(VaultError::WrongPassword)?;
-        let key: Key = Zeroizing::new(raw.as_slice().try_into().map_err(|_| VaultError::Corrupt("panjang kunci".into()))?);
+        let key: Key =
+            Zeroizing::new(raw.as_slice().try_into().map_err(|_| VaultError::Corrupt("panjang kunci".into()))?);
         let json = crypto::open(
             &key,
             &decode("data.nonce", &file.data.nonce)?,
@@ -217,7 +219,14 @@ impl Vault {
     }
 
     /// Mengubah entri. Field `None` tidak diubah.
-    pub fn update(&mut self, id: &str, username: Option<&str>, password: Option<&str>, note: Option<&str>, now: u64) -> bool {
+    pub fn update(
+        &mut self,
+        id: &str,
+        username: Option<&str>,
+        password: Option<&str>,
+        note: Option<&str>,
+        now: u64,
+    ) -> bool {
         let Some(e) = self.entries.iter_mut().find(|e| e.id == id) else { return false };
         if let Some(v) = username {
             e.username = v.to_string();
@@ -252,7 +261,13 @@ impl Vault {
             match self.offer(&new.origin, &new.username, &new.password) {
                 Offer::Nothing => {}
                 Offer::Update(id) => {
-                    self.update(&id, None, Some(&new.password), (!new.note.is_empty()).then_some(new.note.as_str()), now);
+                    self.update(
+                        &id,
+                        None,
+                        Some(&new.password),
+                        (!new.note.is_empty()).then_some(new.note.as_str()),
+                        now,
+                    );
                     updated += 1;
                 }
                 Offer::Save => {
@@ -282,7 +297,9 @@ pub fn load(path: &Path) -> Result<Option<VaultFile>, VaultError> {
     match std::fs::read(path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(VaultError::Corrupt(format!("tidak bisa dibaca: {e}"))),
-        Ok(bytes) => serde_json::from_slice(&bytes).map(Some).map_err(|e| VaultError::Corrupt(format!("bukan JSON vault: {e}"))),
+        Ok(bytes) => {
+            serde_json::from_slice(&bytes).map(Some).map_err(|e| VaultError::Corrupt(format!("bukan JSON vault: {e}")))
+        }
     }
 }
 
@@ -390,7 +407,12 @@ mod tests {
     #[test]
     fn origin_matching_is_exact() {
         let v = sample();
-        for other in ["https://github.com.evil.example", "http://github.com", "https://evil-github.com", "https://www.github.com"] {
+        for other in [
+            "https://github.com.evil.example",
+            "http://github.com",
+            "https://evil-github.com",
+            "https://www.github.com",
+        ] {
             assert!(v.for_origin(other).is_empty(), "{other}");
         }
     }
@@ -423,7 +445,11 @@ mod tests {
     fn import_adds_updates_and_skips() {
         let mut v = sample();
         let (added, updated) = v.import(
-            vec![new("https://github.com", "dery", "pw-github"), new("https://github.com", "dery", "ganti"), new("https://baru.example", "x", "y")],
+            vec![
+                new("https://github.com", "dery", "pw-github"),
+                new("https://github.com", "dery", "ganti"),
+                new("https://baru.example", "x", "y"),
+            ],
             50,
         );
         assert_eq!((added, updated), (1, 1));

@@ -272,7 +272,8 @@ impl Delegate {
         downloads: Retained<DownloadCenter>,
         busy: Rc<Cell<usize>>,
     ) -> Retained<Self> {
-        let this = Self::alloc(mtm).set_ivars(DelegateIvars { emitter, blocker, controller, blocking, downloads, busy });
+        let this =
+            Self::alloc(mtm).set_ivars(DelegateIvars { emitter, blocker, controller, blocking, downloads, busy });
         unsafe { msg_send![super(this), init] }
     }
 }

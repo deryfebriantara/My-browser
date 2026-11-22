@@ -4,8 +4,8 @@
 
 use crate::state::AppState;
 use browser_core::control::ControlResponse;
-use objc2::runtime::Sel;
 use objc2::msg_send;
+use objc2::runtime::Sel;
 use objc2_app_kit::NSApplication;
 use objc2_foundation::NSString;
 use serde_json::{Value, json};
@@ -33,7 +33,9 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
         }
         // Satu insertText per huruf, seperti mengetik di keyboard.
         "type_address" => {
-            let Some(editor) = state.ui.nav.address.currentEditor() else { return err("address bar tidak sedang diedit") };
+            let Some(editor) = state.ui.nav.address.currentEditor() else {
+                return err("address bar tidak sedang diedit");
+            };
             for ch in text.unwrap_or_default().chars() {
                 let ch = NSString::from_str(&ch.to_string());
                 let _: () = unsafe { msg_send![&*editor, insertText: &*ch] };
@@ -42,7 +44,9 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
         }
         // Selector field editor, mis. moveDown:, insertNewline:, cancelOperation:.
         "key_address" => {
-            let Some(editor) = state.ui.nav.address.currentEditor() else { return err("address bar tidak sedang diedit") };
+            let Some(editor) = state.ui.nav.address.currentEditor() else {
+                return err("address bar tidak sedang diedit");
+            };
             let Some(sel) = selector(text) else { return err("selector tidak valid") };
             let _: () = unsafe { msg_send![&*editor, doCommandBySelector: sel] };
             ok(address_state(state))
