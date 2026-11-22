@@ -21,6 +21,25 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
+/// Seperti `write_atomic`, tetapi berkasnya hanya bisa dibaca pengguna ini
+/// (0600) sejak dibuat, untuk data pribadi seperti riwayat.
+pub fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = PathBuf::from(tmp);
+    let _ = std::fs::remove_file(&tmp);
+    let mut out = std::fs::OpenOptions::new().write(true).create_new(true).mode(0o600).open(&tmp)?;
+    out.write_all(bytes)?;
+    drop(out);
+    std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))?;
+    std::fs::rename(&tmp, path)
+}
+
 /// Membaca dan mengurai JSON. Berkas yang tidak ada menghasilkan `None` tanpa
 /// peringatan; berkas rusak menghasilkan `None` dengan satu baris di stderr.
 pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {

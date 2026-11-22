@@ -43,6 +43,18 @@ pub struct Tab {
     pub loads: u64,
     /// Emulasi perangkat dari Claude. Tidak disimpan ke sesi.
     pub emulation: Emulation,
+    /// Kunci riwayat (`history::visit_key`) kunjungan terakhir yang dicatat
+    /// di tab ini. Muat ulang ke URL yang sama tidak dihitung lagi.
+    pub visit_key: Option<String>,
+    /// Navigasi yang diminta (address bar, saran, MCP) dan belum selesai dimuat.
+    pub pending_visit: Option<PendingVisit>,
+}
+
+/// Navigasi yang diminta dan akan dicatat ke riwayat saat selesai dimuat.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PendingVisit {
+    /// Alamat diketik pengguna (bukan pencarian, bukan link).
+    pub typed: bool,
 }
 
 impl Tab {
@@ -69,6 +81,8 @@ impl Tab {
             last_crash: None,
             loads: 0,
             emulation: Emulation::default(),
+            visit_key: None,
+            pending_visit: None,
         }
     }
 }

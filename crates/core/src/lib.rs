@@ -17,4 +17,5 @@ pub mod capture;
 pub mod claude_chat;
 pub mod password_scripts;
 pub mod drafts;
+pub mod history;
 pub mod mcp_access;
