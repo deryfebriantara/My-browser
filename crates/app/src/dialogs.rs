@@ -8,7 +8,7 @@ use objc2::{MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
     NSAlert, NSAlertFirstButtonReturn, NSModalResponse, NSPopUpButton, NSSecureTextField, NSView, NSWindow,
 };
-use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
+use objc2_foundation::{NSPoint, NSRect, NSRunLoop, NSSize, NSString};
 use std::cell::{Cell, RefCell};
 use zeroize::Zeroizing;
 
@@ -68,11 +68,25 @@ fn present(window: &NSWindow, alert: &NSAlert, done: impl FnOnce(usize) + 'stati
     }
     OPEN.with(|o| o.set(true));
     let done = RefCell::new(Some(done));
+    let sheet = alert.window();
     let block = RcBlock::new(move |response: NSModalResponse| {
+        // Sheet ini ditutup dulu, dan langkah berikutnya dijalankan di putaran
+        // run loop berikutnya. Kalau langkah berikutnya membuka sheet lain
+        // langsung dari dalam handler ini (mis. Save lalu master password),
+        // sheet baru menempel di jendela tetapi tidak terlihat, sehingga
+        // jendela terkunci tanpa dialog yang bisa ditutup.
+        sheet.orderOut(None);
         OPEN.with(|o| o.set(false));
-        if let Some(done) = done.borrow_mut().take() {
-            done((response - NSAlertFirstButtonReturn).max(0) as usize);
-        }
+        let Some(done) = done.borrow_mut().take() else { return };
+        let index = (response - NSAlertFirstButtonReturn).max(0) as usize;
+        let next = Cell::new(Some(done));
+        let later = RcBlock::new(move || {
+            if let Some(done) = next.take() {
+                done(index);
+            }
+        });
+        // SAFETY: dari main thread ke run loop main thread.
+        unsafe { NSRunLoop::mainRunLoop().performBlock(&later) };
     });
     alert.beginSheetModalForWindow_completionHandler(window, Some(&block));
     true

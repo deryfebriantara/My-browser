@@ -118,6 +118,7 @@ Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
 
 Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
 
+- [ ] Save pada tawaran simpan: dialog berikutnya (Create Master Password atau Unlock Passwords) langsung tampil, jendela tidak terkunci tanpa dialog (perbaikan 2026-11-25)
 - [ ] Login di sebuah situs: muncul "Save Password for …?"; Save meminta membuat master password (ditolak kalau < 10 karakter atau kedua isian beda)
 - [ ] Keluar lalu buka halaman login lagi, tekan ⌘\: username dan password terisi, situs bisa dipakai login
 - [ ] Passwords > Lock Passwords, lalu ⌘\: diminta master password; master password salah ditolak dengan pesan, yang benar langsung mengisi

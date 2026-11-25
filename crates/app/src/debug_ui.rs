@@ -73,6 +73,42 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
             state.history_window.handle(state, text.unwrap_or_default());
             ok(json!({}))
         }
+        // Sheet (dialog) yang menempel dan yang masih terlihat.
+        "sheets" => ok(sheets_state(state)),
+        // Mengisi semua kolom yang bisa diedit di sheet (mis. master password).
+        "sheet_fill" => {
+            let app = NSApplication::sharedApplication(state.mtm());
+            let mut filled = 0;
+            for window in app.windows().iter() {
+                let Some(sheet) = window.attachedSheet() else { continue };
+                let Some(content) = sheet.contentView() else { continue };
+                for field in views(&content).into_iter().filter_map(|v| v.downcast::<objc2_app_kit::NSTextField>().ok())
+                {
+                    if field.isEditable() {
+                        field.setStringValue(&NSString::from_str(text.unwrap_or_default()));
+                        filled += 1;
+                    }
+                }
+            }
+            ok(json!({"filled": filled}))
+        }
+        // Menekan tombol sheet lewat performClick (jalur yang sama dengan klik).
+        "sheet_button" => {
+            let title = text.unwrap_or_default();
+            let app = NSApplication::sharedApplication(state.mtm());
+            for window in app.windows().iter() {
+                let Some(sheet) = window.attachedSheet() else { continue };
+                let Some(content) = sheet.contentView() else { continue };
+                if let Some(button) = views(&content).into_iter().find_map(|v| {
+                    v.downcast::<objc2_app_kit::NSButton>().ok().filter(|b| b.title().to_string() == title)
+                }) {
+                    // SAFETY: main thread; sender boleh nil.
+                    unsafe { button.performClick(None) };
+                    return ok(json!({"clicked": title}));
+                }
+            }
+            err("tombol sheet tidak ditemukan")
+        }
         // Keluar lewat jalur normal (applicationWillTerminate menyimpan sesi dan riwayat).
         "quit" => {
             let app = NSApplication::sharedApplication(state.mtm());
@@ -83,6 +119,42 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
         }
         _ => err("aksi debug_ui tidak dikenal"),
     }
+}
+
+fn views(root: &objc2_app_kit::NSView) -> Vec<objc2::rc::Retained<objc2_app_kit::NSView>> {
+    let mut out = Vec::new();
+    for sub in root.subviews().iter() {
+        out.extend(views(&sub));
+        out.push(sub);
+    }
+    out
+}
+
+fn sheet_json(sheet: &objc2_app_kit::NSWindow) -> Value {
+    let all = sheet.contentView().map(|c| views(&c)).unwrap_or_default();
+    let texts: Vec<String> = all
+        .iter()
+        .filter_map(|v| v.downcast_ref::<objc2_app_kit::NSTextField>())
+        .filter(|f| !f.isEditable())
+        .map(|f| f.stringValue().to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
+    let buttons: Vec<String> = all
+        .iter()
+        .filter_map(|v| v.downcast_ref::<objc2_app_kit::NSButton>())
+        .map(|b| b.title().to_string())
+        .filter(|t| !t.is_empty())
+        .collect();
+    json!({"visible": sheet.isVisible(), "texts": texts, "buttons": buttons})
+}
+
+fn sheets_state(state: &AppState) -> Value {
+    let app = NSApplication::sharedApplication(state.mtm());
+    let windows = app.windows();
+    let attached: Vec<Value> = windows.iter().filter_map(|w| w.attachedSheet()).map(|s| sheet_json(&s)).collect();
+    let visible_sheets: Vec<Value> =
+        windows.iter().filter(|w| w.isSheet() && w.isVisible()).map(|s| sheet_json(&s)).collect();
+    json!({"attached": attached, "visible_sheet_windows": visible_sheets})
 }
 
 fn address_state(state: &AppState) -> Value {
