@@ -29,6 +29,9 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(40);
 /// baca server MCP (45 detik) supaya balasannya masih sampai.
 const APPROVAL_WAIT: Duration = Duration::from_secs(35);
 
+const UNIDENTIFIED: &str = "my-browser tidak bisa mengenali program yang tersambung (berkas programnya tidak \
+ditemukan). Mulai ulang program itu (mis. sesi Claude Code), lalu coba lagi.";
+
 static NEXT_CONNECTION: AtomicU64 = AtomicU64::new(0);
 
 thread_local! {
@@ -83,8 +86,16 @@ fn same_user(conn: &UnixStream) -> bool {
 fn serve(conn: UnixStream) {
     let id = NEXT_CONNECTION.fetch_add(1, Ordering::Relaxed) + 1;
     let me = std::process::id() as libc::pid_t;
-    // Program yang tidak bisa dikenali tidak dilayani.
-    let Some(client) = procinfo::peer_pid(&conn).and_then(|pid| procinfo::identify(pid, me, id)) else { return };
+    // Program yang tidak bisa dikenali tidak dilayani, tetapi diberi tahu
+    // alasannya (tanpa ini koneksi putus diam-diam).
+    let Some(client) = procinfo::peer_pid(&conn).and_then(|pid| procinfo::identify(pid, me, id)) else {
+        let mut conn = conn;
+        let response = ControlResponse::Error(UNIDENTIFIED.into());
+        if let Ok(text) = serde_json::to_string(&response) {
+            let _ = writeln!(conn, "{text}");
+        }
+        return;
+    };
     let Ok(reader) = conn.try_clone() else { return };
     let mut writer = conn;
     for line in BufReader::new(reader).lines() {

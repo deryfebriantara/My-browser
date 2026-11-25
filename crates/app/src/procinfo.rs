@@ -24,12 +24,58 @@ pub fn peer_pid(conn: &UnixStream) -> Option<pid_t> {
     (rc == 0 && pid > 0).then_some(pid)
 }
 
-/// Lokasi executable proses (symlink sudah diselesaikan kernel).
+/// Lokasi executable proses (symlink sudah diselesaikan kernel). Kalau berkas
+/// programnya sudah diganti sejak proses berjalan, lihat `launch_path`.
 pub fn exe_path(pid: pid_t) -> Option<String> {
+    kernel_path(pid).or_else(|| launch_path(pid))
+}
+
+/// `proc_pidpath`: jalur berkas yang sedang dijalankan proses. Gagal kalau
+/// berkas itu sudah dihapus atau diganti (mis. Claude Code memperbarui dirinya
+/// sendiri saat sesinya masih berjalan).
+fn kernel_path(pid: pid_t) -> Option<String> {
     let mut buf = vec![0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
     // SAFETY: buffer dan ukurannya cocok.
     let n = unsafe { libc::proc_pidpath(pid, buf.as_mut_ptr() as *mut c_void, buf.len() as u32) };
     (n > 0).then(|| String::from_utf8_lossy(&buf[..n as usize]).into_owned())
+}
+
+/// Jalur yang dipakai saat proses dijalankan (`KERN_PROCARGS2`), dengan
+/// symlink diselesaikan seperti `proc_pidpath` (mis. `~/.nvm/.../bin/claude`
+/// menjadi `.../claude-code/bin/claude.exe`, sama dengan daftar izin).
+/// Cadangan untuk `kernel_path`: kurang kuat karena disimpan di memory proses
+/// itu, jadi hanya diterima kalau jalurnya absolut dan berkas program memang
+/// ada di sana sekarang (versi baru yang menggantikan berkas lama).
+fn launch_path(pid: pid_t) -> Option<String> {
+    let mut argmax: c_int = 0;
+    let mut len = size_of::<c_int>();
+    let mut mib = [libc::CTL_KERN, libc::KERN_ARGMAX];
+    // SAFETY: mib dua elemen, keluaran satu c_int dengan panjangnya.
+    let rc = unsafe {
+        libc::sysctl(mib.as_mut_ptr(), 2, &mut argmax as *mut c_int as *mut c_void, &mut len, std::ptr::null_mut(), 0)
+    };
+    if rc != 0 || argmax <= 0 {
+        return None;
+    }
+    let mut buf = vec![0u8; argmax as usize];
+    let mut size = buf.len();
+    let mut mib = [libc::CTL_KERN, libc::KERN_PROCARGS2, pid];
+    // SAFETY: buffer seukuran KERN_ARGMAX; kernel menulis paling banyak `size` byte.
+    let rc = unsafe {
+        libc::sysctl(mib.as_mut_ptr(), 3, buf.as_mut_ptr() as *mut c_void, &mut size, std::ptr::null_mut(), 0)
+    };
+    if rc != 0 || size <= size_of::<c_int>() {
+        return None;
+    }
+    // Susunannya: argc (c_int), lalu jalur program diakhiri NUL.
+    let rest = &buf[size_of::<c_int>()..size];
+    let end = rest.iter().position(|&b| b == 0)?;
+    let path = std::str::from_utf8(&rest[..end]).ok()?;
+    if !path.starts_with('/') {
+        return None;
+    }
+    let real = std::fs::canonicalize(path).ok()?;
+    real.is_file().then(|| real.to_string_lossy().into_owned())
 }
 
 pub fn parent_pid(pid: pid_t) -> Option<pid_t> {
@@ -97,6 +143,80 @@ mod tests {
         let cwd = std::env::current_dir().unwrap().canonicalize().unwrap();
         assert_eq!(working_dir(me).map(|d| std::path::PathBuf::from(d).canonicalize().unwrap()), Some(cwd));
         assert_eq!(exe_path(-5), None);
+    }
+
+    #[test]
+    fn launch_path_matches_this_executable() {
+        let exe = std::env::current_exe().unwrap().canonicalize().unwrap();
+        let launched =
+            launch_path(std::process::id() as pid_t).map(|p| std::path::PathBuf::from(p).canonicalize().unwrap());
+        assert_eq!(launched, Some(exe));
+    }
+
+    /// Seperti Claude Code yang memperbarui dirinya saat sesinya berjalan:
+    /// berkas program diganti, proc_pidpath gagal, tetapi proses tetap
+    /// dikenali dari jalur saat dijalankan selama berkas baru ada di sana.
+    /// Dipanggil sebagai proses anak oleh test di bawah: hanya tidur.
+    #[test]
+    #[ignore = "pembantu: dijalankan sebagai proses anak oleh test lain"]
+    fn helper_sleeps() {
+        std::thread::sleep(std::time::Duration::from_secs(30));
+    }
+
+    /// Menjalankan `path` (salinan biner test ini) sebagai proses yang tidur.
+    /// Salinan biner Apple (mis. /bin/sleep) tidak bisa dipakai: macOS menolak
+    /// KERN_PROCARGS2 untuk biner sistem yang dijalankan dari luar lokasinya.
+    fn sleeper(path: &Path) -> std::process::Child {
+        let child = std::process::Command::new(path)
+            .args(["--ignored", "--exact", "procinfo::tests::helper_sleeps"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(300));
+        child
+    }
+
+    fn stop(mut child: std::process::Child) {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+
+    #[test]
+    fn launch_path_resolves_symlinks() {
+        let dir = tempfile::tempdir().unwrap();
+        let real = dir.path().join("program-asli");
+        let link = dir.path().join("program");
+        std::fs::copy(std::env::current_exe().unwrap(), &real).unwrap();
+        std::os::unix::fs::symlink(&real, &link).unwrap();
+        let child = sleeper(&link);
+        let found = launch_path(child.id() as pid_t);
+        stop(child);
+        assert_eq!(found.map(std::path::PathBuf::from), Some(real.canonicalize().unwrap()));
+    }
+
+    /// Seperti Claude Code yang memperbarui dirinya saat sesinya berjalan:
+    /// berkas program diganti, dan proses tetap dikenali dari jalur saat
+    /// dijalankan selama ada berkas program di jalur itu.
+    #[test]
+    fn replaced_executable_is_still_identified() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("program-uji");
+        std::fs::copy(std::env::current_exe().unwrap(), &bin).unwrap();
+        let expected = bin.canonicalize().unwrap();
+        let child = sleeper(&bin);
+        let pid = child.id() as pid_t;
+
+        std::fs::remove_file(&bin).unwrap();
+        let without_file = (kernel_path(pid), launch_path(pid), exe_path(pid));
+        std::fs::copy(std::env::current_exe().unwrap(), &bin).unwrap();
+        let replaced = (launch_path(pid), exe_path(pid));
+        stop(child);
+
+        assert_eq!(without_file, (None, None, None), "berkas dihapus tanpa pengganti: tidak dikenali");
+        let as_path = |p: Option<String>| p.map(std::path::PathBuf::from);
+        assert_eq!(as_path(replaced.0), Some(expected.clone()), "jalur saat dijalankan menunjuk berkas baru");
+        assert_eq!(as_path(replaced.1), Some(expected));
     }
 
     #[test]

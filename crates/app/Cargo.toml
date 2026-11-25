@@ -24,3 +24,6 @@ serde_json.workspace = true
 libc.workspace = true
 my-browser-vault.workspace = true
 zeroize = "1.8"
+
+[dev-dependencies]
+tempfile.workspace = true

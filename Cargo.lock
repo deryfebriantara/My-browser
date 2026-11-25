@@ -464,6 +464,7 @@ dependencies = [
  "objc2-foundation",
  "objc2-web-kit",
  "serde_json",
+ "tempfile",
  "url",
  "zeroize",
 ]
