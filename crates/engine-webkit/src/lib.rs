@@ -12,12 +12,14 @@ mod passwords;
 mod scripts;
 pub mod user_agent;
 
+use block2::RcBlock;
 use blocker::Blocker;
 use browser_core::engine::{Engine, PageEvent};
 use downloads::DownloadCenter;
 use objc2::MainThreadMarker;
 use objc2::rc::Retained;
-use objc2_foundation::NSString;
+use objc2_foundation::{NSDate, NSSet, NSString};
+use objc2_web_kit::WKWebsiteDataStore;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -73,4 +75,20 @@ impl Engine for WebKitEngine {
     fn set_global_sink(&self, sink: Box<dyn Fn(PageEvent)>) {
         self.downloads.set_sink(sink);
     }
+
+    /// Menghapus data "Alternative Services" (petunjuk HTTP/3 dari header
+    /// `Alt-Svc`) di data store bawaan, di memory proses jaringan maupun di
+    /// `AlternativeService.sqlite`. Tipe datanya SPI WebKit, tetapi namanya
+    /// stabil dan diterima `removeDataOfTypes`.
+    fn forget_http3_hints(&self) {
+        let store = unsafe { WKWebsiteDataStore::defaultDataStore(self.mtm) };
+        let kind = NSString::from_str(ALTERNATIVE_SERVICES);
+        let types = NSSet::from_slice(&[&*kind]);
+        let done = RcBlock::new(|| {});
+        // SAFETY: dipanggil di main thread; blok penyelesaian tidak memakai apa pun.
+        unsafe { store.removeDataOfTypes_modifiedSince_completionHandler(&types, &NSDate::distantPast(), &done) };
+    }
 }
+
+/// Nama tipe data WebKit untuk petunjuk HTTP/3 (`_WKWebsiteDataTypeAlternativeServices`).
+const ALTERNATIVE_SERVICES: &str = "_WKWebsiteDataTypeAlternativeServices";

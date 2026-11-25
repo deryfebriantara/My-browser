@@ -90,6 +90,9 @@ impl<E: Engine> Browser<E> {
             }
         }
         engine.set_blocker_exceptions(&settings.blocker_exceptions);
+        if !settings.http3_enabled {
+            engine.forget_http3_hints();
+        }
         let mut b = Self {
             engine,
             tabs,
@@ -248,6 +251,7 @@ impl<E: Engine> Browser<E> {
     /// Memuat `url` di tab `id`. Kunjungannya dicatat ke riwayat saat selesai
     /// dimuat, walaupun alamatnya sama dengan yang sedang terbuka.
     pub fn navigate_url(&mut self, id: TabId, url: Url, typed: bool, now: Instant) -> bool {
+        self.forget_http3_hints_if_disabled();
         let Some(tab) = self.tabs.get_mut(id) else { return false };
         tab.pending_visit = Some(PendingVisit { typed });
         tab.url = Some(url.clone());
@@ -306,6 +310,7 @@ impl<E: Engine> Browser<E> {
     /// Menandai tab yang layak tidur, lalu meminta status aktivitas terbaru.
     /// Tab benar-benar ditidurkan saat balasan `Activity` menyatakan aman.
     pub fn tick(&mut self, now: Instant, pressure: Pressure) {
+        self.forget_http3_hints_if_disabled();
         let policy = self.settings.sleep_policy();
         for id in tabs_to_sleep(&self.tabs.snapshots(), now, &policy, pressure) {
             if let Some(tab) = self.tabs.get_mut(id) {
@@ -572,6 +577,14 @@ impl<E: Engine> Browser<E> {
         Some(self.tabs.to_session())
     }
 
+    /// HTTP/3 dimatikan (bawaan): petunjuk HTTP/3 dihapus sebelum koneksi baru
+    /// sempat memakainya (saat dibuka, setiap tick, sebelum navigasi).
+    fn forget_http3_hints_if_disabled(&self) {
+        if !self.settings.http3_enabled {
+            self.engine.forget_http3_hints();
+        }
+    }
+
     fn change(&mut self, change: UiChange) {
         if matches!(change, UiChange::Notice(_)) || !self.changes.contains(&change) {
             self.changes.push(change);
@@ -605,6 +618,7 @@ impl<E: Engine> Browser<E> {
         }
         let Some(tab) = self.tabs.get(id) else { return };
         let (Some(url), emulation) = (tab.url.clone(), tab.emulation) else { return };
+        self.forget_http3_hints_if_disabled();
         let page = self.engine.create_page((self.sinks)(id));
         // Emulasi dipasang sebelum memuat, supaya request pertama sudah
         // memakai user agent yang benar.

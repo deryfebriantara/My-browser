@@ -31,6 +31,7 @@ struct Log {
     calls: Vec<Call>,
     live: usize,
     exceptions: Vec<String>,
+    http3_forgets: usize,
 }
 type Shared = Rc<RefCell<Log>>;
 
@@ -105,6 +106,9 @@ impl Engine for FakeEngine {
     }
     fn set_blocker_exceptions(&self, hosts: &[String]) {
         self.0.borrow_mut().exceptions = hosts.to_vec();
+    }
+    fn forget_http3_hints(&self) {
+        self.0.borrow_mut().http3_forgets += 1;
     }
     fn set_global_sink(&self, _sink: Box<dyn Fn(PageEvent)>) {}
 }
@@ -875,4 +879,28 @@ fn default_emulation_adds_no_engine_calls_on_wake() {
     let (mut b, log, t0) = setup(None);
     assert!(b.navigate("a.com", t0));
     assert!(!log.borrow().calls.iter().any(|c| matches!(c, Call::MobileUa(_) | Call::Scheme(_))));
+}
+
+#[test]
+fn http3_hints_forgotten_at_start_tick_and_navigation_when_disabled() {
+    let (mut b, log, t0) = setup(None);
+    let at_start = log.borrow().http3_forgets;
+    assert_eq!(at_start, 1, "dihapus saat browser dibuat");
+    assert!(b.navigate("a.com", t0));
+    let after_navigate = log.borrow().http3_forgets;
+    assert!(after_navigate >= 2, "dihapus sebelum navigasi");
+    b.tick(t0 + secs(30), Pressure::Normal);
+    assert!(log.borrow().http3_forgets > after_navigate, "dihapus setiap tick");
+}
+
+#[test]
+fn http3_hints_kept_when_enabled() {
+    let log = Shared::default();
+    let t0 = Instant::now();
+    let settings = Settings { http3_enabled: true, ..Settings::default() };
+    let mut b =
+        Browser::new(FakeEngine(log.clone()), settings, None, History::new(), Box::new(|_| Box::new(|_| {})), t0);
+    assert!(b.navigate("a.com", t0));
+    b.tick(t0 + secs(30), Pressure::Normal);
+    assert_eq!(log.borrow().http3_forgets, 0);
 }

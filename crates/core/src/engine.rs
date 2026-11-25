@@ -162,4 +162,7 @@ pub trait Engine {
     /// Penerima event yang tidak terikat ke satu tab (selesai/gagal download),
     /// supaya pemberitahuan tetap sampai walaupun tab asalnya sudah ditutup.
     fn set_global_sink(&self, sink: Box<dyn Fn(PageEvent)>);
+    /// Melupakan petunjuk HTTP/3 (header `Alt-Svc`) yang sudah dipelajari dari
+    /// situs, supaya koneksi baru memakai HTTP/2. Bawaan: tidak melakukan apa-apa.
+    fn forget_http3_hints(&self) {}
 }

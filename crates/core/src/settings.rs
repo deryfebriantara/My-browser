@@ -32,6 +32,11 @@ pub struct Settings {
     pub mcp_allowed_clients: Vec<String>,
     /// Catat halaman yang dibuka ke riwayat.
     pub history_enabled: bool,
+    /// Izinkan HTTP/3. Kalau mati, petunjuk HTTP/3 dari situs terus dihapus
+    /// sehingga koneksi memakai HTTP/2. Di jaringan yang membatasi UDP, koneksi
+    /// HTTP/3 bisa runtuh saat situs memuat banyak file sekaligus (mis. Hostinger
+    /// Mail jadi putih); HTTP/2 lewat TCP tidak terpengaruh.
+    pub http3_enabled: bool,
 }
 
 impl Default for Settings {
@@ -50,6 +55,7 @@ impl Default for Settings {
             password_never_save: Vec::new(),
             mcp_allowed_clients: Vec::new(),
             history_enabled: true,
+            http3_enabled: false,
         }
     }
 }
@@ -83,6 +89,7 @@ mod tests {
         assert!(s.password_offer_save);
         assert_eq!(s.password_lock_minutes, 10);
         assert!(s.history_enabled);
+        assert!(!s.http3_enabled);
     }
 
     #[test]
