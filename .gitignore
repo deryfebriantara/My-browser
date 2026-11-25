@@ -3,3 +3,4 @@
 /resources/filters
 /resources/blocklist
 /.superpowers
+.DS_Store
