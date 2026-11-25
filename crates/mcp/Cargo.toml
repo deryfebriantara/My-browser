@@ -3,6 +3,7 @@ name = "my-browser-mcp"
 edition.workspace = true
 version.workspace = true
 publish.workspace = true
+license.workspace = true
 
 [lib]
 name = "browser_mcp"

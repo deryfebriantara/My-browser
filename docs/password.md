@@ -1,71 +1,71 @@
-# Pengelola password
+# Password manager
 
-my-browser menyimpan password dalam vault terenkripsi yang hanya bisa dibuka dengan master password Anda.
+my-browser stores passwords in an encrypted vault that can only be opened with your master password.
 
-## Cara pakai
+## How to use
 
-- **Menyimpan:** login di sebuah situs seperti biasa. Setelah form dikirim, muncul tawaran "Save Password for github.com?". Pilihannya **Save**, **Not Now**, atau **Never for This Site**. Pertama kali menyimpan, Anda diminta membuat master password (minimal 10 karakter).
-- **Mengisi:** di halaman login, tekan ⌘\ atau pilih **Passwords > Fill Password**. Kalau ada beberapa akun untuk situs itu, pilih salah satu. Login bertahap (misalnya Google): tekan ⌘\ di langkah username, lalu sekali lagi di langkah password.
-- **Kelola:** **Passwords > Manage Passwords…** (⌥⌘P) untuk mencari, melihat, menyalin, menambah, mengedit, dan menghapus password, impor dan ekspor CSV, serta mengganti master password.
-- **Password acak:** **Passwords > Copy Random Password** menyalin password 20 karakter ke clipboard, misalnya untuk form daftar. Di jendela Passwords, tombol **Generate** mengisi kolom password.
-- **Kunci:** **Passwords > Lock Passwords**.
+- **Save:** sign in on a site as usual. After the form is submitted, the offer "Save Password for github.com?" appears. The choices are **Save**, **Not Now**, or **Never for This Site**. The first time you save, you are asked to create a master password (at least 10 characters).
+- **Fill:** on a login page, press ⌘\ or choose **Passwords > Fill Password**. If there are several accounts for that site, pick one. Multi-step logins (for example Google): press ⌘\ at the username step, then again at the password step.
+- **Manage:** **Passwords > Manage Passwords…** (⌥⌘P) to search, view, copy, add, edit, and delete passwords, import and export CSV, and change the master password.
+- **Random password:** **Passwords > Copy Random Password** copies a 20-character password to the clipboard, for example for a sign-up form. In the Passwords window, the **Generate** button fills the password field.
+- **Lock:** **Passwords > Lock Passwords**.
 
-## Enkripsi
+## Encryption
 
-| Bagian | Cara |
+| Part | Method |
 |---|---|
-| Master password → kunci | Argon2id, 256 MiB, 3 putaran, salt acak 16 byte (sekitar 0,3 detik di Mac Apple Silicon). Memory sebesar itu membuat tebakan massal dengan GPU sangat mahal |
-| Kunci vault | 32 byte acak, dibungkus XChaCha20-Poly1305 dengan kunci dari master password |
-| Isi vault | Dienkripsi XChaCha20-Poly1305 dengan kunci vault, memakai nonce 24 byte acak baru setiap kali disimpan |
-| Integritas | Versi dan parameter berkas diikat sebagai associated data; berkas yang diubah sedikit pun gagal dibuka |
-| Berkas | `~/Library/Application Support/my-browser/vault.json`, izin 0600, ditulis atomik. Tidak ada situs, username, atau password dalam teks terang |
-| Pustaka | RustCrypto (`argon2`, `chacha20poly1305`, `zeroize`) |
+| Master password → key | Argon2id, 256 MiB, 3 iterations, random 16-byte salt (about 0.3 seconds on an Apple Silicon Mac). That much memory makes mass guessing with GPUs very expensive |
+| Vault key | 32 random bytes, wrapped with XChaCha20-Poly1305 using the key derived from the master password |
+| Vault contents | Encrypted with XChaCha20-Poly1305 using the vault key, with a fresh random 24-byte nonce on every save |
+| Integrity | The file version and parameters are bound as associated data; a file changed even slightly fails to open |
+| File | `~/Library/Application Support/my-browser/vault.json`, permissions 0600, written atomically. No sites, usernames, or passwords in plain text |
+| Libraries | RustCrypto (`argon2`, `chacha20poly1305`, `zeroize`) |
 
-Kunci vault dibungkus terpisah, jadi mengganti master password tidak perlu mengenkripsi ulang isi. Cara buka lain (Touch ID lewat Secure Enclave) nanti cukup menambah satu bungkusan lagi.
+The vault key is wrapped separately, so changing the master password does not require re-encrypting the contents. Another unlock method (Touch ID through the Secure Enclave) will only need one more wrapping later.
 
-## Perlindungan lain
+## Other protections
 
-- **Situs tiruan:** password hanya ditawarkan untuk origin yang persis sama (skema, host, port). `github.com` tidak cocok dengan `github.com.evil.example`, `http://github.com`, atau `www.github.com`.
-- **Tidak mengisi otomatis:** pengisian hanya terjadi setelah Anda memintanya (⌘\), tidak pernah saat halaman dimuat. Dengan begitu, form tersembunyi tidak bisa menyedot password. Pengisian hanya di frame utama, dan origin halaman dicek lagi tepat sebelum mengisi.
-- **Script halaman tidak bisa ikut campur:** penangkap login dan pengisi berjalan di content world WebKit terpisah. Script situs tidak bisa melihat kodenya maupun mengirim pesan palsu. Origin penyimpan ditentukan WebKit dari frame, bukan dari isi halaman.
-- **Terkunci otomatis:** setelah 10 menit tidak dipakai (`password_lock_minutes`), saat layar tidur atau dikunci, saat berganti pengguna, dan saat Mac tidur. Saat terkunci, kunci dan entri dihapus dari memory.
-- **Clipboard:** password yang disalin ditandai "concealed", supaya pengelola clipboard tidak mencatatnya, dan dibersihkan setelah 30 detik kalau clipboard belum diganti.
-- **Ekspor dan ganti master password** selalu meminta master password lagi, walaupun vault sedang terbuka.
-- **Claude tidak bisa mengakses vault:** tidak ada tool MCP atau perintah socket untuk password. `run_js` ditolak di halaman yang kolom password-nya terisi, dan `list_elements` tidak pernah mengirim isi kolom password.
-- Kolom master password memakai NSSecureTextField: selama aktif, ketikan tidak bisa dibaca aplikasi lain.
+- **Lookalike sites:** passwords are offered only for the exact same origin (scheme, host, port). `github.com` does not match `github.com.evil.example`, `http://github.com`, or `www.github.com`.
+- **No autofill:** filling happens only after you ask for it (⌘\), never on page load. This way, hidden forms cannot siphon passwords. Filling happens only in the main frame, and the page origin is checked again right before filling.
+- **Page scripts cannot interfere:** the login capturer and the filler run in a separate WebKit content world. Site scripts cannot see their code or send fake messages. WebKit determines the saving origin from the frame, not from the page contents.
+- **Automatic locking:** after 10 minutes unused (`password_lock_minutes`), when the screen sleeps or is locked, on user switch, and when the Mac sleeps. When locked, the key and entries are cleared from memory.
+- **Clipboard:** copied passwords are marked "concealed" so clipboard managers do not record them, and are cleared after 30 seconds if the clipboard has not changed.
+- **Export and master password change** always ask for the master password again, even while the vault is unlocked.
+- **Claude cannot access the vault:** there is no MCP tool or socket command for passwords. `run_js` is refused on pages whose password field is filled, and `list_elements` never sends the contents of password fields.
+- The master password field uses NSSecureTextField: while it is active, other apps cannot read the keystrokes.
 
-## Batasan yang perlu diketahui
+## Limitations to know about
 
-- **Master password tidak bisa dipulihkan.** Kalau lupa, isi vault hilang. Simpan di tempat aman.
-- Halaman yang sudah diisi password bisa membaca isian itu. Ini berlaku di semua password manager.
-- Upaya menghapus rahasia dari memory adalah upaya terbaik: Rust dan WebKit bisa menyimpan salinan sementara yang tidak bisa dihapus paksa. Password yang ditampilkan dengan **Show** disembunyikan lagi setelah 20 detik.
-- Belum ada sinkronisasi ke perangkat lain. Passkey belum didukung (butuh izin khusus Apple untuk browser). Form login di dalam iframe belum diisi.
-- Saat vault terkunci, akun yang tersimpan dikenali dari pembukaan terakhir (hanya di memory). Setelah browser dibuka ulang, login pertama bisa memunculkan tawaran simpan lagi; memilih Simpan akan meminta master password lalu memberi tahu bahwa password itu sudah tersimpan.
-- Host di "Never for This Site" disimpan di `settings.json` tanpa enkripsi (hanya nama situs).
+- **The master password cannot be recovered.** If you forget it, the vault contents are lost. Keep it somewhere safe.
+- A page that has been filled with a password can read that value. This applies to every password manager.
+- Clearing secrets from memory is best effort: Rust and WebKit can keep temporary copies that cannot be forcibly erased. A password revealed with **Show** is hidden again after 20 seconds.
+- There is no sync to other devices yet. Passkeys are not supported yet (they need a special Apple entitlement for browsers). Login forms inside iframes are not filled yet.
+- While the vault is locked, saved accounts are recognized from the last unlock (in memory only). After the browser restarts, the first login can show the save offer again; choosing **Save** asks for the master password and then reports that the password is already saved.
+- Hosts in "Never for This Site" are stored in `settings.json` without encryption (site names only).
 
-## Impor dari browser lain
+## Importing from other browsers
 
-Di jendela **Passwords > Manage Passwords…**, tombol **Import CSV…** menerima ekspor Chrome, Safari/app Passwords (File > Ekspor), Firefox, dan Bitwarden. Akun yang sama (situs dan username) diperbarui passwordnya. Setelah impor, hapus berkas CSV itu (juga dari Sampah), karena isinya password tanpa enkripsi.
+In the **Passwords > Manage Passwords…** window, the **Import CSV…** button accepts exports from Chrome, Safari/the Passwords app (File > Export), Firefox, and Bitwarden. For an existing account (same site and username), the password is updated. After importing, delete that CSV file (also from the Trash), because it contains unencrypted passwords.
 
-## Rencana: Touch ID
+## Plan: Touch ID
 
-Touch ID yang benar-benar melindungi kunci (lewat Secure Enclave) butuh aplikasi yang ditandatangani sertifikat Apple Developer dengan entitlement keychain. Aplikasi yang ditandatangani ad-hoc ditolak dengan error `-34018` (sudah dicoba). Setelah sertifikat tersedia (akun gratis "Personal Team" di Xcode kemungkinan cukup untuk pemakaian sendiri), kunci vault bisa dibungkus kunci Secure Enclave sebagai cara buka kedua, dengan master password tetap sebagai cadangan.
+Touch ID that actually protects the key (through the Secure Enclave) requires an app signed with an Apple Developer certificate with the keychain entitlement. Ad-hoc signed apps are refused with error `-34018` (already tried). Once a certificate is available (a free "Personal Team" account in Xcode is probably enough for personal use), the vault key can be wrapped with a Secure Enclave key as a second unlock method, with the master password kept as the fallback.
 
-## Pengaturan (`settings.json`)
+## Settings (`settings.json`)
 
-| Kunci | Bawaan | Fungsi |
+| Key | Default | Purpose |
 |---|---|---|
-| `password_offer_save` | `true` | Tawarkan simpan setelah login |
-| `password_lock_minutes` | `10` | Kunci setelah sekian menit tidak dipakai |
-| `password_never_save` | `[]` | Host yang tidak pernah ditawari |
+| `password_offer_save` | `true` | Offer to save after login |
+| `password_lock_minutes` | `10` | Lock after this many minutes unused |
+| `password_never_save` | `[]` | Hosts that are never offered |
 
-## Kode
+## Code
 
-- `crates/vault`: format berkas, kriptografi, entri, generator, CSV (tanpa dependensi macOS).
-- `crates/core/src/password_capture.js`, `password_fill.js`: penangkap dan pengisi login.
-- `crates/engine-webkit/src/passwords.rs`: penerima pesan dari content world password.
-- `crates/app/src/passwords.rs`: tawaran simpan, isi, kunci otomatis, clipboard.
-- `crates/app/src/password_manager.rs` dan `.html`: jendela Kelola Password.
-- `crates/app/src/dialogs.rs`: dialog master password dan konfirmasi.
+- `crates/vault`: file format, cryptography, entries, generator, CSV (no macOS dependencies).
+- `crates/core/src/password_capture.js`, `password_fill.js`: login capturer and filler.
+- `crates/engine-webkit/src/passwords.rs`: receiver for messages from the password content world.
+- `crates/app/src/passwords.rs`: save offer, fill, auto-lock, clipboard.
+- `crates/app/src/password_manager.rs` and `.html`: the Manage Passwords window.
+- `crates/app/src/dialogs.rs`: master password and confirmation dialogs.
 
-Untuk pengujian, build debug punya pengait `MYBROWSER_DIALOG_SELFTEST=<master>`, yang menjawab setiap dialog otomatis dengan master password itu. Pengait ini tidak ada di build release.
+For testing, debug builds have a `MYBROWSER_DIALOG_SELFTEST=<master>` hook that answers every dialog automatically with that master password. This hook does not exist in release builds.

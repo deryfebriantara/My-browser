@@ -1,105 +1,105 @@
-# Tab tidur
+# Tab sleep
 
-Tab latar yang lama tidak dilihat ditidurkan: WKWebView-nya dilepas, sehingga proses WebContent dan memory-nya ikut dilepas. Tab tetap ada di bilah tab (redup, dengan tooltip "Sleeping; reloads when opened", `crates/app/src/tab_strip.rs:82`) dan dimuat ulang saat dibuka.
+Background tabs that have not been viewed for a long time are put to sleep: their WKWebView is released, which also releases the WebContent process and its memory. The tab stays in the tab strip (dimmed, with the tooltip "Sleeping; reloads when opened", `crates/app/src/tab_strip.rs:82`) and reloads when opened.
 
-Hasil ukur Task 9 (`docs/testing/hasil-ukur.md`): empat tab bangun memakai 399,0 MB. Setelah tiga tab latar ditidurkan, angkanya turun menjadi 122,9 MB.
+Task 9 measurements (`docs/testing/measurements.md`): four awake tabs used 399.0 MB. After three background tabs were put to sleep, the total dropped to 122.9 MB.
 
-## Kapan tab ditidurkan
+## When a tab sleeps
 
-- **Tidak dilihat 30 menit.** Bawaan `sleep_idle_secs` adalah 1800 (`crates/core/src/sleep.rs:28`). Pengecekan berjalan setiap 30 detik (`crates/app/src/timer.rs:11`), jadi tab bisa tidur sampai 30 detik lebih lambat dari batasnya.
-- **Terlalu banyak tab bangun.** Kalau lebih dari 5 tab bangun (`max_awake`, termasuk tab aktif), tab latar yang paling lama tidak dilihat langsung ditidurkan tanpa menunggu 30 menit. Batas ini ditegakkan saat itu juga setiap kali pindah tab (`crates/core/src/browser.rs:506`).
-- **macOS kekurangan memory.** Saat macOS mengirim sinyal memory pressure (Warning atau Critical, `crates/app/src/memory_pressure.rs`), semua tab latar yang memenuhi syarat langsung ditidurkan, berapa pun timernya (`crates/core/src/sleep.rs:50`).
-- **Diminta lewat MCP.** Tool `sleep_tab` menidurkan satu tab latar dengan aturan perlindungan yang sama.
+- **Not viewed for 30 minutes.** The default `sleep_idle_secs` is 1800 (`crates/core/src/sleep.rs:28`). The check runs every 30 seconds (`crates/app/src/timer.rs:11`), so a tab can fall asleep up to 30 seconds after its limit.
+- **Too many awake tabs.** If more than 5 tabs are awake (`max_awake`, including the active tab), the background tab that has gone longest without being viewed is put to sleep right away, without waiting 30 minutes. This limit is enforced immediately on every tab switch (`crates/core/src/browser.rs:506`).
+- **macOS is low on memory.** When macOS sends a memory pressure signal (Warning or Critical, `crates/app/src/memory_pressure.rs`), all eligible background tabs are put to sleep right away, whatever their timer says (`crates/core/src/sleep.rs:50`).
+- **Requested through MCP.** The `sleep_tab` tool puts one background tab to sleep under the same protection rules.
 
-## Yang tidak ditidurkan
+## What does not sleep
 
-- Tab aktif.
-- Tab yang sedang memutar audio atau video, memakai kamera atau mikrofon, sedang mengunduh, atau sedang membuka dialog JavaScript (`crates/engine-webkit/src/page.rs:59`, `:187`). Video yang di-pause tidak termasuk, tetapi posisinya disimpan untuk YouTube (lihat di bawah).
-- Tab yang punya **teks yang sudah diketik tetapi belum dikirim**, kecuali saat memory kritis (`crates/core/src/sleep.rs:46`, `crates/core/src/browser.rs:364`).
+- The active tab.
+- Tabs that are playing audio or video, using the camera or microphone, downloading, or showing a JavaScript dialog (`crates/engine-webkit/src/page.rs:59`, `:187`). Paused video does not count, but its position is saved for YouTube (see below).
+- Tabs with **text that has been typed but not yet submitted**, except when memory is critical (`crates/core/src/sleep.rs:46`, `crates/core/src/browser.rs:364`).
 
-Tab yang dilindungi tetap dihitung dalam batas 5 tab bangun. Akibatnya, tab latar lain yang tidak dilindungi bisa lebih cepat tidur.
+Protected tabs still count toward the limit of 5 awake tabs. As a result, other unprotected background tabs may sleep sooner.
 
-## Teks yang belum dikirim
+## Unsubmitted text
 
-Halaman yang dimuat ulang kehilangan isi formnya, jadi tab dengan komentar, pesan, atau isian form yang belum dikirim dibiarkan bangun.
+A reloaded page loses its form contents, so tabs with an unsubmitted comment, message, or form input are kept awake.
 
-Cara mengenalinya (`crates/core/src/draft_tracker.js`):
+How it is detected (`crates/core/src/draft_tracker.js`):
 
-- Yang dihitung hanya ketikan pengguna sungguhan, yaitu event `input` dengan `isTrusted` (baris 31). Nilai yang diisi script halaman atau pengisi password tidak dihitung.
-- Kolom yang dipantau: textarea, editor `contenteditable` (Gmail, X, Slack, kolom komentar YouTube), dan kolom satu baris bertipe teks, pencarian, email, URL, telepon, atau angka (baris 10). Kolom password tidak dihitung.
-- Draft dianggap selesai saat form dikirim (baris 37), Enter ditekan di kolom satu baris (baris 45), kolomnya dikosongkan, atau kolomnya hilang dari halaman (misalnya kotak tulis Gmail yang tertutup setelah kirim).
-- Kolom satu baris yang ditinggal karena alamat halaman berubah tidak dihitung (baris 60). Contohnya mengetik di kotak pencarian YouTube lalu memilih saran tanpa menekan Enter. Textarea dan editor tetap dihitung walaupun alamatnya berubah.
+- Only real user typing counts, meaning `input` events with `isTrusted` (line 31). Values filled in by page scripts or the password filler do not count.
+- Watched fields: textareas, `contenteditable` editors (Gmail, X, Slack, YouTube comment boxes), and single-line fields of type text, search, email, URL, telephone, or number (line 10). Password fields do not count.
+- A draft is considered finished when the form is submitted (line 37), Enter is pressed in a single-line field (line 45), the field is emptied, or the field disappears from the page (for example, the Gmail compose box that closes after sending).
+- A single-line field that is left behind because the page address changed does not count (line 60). For example, typing in the YouTube search box and then picking a suggestion without pressing Enter. Textareas and editors still count even when the address changes.
 
-Pelacak berjalan di content world yang sama dengan script password (`crates/engine-webkit/src/scripts.rs:54`), jadi script halaman tidak bisa melihat atau mengubahnya. Isi teks tidak pernah dikirim ke luar halaman: browser hanya menanyakan "masih ada draft?" dan menerima jawaban `true` atau `false` (`crates/core/src/drafts.rs:13`).
+The tracker runs in the same content world as the password script (`crates/engine-webkit/src/scripts.rs:54`), so page scripts cannot see or modify it. The text itself never leaves the page: the browser only asks "is there still a draft?" and receives `true` or `false` (`crates/core/src/drafts.rs:13`).
 
-**Kapan draft tetap ditidurkan:** hanya saat macOS melaporkan memory **Critical**. Pada tingkat Warning, tab dengan draft masih dibiarkan, sementara tab latar lain tetap ditidurkan. Pertimbangannya: teks yang hilang tidak bisa dikembalikan, sedangkan memory satu tab bisa.
+**When drafts are still put to sleep:** only when macOS reports **Critical** memory. At the Warning level, tabs with drafts are left awake, while other background tabs are still put to sleep. The reasoning: lost text cannot be recovered, but one tab's memory can.
 
-**Efek samping:** menurut logika pelacak, editor yang menyimpan otomatis tetapi tetap berisi teks setelah diketik (misalnya Notion) membuat tabnya terus bangun selama halamannya terbuka. Ini belum dicoba di situs sungguhan. Yang dikorbankan hanya memory, bukan data.
+**Side effect:** according to the tracker logic, an editor that saves automatically but keeps its text after typing (for example Notion) keeps its tab awake for as long as the page is open. This has not been tried on a real site. Only memory is sacrificed, not data.
 
-## Alur menidurkan tab
+## Sleep flow
 
 ```mermaid
 flowchart TD
-  A[tick tiap 30 detik, atau sinyal memory pressure] --> B[tabs_to_sleep memilih tab latar]
-  B --> C[tab ditandai sleep_pending]
+  A[tick every 30 seconds, or memory pressure signal] --> B[tabs_to_sleep picks background tabs]
+  B --> C[tab marked sleep_pending]
   C --> D[request_activity: media + draft]
-  C --> E[khusus YouTube: minta posisi video]
-  D --> F{media aktif, tab jadi aktif, atau draft tanpa memory kritis?}
-  F -->|ya| G[batal, tab tetap bangun]
-  F -->|tidak| H{posisi video sudah diterima?}
+  C --> E[YouTube only: request video position]
+  D --> F{media active, tab became active, or draft without critical memory?}
+  F -->|yes| G[cancel, tab stays awake]
+  F -->|no| H{video position received?}
   E --> H
-  H -->|ya| I[sleep: page dilepas, posisi YouTube disimpan ke URL]
+  H -->|yes| I[sleep: page released, YouTube position saved to URL]
 ```
 
-Pertanyaan media dan draft dijalankan bersamaan, dan event `Activity` dikirim setelah keduanya terjawab (`crates/engine-webkit/src/page.rs:187`). Tab baru benar-benar tidur setelah jawaban itu menyatakan aman dan, untuk YouTube, posisi videonya sudah diterima (`crates/core/src/browser.rs:300`).
+The media and draft queries run at the same time, and the `Activity` event is sent once both have answered (`crates/engine-webkit/src/page.rs:187`). The tab only actually sleeps after that answer says it is safe and, for YouTube, the video position has been received (`crates/core/src/browser.rs:300`).
 
-## Saat tab dibuka lagi
+## When the tab is opened again
 
-Halaman dimuat ulang dari alamatnya.
+The page reloads from its address.
 
-Yang tetap:
+What is kept:
 
-- **Login.** Cookie disimpan di data store persisten (`crates/engine-webkit/src/page.rs:94`).
-- **Posisi scroll.** Disimpan saat Anda meninggalkan tab (`crates/core/src/browser.rs:500`) dan dikembalikan setelah halaman selesai dimuat (`crates/core/src/browser.rs:342`).
-- **Posisi video YouTube**, termasuk video yang di-pause. Posisinya diminta tepat sebelum tidur (`crates/core/src/browser.rs:290`) dan disimpan sebagai `t=<detik>s` di alamat tab (`crates/core/src/browser.rs:550`, `crates/core/src/youtube.rs:25`).
+- **Login.** Cookies are stored in a persistent data store (`crates/engine-webkit/src/page.rs:94`).
+- **Scroll position.** Saved when you leave the tab (`crates/core/src/browser.rs:500`) and restored after the page finishes loading (`crates/core/src/browser.rs:342`).
+- **YouTube video position**, including paused videos. The position is requested right before the tab sleeps (`crates/core/src/browser.rs:290`) and saved as `t=<seconds>s` in the tab address (`crates/core/src/browser.rs:550`, `crates/core/src/youtube.rs:25`).
 
-Yang hilang:
+What is lost:
 
-- Konten yang dimuat dinamis, misalnya feed yang sudah digulir panjang. Posisi scroll dikembalikan, tetapi kontennya belum tentu dimuat sampai sedalam itu.
-- Keadaan aplikasi web yang tidak tercatat di alamat, misalnya filter atau panel yang sedang terbuka.
-- Posisi video di situs selain YouTube.
-- Teks yang belum dikirim, kalau tab ditidurkan karena memory kritis.
-- Waktu memuat ulang, biasanya beberapa detik tergantung situs.
+- Dynamically loaded content, for example a feed that was scrolled a long way. The scroll position is restored, but the content may not load that far down.
+- Web app state that is not stored in the address, for example filters or open panels.
+- Video position on sites other than YouTube.
+- Unsubmitted text, if the tab was put to sleep because memory was critical.
+- Reload time, usually a few seconds depending on the site.
 
-## Pengaturan (`settings.json`)
+## Settings (`settings.json`)
 
-| Kunci | Bawaan | Fungsi |
+| Key | Default | Purpose |
 |---|---|---|
-| `sleep_idle_secs` | `1800` | Tab latar tidur setelah sekian detik tidak dilihat |
-| `max_awake` | `5` | Jumlah maksimum tab bangun, termasuk tab aktif (minimal 1, `crates/core/src/settings.rs:65`) |
+| `sleep_idle_secs` | `1800` | Background tabs sleep after this many seconds without being viewed |
+| `max_awake` | `5` | Maximum number of awake tabs, including the active tab (minimum 1, `crates/core/src/settings.rs:65`) |
 
-Lokasi berkas: `~/Library/Application Support/my-browser/settings.json`. Tutup browser dulu (⌘Q) sebelum mengedit, karena browser bisa menimpa berkas itu dengan nilai lama saat menyimpan pengaturan lain.
+File location: `~/Library/Application Support/my-browser/settings.json`. Quit the browser first (⌘Q) before editing, because the browser can overwrite the file with old values when it saves other settings.
 
-Sampai 2026-11-21 bawaannya 300 detik dan 3 tab. Angka itu terlalu ketat untuk pemakaian sehari-hari: tab yang ditinggal sebentar harus dimuat ulang. Perlindungan memory yang sebenarnya datang dari sinyal memory pressure macOS, bukan dari timer.
+Until 2026-11-21 the defaults were 300 seconds and 3 tabs. Those values were too strict for daily use: tabs left alone briefly had to reload. The real memory protection comes from the macOS memory pressure signal, not from the timer.
 
-## Kode
+## Code
 
-- `crates/core/src/sleep.rs`: kebijakan memilih tab yang tidur (fungsi murni, tanpa efek samping).
-- `crates/core/src/browser.rs`: alur tidur dan bangun, `tick`, `request_sleep`, penanganan event `Activity`.
-- `crates/core/src/drafts.rs` dan `draft_tracker.js`: pelacak teks yang belum dikirim.
-- `crates/core/src/youtube.rs`: posisi video YouTube di alamat tab.
-- `crates/engine-webkit/src/page.rs`: `request_activity` (status media dari WebKit dan pertanyaan draft).
-- `crates/app/src/timer.rs` dan `memory_pressure.rs`: pemicu tick berkala dan sinyal memory dari macOS.
+- `crates/core/src/sleep.rs`: policy for choosing which tabs sleep (pure functions, no side effects).
+- `crates/core/src/browser.rs`: sleep and wake flow, `tick`, `request_sleep`, handling of the `Activity` event.
+- `crates/core/src/drafts.rs` and `draft_tracker.js`: tracker for unsubmitted text.
+- `crates/core/src/youtube.rs`: YouTube video position in the tab address.
+- `crates/engine-webkit/src/page.rs`: `request_activity` (media state from WebKit and the draft query).
+- `crates/app/src/timer.rs` and `memory_pressure.rs`: periodic tick trigger and the memory signal from macOS.
 
-Test: `crates/core/src/sleep.rs:94` dan `:103`, `crates/core/src/browser.rs:714`, `:734`, `:744`, serta bagian `drafts` di smoke test WebKit (`crates/engine-webkit/tests/smoke.rs:539`). Smoke test itu memeriksa 11 keadaan dengan WKWebView sungguhan, termasuk bahwa isian dari script halaman tidak dihitung dan pelacaknya tidak terlihat dari halaman.
+Tests: `crates/core/src/sleep.rs:94` and `:103`, `crates/core/src/browser.rs:714`, `:734`, `:744`, and the `drafts` section of the WebKit smoke test (`crates/engine-webkit/tests/smoke.rs:539`). That smoke test checks 11 states with a real WKWebView, including that values filled in by page scripts do not count and that the tracker is not visible to the page.
 
-## Yang belum terverifikasi
+## Not yet verified
 
-- Ketikan diuji lewat `execCommand('insertText')`, yang melewati jalur editing WebKit dan menghasilkan event `isTrusted` seperti keyboard. Hal ini berlaku di smoke test maupun di uji E2E aplikasi (tab dengan komentar tidak tidur lewat `sleep_tab`, lalu tidur setelah komentarnya dikosongkan). Mengetik langsung dengan keyboard di situs sungguhan (YouTube, Gmail) belum dicoba dan masuk daftar cek manual (`docs/testing/daftar-cek-manual.md`, Task 9 butir g sampai j).
-- Jalur memory kritis baru diuji dengan unit test, belum dengan `sudo memory_pressure -S -l critical`.
-- Melanjutkan video YouTube setelah tab bangun diuji dengan unit test. Pengecekan manual di YouTube sungguhan (butir c) belum dicentang.
+- Typing is tested with `execCommand('insertText')`, which goes through the WebKit editing path and produces `isTrusted` events like a keyboard does. This applies to both the smoke test and the app E2E test (a tab with a comment does not sleep through `sleep_tab`, then sleeps after the comment is emptied). Typing directly with a keyboard on real sites (YouTube, Gmail) has not been tried and is on the manual checklist (`docs/testing/manual-checklist.md`, Task 9 items g through j).
+- The critical memory path has only been tested with unit tests, not with `sudo memory_pressure -S -l critical`.
+- Resuming a YouTube video after the tab wakes is tested with unit tests. The manual check on real YouTube (item c) has not been ticked.
 
-## Yang tidak dicakup
+## Out of scope
 
-- **Form di dalam iframe**, misalnya kolom komentar Disqus atau form yang disematkan. Pelacak hanya dipasang di frame utama (`crates/engine-webkit/src/scripts.rs:41`), jadi draft di iframe tidak dikenali dan tabnya bisa tidur.
-- **Pengukuran memory dengan bawaan baru.** Angka di awal dokumen berasal dari pengujian dengan `sleep_idle_secs` 20 dan belum diulang untuk 1800 detik dan 5 tab.
+- **Forms inside iframes**, for example Disqus comment boxes or embedded forms. The tracker is only installed in the main frame (`crates/engine-webkit/src/scripts.rs:41`), so drafts in iframes are not detected and the tab may sleep.
+- **Memory measurements with the new defaults.** The numbers at the top of this document come from a test with `sleep_idle_secs` 20 and have not been repeated for 1800 seconds and 5 tabs.

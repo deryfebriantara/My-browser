@@ -1,111 +1,111 @@
-# Riwayat dan saran address bar
+# History and address bar suggestions
 
-my-browser mencatat halaman yang dibuka, menyarankan halaman itu saat Anda mengetik di address bar, dan menyediakan jendela History untuk mencari dan menghapusnya. Semua saran berasal dari riwayat dan tab di Mac ini. Ketikan Anda tidak pernah dikirim ke mesin pencari sebelum Anda menekan Enter.
+my-browser records the pages you open, suggests them as you type in the address bar, and provides a History window to search and delete them. All suggestions come from the history and tabs on this Mac. What you type is never sent to a search engine before you press Enter.
 
-## Cara pakai
+## How to use
 
-- **Address bar.** Ketik sebagian alamat atau judul. Alamat yang sering Anda buka dilengkapi langsung (misalnya `you` menjadi `youtube.com`), dengan bagian tambahan terseleksi. Lanjut mengetik untuk menimpanya; Backspace menghapusnya.
-  - ↑ ↓ memilih saran, Enter membuka saran yang disorot, klik juga bisa.
-  - Escape pertama menutup daftar saran, Escape kedua mengembalikan alamat tab.
-  - Tab menerima pelengkapan.
-  - Baris **Switch to tab** membuka tab yang sudah terbuka, tanpa memuat ulang. Kalau tab asalnya kosong, tab itu ditutup.
-  - Baris terakhir selalu **Search “…”** di mesin pencari.
-- **Jendela History:** **History > Show All History** (⌘Y). Daftar dikelompokkan per hari, bisa dicari. Klik membuka di tab ini, ⌘-klik atau tombol ↗ membuka di tab baru, tombol ✕ menghapus satu halaman.
-- **Clear History:** **History > Clear History…** atau tombol di jendela History. Pilihannya Last hour, Today, Today and yesterday, atau All history.
+- **Address bar.** Type part of an address or title. Addresses you open often are completed inline (for example, `you` becomes `youtube.com`), with the added part selected. Keep typing to overwrite it; Backspace deletes it.
+  - ↑ ↓ select a suggestion, Enter opens the highlighted suggestion, and clicking works too.
+  - The first Escape closes the suggestion list, the second Escape restores the tab's address.
+  - Tab accepts the completion.
+  - A **Switch to tab** row switches to a tab that is already open, without reloading it. If the tab you started from is empty, it is closed.
+  - The last row is always **Search “…”** on the search engine.
+- **History window:** **History > Show All History** (⌘Y). The list is grouped by day and can be searched. Click opens in this tab, ⌘-click or the ↗ button opens in a new tab, and the ✕ button deletes a single page.
+- **Clear History:** **History > Clear History…** or the button in the History window. The options are Last hour, Today, Today and yesterday, or All history.
 
-## Yang dicatat
+## What is recorded
 
-Satu entri per halaman, berisi URL, judul, jumlah kunjungan, jumlah kali alamatnya diketik, serta waktu kunjungan pertama dan terakhir (`crates/core/src/history.rs:25`).
+One entry per page, holding the URL, title, visit count, the number of times the address was typed, and the first and last visit times (`crates/core/src/history.rs:25`).
 
-- **Halaman SPA ikut tercatat.** Contohnya klik video di YouTube, yang mengganti alamat lewat `history.pushState` tanpa memuat halaman baru. WebKit melaporkan perubahan alamat seperti itu saat halaman tidak sedang loading, dan browser membedakannya dari muat halaman biasa (`crates/engine-webkit/src/observer.rs:49`, `crates/core/src/browser.rs:486`).
-- **Yang tidak menambah hitungan:** muat ulang, membangunkan tab yang tidur, memulihkan sesi saat browser dibuka, dan membuka lagi tab yang ditutup. Setiap tab mengingat halaman terakhir yang sudah dicatat (`crates/core/src/history.rs:93`, `crates/core/src/browser.rs:90`, `:295`).
-- **URL dibersihkan sebelum dicatat** (`crates/core/src/history.rs:56`):
-  - fragment (`#bagian`) dan nama pengguna atau password di URL dibuang;
-  - parameter pelacak dibuang: `utm_*`, `fbclid`, `gclid`, `dclid`, `msclkid`, `mc_eid`, `igshid` (`:22`);
-  - di halaman tonton YouTube, parameter `t` dibuang. Parameter ini ditambahkan saat tab ditidurkan (lihat `docs/tab-tidur.md`), jadi tanpa pembersihan setiap tidur dan bangun akan membuat entri baru.
-- **Tidak dicatat:** alamat selain http/https (`about:`, `data:`, `file:`), URL lebih dari 4096 byte, dan URL yang dialihkan (redirect). Yang tercatat hanya alamat tujuan akhirnya.
-- **Ketikan dibedakan dari pencarian dan link.** Alamat yang diketik di address bar menaikkan hitungan ketikan. Pencarian dan link tidak (`crates/core/src/browser.rs:334`).
-- Riwayat bisa dimatikan dengan `"history_enabled": false` di `settings.json`.
+- **SPA pages are recorded too.** For example, clicking a video on YouTube changes the address through `history.pushState` without loading a new page. WebKit reports such address changes while the page is not loading, and the browser tells them apart from a regular page load (`crates/engine-webkit/src/observer.rs:49`, `crates/core/src/browser.rs:486`).
+- **What does not increase the count:** reloading, waking a sleeping tab, restoring the session when the browser opens, and reopening a closed tab. Each tab remembers the last page it already recorded (`crates/core/src/history.rs:93`, `crates/core/src/browser.rs:90`, `:295`).
+- **URLs are cleaned before they are recorded** (`crates/core/src/history.rs:56`):
+  - the fragment (`#section`) and any username or password in the URL are dropped;
+  - tracking parameters are dropped: `utm_*`, `fbclid`, `gclid`, `dclid`, `msclkid`, `mc_eid`, `igshid` (`:22`);
+  - on YouTube watch pages, the `t` parameter is dropped. This parameter is added when a tab is put to sleep (see `docs/tab-sleep.md`), so without the cleanup every sleep and wake would create a new entry.
+- **Not recorded:** addresses other than http/https (`about:`, `data:`, `file:`), URLs longer than 4096 bytes, and redirected URLs. Only the final destination address is recorded.
+- **Typed addresses are kept apart from searches and links.** An address typed in the address bar increases the typed count. Searches and links do not (`crates/core/src/browser.rs:334`).
+- History can be turned off with `"history_enabled": false` in `settings.json`.
 
-## Penyimpanan
+## Storage
 
-- Berkas: `~/Library/Application Support/my-browser/history.json`, izin 0600 sejak dibuat (`crates/core/src/persist.rs:26`). Isinya tidak dienkripsi, sama seperti riwayat Safari dan Chrome.
-- Batasnya 10.000 halaman dan 90 hari. Halaman yang terakhir dibuka paling lama dibuang lebih dulu (`crates/core/src/history.rs:16`, `:18`). Judul dipotong di 300 karakter.
-- Disimpan paling sering sekali per 2 menit selama browsing (`crates/app/src/state.rs:38`), selalu saat keluar, dan langsung setelah ada yang dihapus.
-- **Clear History menghapus entri utuh** yang terakhir dibuka dalam rentang yang dipilih (`crates/core/src/history.rs:186`). Kunjungan tidak disimpan satu per satu, jadi halaman yang juga dibuka sebelum rentang itu ikut terhapus. Ini sengaja: lebih aman menghapus terlalu banyak daripada terlalu sedikit.
-- **Yang tidak ikut terhapus:** tab yang terbuka, daftar mundur/maju di tab, `session.json`, daftar tab yang baru ditutup, cookie, login, dan cache.
+- File: `~/Library/Application Support/my-browser/history.json`, with permissions 0600 from the moment it is created (`crates/core/src/persist.rs:26`). Its contents are not encrypted, the same as Safari and Chrome history.
+- The limits are 10,000 pages and 90 days. The pages last opened longest ago are dropped first (`crates/core/src/history.rs:16`, `:18`). Titles are truncated at 300 characters.
+- Saved at most once every 2 minutes while browsing (`crates/app/src/state.rs:38`), always on quit, and right after anything is deleted.
+- **Clear History deletes whole entries** last opened within the selected range (`crates/core/src/history.rs:186`). Visits are not stored one by one, so a page that was also opened before that range is deleted too. This is intentional: deleting too much is safer than deleting too little.
+- **What is not cleared:** open tabs, the back/forward list in each tab, `session.json`, the recently closed tabs list, cookies, logins, and cache.
 
-## Cara saran dipilih
+## How suggestions are chosen
 
-`crates/core/src/suggest.rs`, dipanggil setiap kali isi address bar berubah.
+`crates/core/src/suggest.rs`, called every time the address bar contents change.
 
-1. **Baris pertama** adalah tindakan bawaan saat Enter ditekan:
-   - halaman yang dilengkapi inline, kalau ada;
-   - kalau tidak, "Open address" untuk teks yang berupa alamat;
-   - kalau bukan alamat, "Search “…”".
-2. **"Switch to tab":** paling banyak 3 tab yang cocok (`:13`).
-3. **Halaman dari riwayat**, berperingkat, tanpa duplikat.
-4. **"Search “…”"** di baris terakhir. Totalnya paling banyak 8 baris (`:11`).
+1. **The first row** is the default action when Enter is pressed:
+   - the inline-completed page, if there is one;
+   - otherwise, "Open address" for text that is an address;
+   - if it is not an address, "Search “…”".
+2. **"Switch to tab":** at most 3 matching tabs (`:13`).
+3. **Pages from history**, ranked, without duplicates.
+4. **"Search “…”"** in the last row. At most 8 rows in total (`:11`).
 
-Kecocokan (`crates/core/src/suggest.rs:236`), dari yang paling kuat:
-1. awal host (`you` ke `youtube.com`);
-2. awal alamat tanpa skema (`github.com/serv`);
-3. setiap kata ada di awal kata judul atau URL;
-4. setiap kata muncul di mana saja. Kata kurang dari 3 huruf tetap harus di awal kata, supaya `ub` tidak mencocokkan `youtube`.
+Matches (`crates/core/src/suggest.rs:236`), from strongest to weakest:
+1. start of the host (`you` to `youtube.com`);
+2. start of the address without the scheme (`github.com/serv`);
+3. every word is at the start of a word in the title or URL;
+4. every word appears anywhere. Words shorter than 3 letters must still be at the start of a word, so `ub` does not match `youtube`.
 
-Bobotnya jumlah kunjungan ditambah tiga kali jumlah ketikan, lalu dikurangi menurut umur: penuh sampai 4 hari, lalu 0,7, 0,5, dan 0,3 setelah sebulan (`:263`).
+The weight is the visit count plus three times the typed count, then reduced by age: full weight up to 4 days, then 0.7, 0.5, and 0.3 after a month (`:263`).
 
-**Pelengkapan inline** (`:277`) hanya untuk teks ASCII tanpa spasi:
-- Tanpa `/`: host yang pernah diketik minimal sekali, atau dikunjungi minimal tiga kali (`:341`).
-- Dengan `/`: hanya alamat yang pernah diketik (`:300`).
+**Inline completion** (`:277`) applies only to ASCII text without spaces:
+- Without `/`: hosts typed at least once, or visited at least three times (`:341`).
+- With `/`: only addresses that have been typed (`:300`).
 
-Halaman yang hanya sekali dibuka lewat link tetap muncul sebagai saran, tetapi tidak dilengkapi otomatis. Pelengkapan juga tidak terjadi setelah Backspace atau Delete, saat kursor tidak di akhir teks, dan saat IME (mis. input Jepang) sedang menyusun huruf (`crates/core/src/address_edit.rs`).
+A page opened only once through a link still appears as a suggestion, but is not completed automatically. Completion also does not happen after Backspace or Delete, when the cursor is not at the end of the text, or while an IME (e.g. Japanese input) is composing characters (`crates/core/src/address_edit.rs`).
 
-**Kecepatan:** pencocokan berjalan di main thread pada setiap ketikan. Dengan 10.000 entri, rata-ratanya 1,3 ms per ketikan di build release, diukur dengan test `suggest_10k_is_fast` (`cargo test --release -p my-browser-core suggest_10k -- --ignored --nocapture`). Versi pertama butuh 31,5 ms karena host dicari linear dan setiap entri dialokasikan ulang. Sekarang host dicari lewat `HashMap` dan pencocokan ASCII tanpa alokasi.
+**Speed:** matching runs on the main thread on every keystroke. With 10,000 entries, the average is 1.3 ms per keystroke in a release build, measured with the `suggest_10k_is_fast` test (`cargo test --release -p my-browser-core suggest_10k -- --ignored --nocapture`). The first version took 31.5 ms because hosts were searched linearly and every entry was reallocated. Hosts are now looked up through a `HashMap`, and ASCII matching does not allocate.
 
-**Daftar saran native:** jendela anak tanpa bingkai di bawah address field, tanpa WebView (`crates/app/src/suggest_popup.rs`). Menampilkannya tidak menambah proses WebContent (diuji E2E). Jendela tanpa bingkai tidak pernah menjadi key window, jadi kursor tetap di address bar.
+**Native suggestion list:** a borderless child window below the address field, without a WebView (`crates/app/src/suggest_popup.rs`). Showing it does not add a WebContent process (tested E2E). A borderless window never becomes the key window, so the cursor stays in the address bar.
 
-## Claude dan riwayat
+## Claude and history
 
-Tool MCP `search_history` (baca saja) mencari riwayat. Parameternya `query` (semua kata harus ada di judul atau URL), `limit` (bawaan 20, maksimal 100), dan `days`. Hasilnya URL, judul, waktu terakhir dibuka dalam ISO 8601 berzona, dan jumlah kunjungan (`crates/app/src/control.rs:534`).
+The MCP tool `search_history` (read-only) searches history. Its parameters are `query` (every word must appear in the title or URL), `limit` (default 20, maximum 100), and `days`. It returns the URL, title, last-opened time in ISO 8601 with a time zone, and visit count (`crates/app/src/control.rs:534`).
 
-- Tool ini juga tersedia di panel Ask Claude, yang hanya mendapat tool baca (`crates/core/src/claude_chat.rs:27`).
-- Program MCP luar tetap harus diizinkan lewat dialog izin program. Teks dialognya menyebut "membaca riwayat".
-- Judul halaman berasal dari situs dan bisa berisi instruksi jahat, jadi hasil tool dan deskripsinya mengingatkan Claude untuk tidak mengikutinya. Panel Ask Claude tidak bisa membuka URL, jadi riwayat tidak bisa dikirim keluar dari situ.
-- Program MCP yang sudah diizinkan sebelum fitur ini ada otomatis bisa membaca riwayat, tanpa ditanya lagi. Cabut lewat **Claude > Revoke MCP Client Access** kalau tidak diinginkan.
+- This tool is also available in the Ask Claude panel, which only gets read tools (`crates/core/src/claude_chat.rs:27`).
+- External MCP programs must still be allowed through the program permission dialog. The dialog text mentions "read your browsing history".
+- Page titles come from sites and can contain malicious instructions, so the tool results and the tool description remind Claude not to follow them. The Ask Claude panel cannot open URLs, so history cannot be sent out from there.
+- MCP programs allowed before this feature existed can read history automatically, without being asked again. Revoke access with **Claude > Revoke MCP Client Access** if you do not want that.
 
-## Kode
+## Code
 
-- `crates/core/src/history.rs`: entri, pembersihan URL, pencatatan, pencarian, batas, berkas.
-- `crates/core/src/suggest.rs`: peringkat saran dan pelengkapan inline.
-- `crates/core/src/address_edit.rs`: perilaku keyboard address bar (murni, tanpa AppKit).
-- `crates/core/src/browser.rs`: kapan kunjungan dicatat, `navigate_from_address`, `open_suggestion`.
-- `crates/engine-webkit/src/observer.rs`: membedakan pushState dari muat halaman.
-- `crates/app/src/address_bar.rs` dan `suggest_popup.rs`: field editor dan daftar saran.
-- `crates/app/src/history_window.rs` dan `.html`: jendela History dan Clear History (`clear_dialog`, `:186`). Judul hanya disisipkan sebagai teks (`history_window.html:91`).
+- `crates/core/src/history.rs`: entries, URL cleanup, recording, search, limits, file.
+- `crates/core/src/suggest.rs`: suggestion ranking and inline completion.
+- `crates/core/src/address_edit.rs`: address bar keyboard behavior (pure, no AppKit).
+- `crates/core/src/browser.rs`: when visits are recorded, `navigate_from_address`, `open_suggestion`.
+- `crates/engine-webkit/src/observer.rs`: tells pushState apart from page loads.
+- `crates/app/src/address_bar.rs` and `suggest_popup.rs`: field editor and suggestion list.
+- `crates/app/src/history_window.rs` and `.html`: History window and Clear History (`clear_dialog`, `:186`). Titles are only inserted as text (`history_window.html:91`).
 
-## Pengujian
+## Testing
 
-- **Unit test core:** 14 di `history.rs`, 15 untuk pencatatan dan saran di `browser.rs`, 17 di `suggest.rs` (plus satu benchmark), dan 9 di `address_edit.rs`.
-- **Smoke test WebKit:** pushState dan `#fragment` dilaporkan sebagai navigasi dalam dokumen; muat halaman tetap `UrlChanged`.
-- **E2E di instance uji (24 dari 24 lulus):**
-  - redirect, SPA, dan fragment;
-  - reload dan tidur-bangun tidak menambah hitungan;
-  - mengetik alamat, inline, Backspace, panah, Escape dua tahap, dan "Switch to tab";
-  - letak daftar saran, dan proses WebContent yang tidak bertambah;
-  - izin 0600 dan isi tetap utuh setelah dibuka ulang;
-  - jendela History, hapus satu entri, dan Clear History.
-- **Pengait uji khusus build debug:** `debug_ui` di socket kontrol (`crates/app/src/debug_ui.rs`) mengetik lewat `insertText:` dan menekan tombol lewat `doCommandBySelector:` di field editor sungguhan. Pengait ini tidak ada di build release.
+- **Core unit tests:** 14 in `history.rs`, 15 for recording and suggestions in `browser.rs`, 17 in `suggest.rs` (plus one benchmark), and 9 in `address_edit.rs`.
+- **WebKit smoke test:** pushState and `#fragment` are reported as same-document navigations; page loads are still `UrlChanged`.
+- **E2E on a test instance (24 of 24 passed):**
+  - redirect, SPA, and fragment;
+  - reload and sleep/wake do not increase the count;
+  - typing an address, inline completion, Backspace, arrow keys, two-step Escape, and "Switch to tab";
+  - suggestion list position, and no additional WebContent process;
+  - 0600 permissions, and contents intact after reopening;
+  - History window, deleting a single entry, and Clear History.
+- **Debug-build-only test hook:** `debug_ui` on the control socket (`crates/app/src/debug_ui.rs`) types through `insertText:` and presses keys through `doCommandBySelector:` on the real field editor. This hook does not exist in release builds.
 
-## Yang belum terverifikasi
+## Not yet verified
 
-- Ketikan di E2E dikirim lewat field editor (`insertText:` dan `doCommandBySelector:`), bukan keyboard fisik. Mengetik langsung, klik mouse pada baris saran, VoiceOver, dan IME Jepang belum dicoba. Semuanya masuk daftar cek manual.
-- Pencatatan klik video di YouTube sungguhan belum dicoba. Yang diuji adalah halaman lokal yang memanggil `pushState`.
-- Daftar saran baru dilihat dalam mode gelap.
+- Keystrokes in E2E are sent through the field editor (`insertText:` and `doCommandBySelector:`), not a physical keyboard. Typing directly, mouse clicks on suggestion rows, VoiceOver, and the Japanese IME have not been tried. All of them are on the manual checklist.
+- Recording a video click on real YouTube has not been tried. What was tested is a local page that calls `pushState`.
+- The suggestion list has only been seen in dark mode.
 
-## Yang tidak dicakup
+## Out of scope
 
-- **Bookmark** belum ada.
-- **Saran dari mesin pencari** sengaja tidak dibuat, karena keputusan pengguna: ketikan tidak boleh dikirim ke luar.
-- **Sinkronisasi riwayat** antarperangkat dan **impor riwayat** dari browser lain belum ada.
-- **Mode privat** (jendela tanpa riwayat) belum ada; yang ada hanya mematikan riwayat lewat `history_enabled`.
+- **Bookmarks** do not exist yet.
+- **Search engine suggestions** are intentionally not built, by the user's decision: keystrokes must not be sent outside.
+- **History sync** across devices and **history import** from other browsers do not exist yet.
+- **Private mode** (windows without history) does not exist yet; the only option is turning history off with `history_enabled`.

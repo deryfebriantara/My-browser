@@ -1,84 +1,84 @@
-# Hasil Pengukuran Memory
+# Memory Measurements
 
-Alat ukur: `scripts/ukur-memory.sh` (crate `memtool`). Angka adalah physical footprint (`proc_pid_rusage`, `ri_phys_footprint`), sama dengan kolom Memory di Activity Monitor. Proses pembantu dikelompokkan ke aplikasi lewat responsible pid.
+Measurement tool: `scripts/ukur-memory.sh` (crate `memtool`). The numbers are physical footprint (`proc_pid_rusage`, `ri_phys_footprint`), the same as the Memory column in Activity Monitor. Helper processes are grouped under their app through the responsible pid.
 
-Mesin: arm64, RAM 16 GB, macOS 15.7.7, Safari 18.6.
+Machine: arm64, 16 GB RAM, macOS 15.7.7, Safari 18.6.
 
-## Verifikasi atribusi (Task 2, 2026-11-15)
+## Attribution check (Task 2, 2026-11-15)
 
-- `my-browser` (prototipe, YouTube terbuka): 9 proses, termasuk 2 `com.apple.WebKit.WebContent`, `com.apple.WebKit.GPU`, dan `com.apple.WebKit.Networking`. Atribusi berhasil.
-- Safari (beberapa tab milik pengguna ditambah satu tab Wikipedia): 14 proses, termasuk 3 `com.apple.WebKit.WebContent`. Atribusi berhasil.
+- `my-browser` (prototype, YouTube open): 9 processes, including 2 `com.apple.WebKit.WebContent`, `com.apple.WebKit.GPU`, and `com.apple.WebKit.Networking`. Attribution works.
+- Safari (several of the user's tabs plus one Wikipedia tab): 14 processes, including 3 `com.apple.WebKit.WebContent`. Attribution works.
 
-Pengamatan: prototipe dengan satu tab YouTube memakai dua proses WebContent (601 MB dan 328 MB). Kemungkinan satu di antaranya proses lama dari halaman login Google yang masih ditahan WebKit. Ini sesuai risiko di spec bagian 8 dan perlu diperhatikan di Task 9.
+Observation: the prototype with one YouTube tab used two WebContent processes (601 MB and 328 MB). One of them is probably a stale process from the Google sign-in page that WebKit is still holding. This matches the risk in section 8 of the spec and needs attention in Task 9.
 
-## Pengukuran awal: satu tab YouTube (Task 2)
+## Baseline: one YouTube tab (Task 2)
 
-| Browser | Video | Total footprint | Jumlah proses | Proses aplikasi saja |
+| Browser | Video | Total footprint | Process count | App process only |
 |---|---|---|---|---|
-| my-browser (prototipe) | https://youtu.be/83H3YAm2woI, 1080p, diukur 18:32:58 setelah diputar 2 menit | 1.415,4 MB | 10 | 36,8 MB |
-| Safari 18.6 | video sama, 1080p, diukur 18:36:22 setelah diputar 2 menit | 1.812,3 MB | 17 | 58,8 MB |
+| my-browser (prototype) | https://youtu.be/83H3YAm2woI, 1080p, measured at 18:32:58 after 2 minutes of playback | 1,415.4 MB | 10 | 36.8 MB |
+| Safari 18.6 | same video, 1080p, measured at 18:36:22 after 2 minutes of playback | 1,812.3 MB | 17 | 58.8 MB |
 
-Rincian proses terbesar:
+Largest processes:
 
-| Proses | my-browser | Safari |
+| Process | my-browser | Safari |
 |---|---|---|
-| WebContent tab YouTube | 839,4 MB | 1.487,5 MB |
-| WebContent lain | 327,3 MB (satu proses lama, diduga sisa halaman login Google) | 32,5 MB (tiga proses kecil) |
-| WebKit GPU | 126,6 MB | 145,2 MB |
-| Proses aplikasi | 36,8 MB | 58,8 MB |
+| YouTube tab WebContent | 839.4 MB | 1,487.5 MB |
+| Other WebContent | 327.3 MB (one stale process, probably left over from the Google sign-in page) | 32.5 MB (three small processes) |
+| WebKit GPU | 126.6 MB | 145.2 MB |
+| App process | 36.8 MB | 58.8 MB |
 
-Batas pengukuran ini: masing-masing hanya satu sampel, diambil 2 menit setelah video diputar. Selisih buffer video antar pengambilan bisa besar, jadi angka di atas belum bisa dipakai untuk menyimpulkan selisih pasti antara kedua browser. Yang cukup jelas: proses aplikasi prototipe lebih kecil (36,8 MB banding 58,8 MB), dan proses WebContent lama sebesar 327 MB di prototipe adalah memory yang bisa dihemat.
+Limits of this measurement: one sample each, taken 2 minutes after the video started playing. The video buffer can differ a lot between samples, so the numbers above cannot yet support a firm conclusion about the difference between the two browsers. What is fairly clear: the prototype's app process is smaller (36.8 MB versus 58.8 MB), and the 327 MB stale WebContent process in the prototype is memory that can be saved.
 
-## Tab tidur dan proses WebContent (Task 9, 2026-11-15)
+## Tab sleep and WebContent processes (Task 9, 2026-11-15)
 
-Pengaturan uji: folder data terpisah (`MYBROWSER_DATA_DIR`), `sleep_idle_secs` 20, empat tab dari argumen (`id.wikipedia.org/wiki/Indonesia`, `github.com/servo/servo`, `example.com`, `www.rust-lang.org`), tab terakhir aktif. Diukur dengan `scripts/ukur-memory.sh --detail my-browser`.
+Test setup: separate data folder (`MYBROWSER_DATA_DIR`), `sleep_idle_secs` 20, four tabs from the command line arguments (`id.wikipedia.org/wiki/Indonesia`, `github.com/servo/servo`, `example.com`, `www.rust-lang.org`), last tab active. Measured with `scripts/ukur-memory.sh --detail my-browser`.
 
-| Waktu | Proses WebContent | Total my-browser |
+| Time | WebContent processes | my-browser total |
 |---|---|---|
-| t+22 detik, sebelum tick pertama | 4 | 399,0 MB |
-| t+40 detik, 10 detik setelah tick pertama menidurkan 3 tab | 1 | 122,9 MB |
+| t+22 seconds, before the first tick | 4 | 399.0 MB |
+| t+40 seconds, 10 seconds after the first tick put 3 tabs to sleep | 1 | 122.9 MB |
 
-Bug yang ditemukan dan diperbaiki sebelum angka di atas: page yang dibuat di `main()` sebelum `app.run()` (tab sesi yang dipulihkan dan URL dari argumen) tidak pernah dibebaskan. Saat dilepas, `WKWebView`-nya masih punya 31 retain karena WebKit meng-autorelease objek itu puluhan kali saat dibuat, dan di luar `app.run()` tidak ada autorelease pool. Akibatnya proses WebContent tab yang ditidurkan tetap hidup (diamati: 4 proses tetap hidup lebih dari 120 detik). Perbaikan: seluruh persiapan di `main()` dibungkus `autoreleasepool` (`crates/app/src/main.rs`). Setelah perbaikan, retain saat dilepas = 1 dan prosesnya mati.
+Bug found and fixed before the numbers above: pages created in `main()` before `app.run()` (restored session tabs and URLs from the arguments) were never freed. When released, their `WKWebView` still had 31 retains, because WebKit autoreleases the object dozens of times while creating it and there is no autorelease pool outside `app.run()`. As a result, the WebContent processes of sleeping tabs stayed alive (observed: 4 processes still alive after more than 120 seconds). Fix: all setup in `main()` is wrapped in `autoreleasepool` (`crates/app/src/main.rs`). After the fix, the retain count at release is 1 and the process exits.
 
-Keputusan CHECKPOINT: proses WebContent tab yang tidur mati dalam 10 detik, jadi Task 12 (API privat) tidak diperlukan.
+CHECKPOINT decision: the WebContent processes of sleeping tabs exit within 10 seconds, so Task 12 (private API) is not needed.
 
-## Pemblokir iklan (Task 10, 2026-11-15)
+## Ad blocker (Task 10, 2026-11-15)
 
-Daftar aturan: EasyList + EasyPrivacy (diunduh 2026-11-15) dikonversi `blocklist-gen` menjadi 131.509 aturan WebKit dalam 3 daftar (14 MB JSON); 3.627 filter tidak bisa dikonversi dan dilewati. Kompilasi pertama: 763, 1.183, dan 1.265 ms per daftar (berjalan paralel); peluncuran berikutnya memakai hasil kompilasi dari penyimpanan WebKit.
+Rule lists: EasyList + EasyPrivacy (downloaded 2026-11-15), converted by `blocklist-gen` into 131,509 WebKit rules in 3 lists (14 MB of JSON); 3,627 filters could not be converted and were skipped. First compile: 763, 1,183, and 1,265 ms per list (running in parallel); later launches use the compiled lists from WebKit storage.
 
-Satu tab `https://www.detik.com`, diukur 30 detik setelah aplikasi dibuka, folder data terpisah per percobaan:
+One tab on `https://www.detik.com`, measured 30 seconds after the app opened, with a separate data folder for each run:
 
-| Percobaan | Proses WebContent | Total my-browser |
+| Run | WebContent process | my-browser total |
 |---|---|---|
-| Pemblokir aktif, kompilasi pertama | 142,2 MB | 190,8 MB |
-| detik.com dikecualikan (`blocker_exceptions`) | 455,1 MB | 529,6 MB |
-| Pemblokir aktif, daftar dari cache | 118,0 MB | 162,6 MB |
+| Blocker on, first compile | 142.2 MB | 190.8 MB |
+| detik.com excepted (`blocker_exceptions`) | 455.1 MB | 529.6 MB |
+| Blocker on, lists from cache | 118.0 MB | 162.6 MB |
 
-Satu sampel per percobaan. Belum dicek secara visual apakah ada bagian situs yang rusak; itu masuk daftar cek manual.
+One sample per run. Whether any part of the site looks broken has not been checked visually yet; that is on the manual checklist.
 
-## Perbaikan pemblokir: tombol "Lewati" YouTube (2026-11-20)
+## Blocker fix: YouTube "Skip" button (2026-11-20)
 
-Laporan pengguna: iklan video YouTube tidak punya tombol "Lewati".
+User report: YouTube video ads had no "Skip" button.
 
-Penyebab, dibuktikan di WebKit dengan program diagnostik yang memuat halaman dengan daftar aturan tertentu lalu memeriksa elemen uji yang disisipkan ke halaman:
+Cause, proven in WebKit with a diagnostic program that loads a page with a given rule list and then inspects test elements injected into the page:
 
-1. EasyList menyembunyikan `.video-ads` di semua situs (`##.video-ads`) dan mengecualikan YouTube (`youtube.com#@#.video-ads`). Crate adblock mengubah pengecualian itu menjadi aturan sembunyi dengan `unless-domain`, sementara aturan umumnya tetap berlaku di mana-mana. Akibatnya wadah UI iklan YouTube, termasuk tombol "Lewati", ikut tersembunyi, padahal video iklannya tetap diputar.
-2. `@@||www.youtube.com^$generichide` (dan 180 situs lain, termasuk GitHub, Gmail, dan Wikipedia) dibuang crate adblock. Akibatnya 13.637 aturan sembunyi umum tetap berlaku di situs-situs itu.
-3. Domain di aturan kosmetik ditulis tanpa awalan `*`. Di WebKit, `youtube.com` hanya cocok dengan host yang persis sama, jadi aturan khusus YouTube tidak berlaku di `www.youtube.com`.
+1. EasyList hides `.video-ads` on all sites (`##.video-ads`) and makes an exception for YouTube (`youtube.com#@#.video-ads`). The adblock crate turns that exception into a hide rule with `unless-domain`, while the generic rule still applies everywhere. As a result, the YouTube ad UI container, including the "Skip" button, was hidden as well, even though the ad video still played.
+2. `@@||www.youtube.com^$generichide` (and 180 other sites, including GitHub, Gmail, and Wikipedia) is dropped by the adblock crate. As a result, 13,637 generic hide rules still applied on those sites.
+3. Domains in cosmetic rules were written without a `*` prefix. In WebKit, `youtube.com` only matches the exact same host, so YouTube-specific rules did not apply on `www.youtube.com`.
 
-Temuan perilaku WebKit yang menentukan bentuk perbaikan: `ignore-previous-rules` yang hanya cocok dengan URL dokumen tidak cukup. Untuk setiap subresource yang tidak terkena pengecualian (mis. CSS dari ytimg.com), WebKit memasang lagi stylesheet aturan umum. Karena itu generichide ditulis sebagai satu aturan dengan `url-filter` `.*` dan `if-domain` berisi semua situsnya, ditaruh di daftar khusus aturan sembunyi umum.
+A WebKit behavior that decided the shape of the fix: an `ignore-previous-rules` rule that only matches the document URL is not enough. For every subresource not covered by the exception (e.g. CSS from ytimg.com), WebKit installs the generic rules stylesheet again. So generichide is written as a single rule with `url-filter` `.*` and an `if-domain` that lists all of those sites, placed in a list reserved for generic hide rules.
 
-Hasil (1 = tersembunyi, 0 = tampil; baris terakhir menghitung muatan dari jaringan iklan):
+Results (1 = hidden, 0 = shown; the last row counts resources loaded from ad networks):
 
-| Uji | Tanpa pemblokir | Daftar lama | Daftar baru |
+| Test | No blocker | Old lists | New lists |
 |---|---|---|---|
-| YouTube, elemen `.video-ads` (wadah tombol Lewati) | 0 | 1 | 0 |
-| YouTube, selector umum `.video-ads-container` | 0 | 1 | 0 |
-| YouTube, aturan khusus youtube.com | 0 | 0 | 1 |
-| GitHub, selector umum | 0 | 1 | 0 |
-| detik.com, selector umum (situs tanpa pengecualian) | 0 | 1 | 1 |
-| detik.com, muatan doubleclick/googlesyndication/adservice | 5 | 0 | 0 |
+| YouTube, `.video-ads` element (Skip button container) | 0 | 1 | 0 |
+| YouTube, generic selector `.video-ads-container` | 0 | 1 | 0 |
+| YouTube, youtube.com-specific rule | 0 | 0 | 1 |
+| GitHub, generic selector | 0 | 1 | 0 |
+| detik.com, generic selector (site without an exception) | 0 | 1 | 1 |
+| detik.com, loads from doubleclick/googlesyndication/adservice | 5 | 0 | 0 |
 
-Batas: iklan video YouTube tetap diputar, karena dikirim dari server yang sama dengan videonya dan content blocker WebKit tidak bisa membedakannya. Perbaikan ini hanya mengembalikan tombol "Lewati" untuk iklan yang memang bisa dilewati.
+Limit: YouTube video ads still play, because they are served from the same servers as the video and the WebKit content blocker cannot tell them apart. This fix only brings back the "Skip" button for ads that can be skipped.
 
-Bug lain yang ditemukan saat pengujian ini: menghapus daftar aturan lama dari penyimpanan WebKit dengan completion handler kosong membuat proses crash (SIGSEGV di `removeContentRuleListForIdentifier:completionHandler:`). Ini terjadi setiap kali isi daftar aturan berubah, termasuk saat daftar baru ini dipasang. Diperbaiki dan dijaga oleh smoke test.
+Another bug found during this testing: removing an old rule list from WebKit storage with an empty completion handler crashed the process (SIGSEGV in `removeContentRuleListForIdentifier:completionHandler:`). This happened every time the rule list contents changed, including when these new lists were installed. Fixed, and covered by a smoke test.

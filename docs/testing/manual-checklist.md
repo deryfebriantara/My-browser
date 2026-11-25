@@ -1,164 +1,164 @@
-# Daftar Cek Manual
+# Manual Checklist
 
-Dijalankan pada build bundle (`scripts/run.sh`). Checkbox yang gagal diberi catatan alasannya.
+Run against the bundle build (`scripts/run.sh`). Failed checkboxes get a note explaining why.
 
-## Task 1: Prototipe dan GATE login Google
+## Task 1: Prototype and Google login GATE
 
-Tanggal: 2026-11-15. macOS 15.7.7, Safari 18.6, arm64.
+Date: 2026-11-15. macOS 15.7.7, Safari 18.6, arm64.
 
-- [x] Window terbuka dan halaman YouTube tampil
-- [x] Login lewat tombol "Sign in" YouTube (password dan kode HP) diterima Google
-- [x] Video bisa diputar
-- [x] Tombol layar penuh YouTube berfungsi
-- [x] Setelah keluar (⌘Q) dan dibuka lagi (`open dist/my-browser.app`), masih login
+- [x] The window opens and the YouTube page appears
+- [x] Signing in through YouTube's "Sign in" button (password and phone code) is accepted by Google
+- [x] Videos play
+- [x] The YouTube full screen button works
+- [x] After quitting (⌘Q) and reopening (`open dist/my-browser.app`), the user is still signed in
 
-Catatan: dicek pengguna pada 2026-11-15, semua lancar. GATE lulus.
+Note: checked by the user on 2026-11-15, everything worked. GATE passed.
 
-## Task 8: UI aplikasi
+## Task 8: App UI
 
-- [ ] Window 1280x800 terbuka; tidak bisa diperkecil di bawah 800x500
-- [ ] Dari atas: nav bar, tab strip, area konten
-- [ ] Menutup window mengakhiri aplikasi
-- [ ] Tombol mundur/maju aktif hanya saat ada riwayat
-- [ ] Ikon muat ulang berganti menjadi silang saat halaman sedang dimuat
-- [ ] Address field menampilkan URL tab aktif, kosong untuk tab kosong
-- [ ] Mengetik `youtube.com` lalu Enter memuat YouTube
-- [ ] Mengetik `resep nasi goreng` lalu Enter membuka pencarian Google
-- [ ] Escape di address field mengembalikan URL tab aktif
-- [ ] Tab kosong yang aktif membuat address field langsung fokus
-- [ ] ⌘V di address field menempel teks
-- [ ] Tab strip: judul per tab (dipotong kalau panjang), tombol tutup per tab, tombol plus di ujung
-- [ ] Tab aktif ditandai
-- [ ] Banyak tab: strip bisa digeser horizontal
-- [ ] Judul window mengikuti judul tab aktif
-- [ ] Link `target=_blank` membuka tab baru di sebelahnya dan langsung aktif
-- [ ] Tombol layar penuh YouTube berfungsi
-- [ ] Menu File: New Tab ⌘T, Close Tab ⌘W, Reopen Closed Tab ⇧⌘T, Open Location ⌘L
-- [ ] Menu View: Reload Page ⌘R, Enter Full Screen ⌃⌘F
-- [ ] Menu History: Back ⌘[, Forward ⌘]
-- [ ] Menu Window: Next Tab ⌃⇥ dan ⇧⌘], Previous Tab ⌃⇧⇥ dan ⇧⌘[, ⌘1 sampai ⌘9
+- [ ] The window opens at 1280x800; it cannot be resized below 800x500
+- [ ] From top to bottom: nav bar, tab strip, content area
+- [ ] Closing the window quits the app
+- [ ] The back/forward buttons are enabled only when there is history
+- [ ] The reload icon changes to a cross while the page is loading
+- [ ] The address field shows the active tab's URL, and is empty for a blank tab
+- [ ] Typing `youtube.com` and pressing Enter loads YouTube
+- [ ] Typing `resep nasi goreng` and pressing Enter opens a Google search
+- [ ] Escape in the address field restores the active tab's URL
+- [ ] An active blank tab focuses the address field immediately
+- [ ] ⌘V in the address field pastes text
+- [ ] Tab strip: a title per tab (truncated when long), a close button per tab, a plus button at the end
+- [ ] The active tab is marked
+- [ ] Many tabs: the strip scrolls horizontally
+- [ ] The window title follows the active tab's title
+- [ ] A `target=_blank` link opens a new tab next to the current one and activates it
+- [ ] The YouTube full screen button works
+- [ ] File menu: New Tab ⌘T, Close Tab ⌘W, Reopen Closed Tab ⇧⌘T, Open Location ⌘L
+- [ ] View menu: Reload Page ⌘R, Enter Full Screen ⌃⌘F
+- [ ] History menu: Back ⌘[, Forward ⌘]
+- [ ] Window menu: Next Tab ⌃⇥ and ⇧⌘], Previous Tab ⌃⇧⇥ and ⇧⌘[, ⌘1 through ⌘9
 
-## Task 9: Tab tidur, memory pressure, sesi
+## Task 9: Tab sleep, memory pressure, session
 
-Untuk uji manual, tutup browser dulu (⌘Q), set `"sleep_idle_secs": 20` di `~/Library/Application Support/my-browser/settings.json`, lalu buka lagi. Kembalikan ke 1800 (bawaan, 30 menit) dengan cara yang sama setelah selesai.
+For manual testing, quit the browser first (⌘Q), set `"sleep_idle_secs": 20` in `~/Library/Application Support/my-browser/settings.json`, then reopen it. When done, set it back to 1800 (the default, 30 minutes) the same way.
 
-- [ ] (a) Buka 4 tab ber-URL, aktifkan satu, tunggu 60 detik: tab latar tampil tidur (redup, tooltip "Sleeping; reloads when opened")
-- [ ] (b) Video YouTube diputar di tab latar: tab itu tidak pernah tidur
-- [ ] (c) Video YouTube di-pause di menit ke-2, ditidurkan, lalu dibuka: lanjut dari sekitar menit ke-2
-- [ ] (d) Halaman yang di-scroll jauh, ditidurkan, lalu dibuka: posisi scroll kembali
-- [ ] (e) Pengguna menjalankan `sudo memory_pressure -S -l warn`: semua tab latar tidur dalam beberapa detik, kecuali tab yang punya teks belum dikirim
-- [ ] (f) ⌘Q lalu buka lagi: semua tab kembali, hanya tab aktif yang dimuat
-- [ ] (g) Ketik komentar di YouTube atau form mana pun tanpa mengirimnya, pindah tab, tunggu lewat batas tidur: tab itu tetap bangun dan komentarnya utuh (perbaikan 2026-11-21)
-- [ ] (h) Komentar dari (g) dikirim atau dihapus: tab itu tidur lagi di putaran berikutnya
-- [ ] (i) Ketik di kotak pencarian YouTube lalu pilih saran (tanpa Enter): tab tetap bisa tidur
-- [ ] (j) `sudo memory_pressure -S -l critical`: tab dari (g) ikut ditidurkan
+- [ ] (a) Open 4 tabs with URLs, activate one, wait 60 seconds: background tabs appear asleep (dimmed, tooltip "Sleeping; reloads when opened")
+- [ ] (b) A YouTube video playing in a background tab: that tab never sleeps
+- [ ] (c) A YouTube video paused at minute 2, put to sleep, then opened: it resumes from around minute 2
+- [ ] (d) A page scrolled far down, put to sleep, then opened: the scroll position is restored
+- [ ] (e) The user runs `sudo memory_pressure -S -l warn`: all background tabs go to sleep within a few seconds, except tabs with unsent text
+- [ ] (f) ⌘Q and reopen: all tabs come back, and only the active tab loads
+- [ ] (g) Type a comment on YouTube or in any form without submitting it, switch tabs, wait past the sleep limit: that tab stays awake and the comment is intact (fixed 2026-11-21)
+- [ ] (h) The comment from (g) is submitted or deleted: that tab goes to sleep again on the next round
+- [ ] (i) Type in the YouTube search box and pick a suggestion (without Enter): the tab can still sleep
+- [ ] (j) `sudo memory_pressure -S -l critical`: the tab from (g) is put to sleep as well
 
-## Task 10: Pemblokir iklan
+## Task 10: Ad blocker
 
-- [ ] https://www.detik.com menampilkan lebih sedikit iklan dibanding Safari tanpa content blocker
-- [ ] View > Disable Blocker for This Site: halaman dimuat ulang dan iklan muncul lagi; centang menu ikut berubah
-- [ ] Menu itu nonaktif di tab kosong
-- [ ] YouTube masih memutar video dan login tetap ada
-- [ ] Iklan video YouTube yang bisa dilewati menampilkan tombol "Lewati" (perbaikan 2026-11-20)
-- [ ] github.com dan Gmail tampil utuh (aturan sembunyi umum tidak berlaku di situs generichide)
-- [ ] Skip iklan YouTube otomatis: iklan yang bisa dilewati hilang dalam sekitar 1 detik; iklan yang tidak bisa dilewati bisu dan selesai dalam 1-2 detik
-- [ ] Setelah iklan, kecepatan video (mis. 1,5x) dan suara kembali seperti sebelumnya
-- [ ] View > Disable Blocker for This Site di YouTube: iklan diputar normal lagi; nyalakan lagi: iklan dilewati lagi
+- [ ] https://www.detik.com shows fewer ads than Safari without a content blocker
+- [ ] View > Disable Blocker for This Site: the page reloads and ads appear again; the menu checkmark changes too
+- [ ] That menu item is disabled on a blank tab
+- [ ] YouTube still plays videos and the sign-in persists
+- [ ] Skippable YouTube video ads show the "Skip" button (fixed 2026-11-20)
+- [ ] github.com and Gmail render fully (generic hide rules do not apply on generichide sites)
+- [ ] Automatic YouTube ad skipping: skippable ads disappear in about 1 second; unskippable ads are muted and finish in 1-2 seconds
+- [ ] After an ad, the video speed (e.g. 1.5x) and sound return to what they were before
+- [ ] View > Disable Blocker for This Site on YouTube: ads play normally again; turn it back on: ads are skipped again
 
-## Task 11: Download
+## Task 11: Downloads
 
-Sudah diverifikasi otomatis (folder Downloads sementara): dua download bersamaan bernama sama menjadi `gitignore-main.zip` dan `gitignore-main (1).zip`; tab yang navigasinya berubah menjadi download tidak masuk sesi dan tidak mengunduh ulang saat aplikasi dibuka lagi.
+Already verified automatically (temporary Downloads folder): two simultaneous downloads with the same name become `gitignore-main.zip` and `gitignore-main (1).zip`; a tab whose navigation turns into a download is not saved in the session and does not download again when the app reopens.
 
-- [ ] Mengunduh sebuah PDF lewat link `download` dua kali menghasilkan `nama.pdf` dan `nama (1).pdf` di `~/Downloads`
-- [ ] Label "Downloaded: ..." muncul di kanan nav bar lalu hilang setelah sekitar 6 detik
+- [ ] Downloading a PDF through a `download` link twice produces `nama.pdf` and `nama (1).pdf` in `~/Downloads`
+- [ ] The "Downloaded: ..." label appears on the right of the nav bar and disappears after about 6 seconds
 
-## Perbaikan setelah review akhir
+## Fixes after the final review
 
-- [ ] Tab kosong (tab pertama atau ⌘T): mengetik URL lalu Enter langsung menampilkan halamannya
-- [ ] Klik tab berulang kali (termasuk tab yang sudah aktif) dan tutup tab lewat tombol silang: tidak crash, tanda tab aktif tetap benar
-- [ ] Upload berkas (mis. form upload gambar di situs mana pun): jendela pilih berkas muncul
-- [ ] Dialog `alert`, `confirm`, dan `prompt` muncul (mis. ketik `javascript` tidak berlaku di address bar; pakai situs uji seperti https://www.w3schools.com/js/tryit.asp?filename=tryjs_alert)
-- [ ] Membuka `localhost:59999` (server mati): muncul "Couldn't load page: ..." di kanan nav bar
-- [ ] Mulai download lalu langsung tutup tabnya: pemberitahuan "Downloaded" tetap muncul
-- [ ] Pengecualian pemblokir dari subdomain (mis. aktifkan di www.detik.com, buka news.detik.com, matikan lagi): pemblokir benar-benar aktif kembali
+- [ ] Blank tab (the first tab or ⌘T): typing a URL and pressing Enter shows the page immediately
+- [ ] Click tabs repeatedly (including the already active tab) and close tabs with the cross button: no crash, and the active tab marker stays correct
+- [ ] File upload (e.g. an image upload form on any site): the file picker appears
+- [ ] `alert`, `confirm`, and `prompt` dialogs appear (e.g. typing `javascript` does not work in the address bar; use a test site such as https://www.w3schools.com/js/tryit.asp?filename=tryjs_alert)
+- [ ] Opening `localhost:59999` (server down): "Couldn't load page: ..." appears on the right of the nav bar
+- [ ] Start a download and close its tab immediately: the "Downloaded" notice still appears
+- [ ] Blocker exception from a subdomain (e.g. enable it on www.detik.com, open news.detik.com, disable it again): the blocker is really active again
 
-## MCP Claude
+## Claude MCP
 
-Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`), lalu mulai sesi Claude Code baru.
+Reopen the browser with the new build (⌘Q, then `open dist/my-browser.app`), then start a new Claude Code session.
 
-- [ ] `/mcp` di Claude Code menampilkan my-browser terhubung
-- [ ] Minta Claude "buka youtube.com di tab baru": tab terbuka di browser
-- [ ] Minta Claude membaca halaman aktif dan membuat screenshot
-- [ ] Minta Claude mengklik sesuatu: ditolak dengan pesan untuk menyalakan izin
-- [ ] Nyalakan Claude > Allow Claude to Interact: judul window berpenanda, klik berhasil, pemberitahuan "Claude: klik elemen ..." muncul
-- [ ] Matikan lagi: klik ditolak lagi
-- [ ] Tutup browser (⌘Q), lalu minta Claude melihat daftar tab: browser terbuka otomatis
-- [ ] Minta Claude membuat website kecil, menjalankannya di localhost, lalu memeriksanya: Claude memakai console_logs, network_log, dan screenshot, lalu memperbaiki error yang ditemukan
-- [ ] Pilih Claude > Pick Element for Claude (⌘⇧E), arahkan kursor: elemen disorot dengan label ukuran; klik sebuah tombol: tombolnya tidak ikut jalan, tanda "Selected" muncul sebentar. Lalu minta Claude "lihat elemen yang saya pilih": Claude menyebut elemen yang benar dan bisa melihat gambarnya
-- [ ] Mode Pick Element for Claude lalu tekan Esc: sorotan hilang, klik berikutnya berjalan normal
-- [ ] Minta Claude "cek tampilan HP dan mode gelap": halaman tampil selebar HP di tengah atas jendela, pemberitahuan "Claude: phone 390×844, dark mode" muncul; setelah Claude selesai (atau lewat menu Claude > Reset Device Emulation) tampilan kembali penuh
-- [ ] Menu Reset Device Emulation nonaktif (abu-abu) di tab yang tidak diemulasi
-- [ ] Minta Claude "screenshot seluruh halaman" di halaman panjang: Claude menerima beberapa gambar dan bisa menjelaskan bagian bawah halaman
-- [ ] Minta Claude memakai check_page setelah mengubah kode situs lokal: satu panggilan berisi ringkasan error, request gagal, dan screenshot
+- [ ] `/mcp` in Claude Code shows my-browser as connected
+- [ ] Ask Claude to "open youtube.com in a new tab": the tab opens in the browser
+- [ ] Ask Claude to read the active page and take a screenshot
+- [ ] Ask Claude to click something: it is refused with a message to turn on the permission
+- [ ] Turn on Claude > Allow Claude to Interact: the window title is marked, the click succeeds, and the notice "Claude: clicking element ..." appears
+- [ ] Turn it off again: clicks are refused again
+- [ ] Quit the browser (⌘Q), then ask Claude to list the tabs: the browser opens automatically
+- [ ] Ask Claude to build a small website, run it on localhost, and check it: Claude uses console_logs, network_log, and screenshot, then fixes the errors it finds
+- [ ] Choose Claude > Pick Element for Claude (⌘⇧E) and move the cursor: elements are highlighted with a size label; click a button: the button does not fire, and a "Selected" marker appears briefly. Then ask Claude to "look at the element I selected": Claude names the correct element and can see its image
+- [ ] Pick Element for Claude mode, then press Esc: the highlight disappears and the next click works normally
+- [ ] Ask Claude to "check the phone view and dark mode": the page appears phone-width at the top center of the window, and the notice "Claude: phone 390×844, dark mode" appears; after Claude is done (or through the Claude > Reset Device Emulation menu) the view returns to full size
+- [ ] The Reset Device Emulation menu item is disabled (grayed out) on tabs that are not emulated
+- [ ] Ask Claude to "screenshot the whole page" on a long page: Claude receives several images and can describe the bottom of the page
+- [ ] Ask Claude to use check_page after changing a local site's code: one call returns an error summary, failed requests, and a screenshot
 
 ## Ask Claude
 
-Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
+Reopen the browser with the new build (⌘Q, then `open dist/my-browser.app`).
 
-- [ ] Tombol ✦ di kanan nav bar dan ⌘J membuka panel di kanan; halaman menyempit (tidak tertutup panel); ⌘J lagi menutupnya
-- [ ] Di YouTube atau artikel, tanya "ringkas halaman ini": jawaban muncul bertahap, label "Membaca halaman" tampil di atas jawaban
-- [ ] Tunjuk sebuah elemen (⌘⇧E), lalu tanya "jelaskan elemen yang saya tunjuk": Claude membahas elemen yang benar
-- [ ] Minta "buka youtube.com": Claude menolak, tidak ada tab baru
-- [ ] Tutup panel saat Claude sedang menjawab: jawaban berhenti; buka lagi: riwayat masih ada dan pertanyaan berikutnya nyambung dengan percakapan sebelumnya
-- [ ] Monitor Aktivitas: proses `claude` hanya ada selama panel terbuka dan sudah dipakai
-- [ ] Klik link di jawaban Claude: terbuka di tab baru
-- [ ] Mode terang dan gelap macOS: panel ikut berganti warna
+- [ ] The ✦ button on the right of the nav bar and ⌘J open the panel on the right; the page narrows (it is not covered by the panel); ⌘J again closes it
+- [ ] On YouTube or an article, ask "summarize this page": the answer streams in, and the label "Reading page" appears above the answer
+- [ ] Point at an element (⌘⇧E), then ask "explain the element I pointed at": Claude discusses the correct element
+- [ ] Ask "open youtube.com": Claude refuses, and no new tab opens
+- [ ] Close the panel while Claude is answering: the answer stops; reopen it: the history is still there and the next question continues the previous conversation
+- [ ] Activity Monitor: the `claude` process exists only while the panel is open and has been used
+- [ ] Click a link in Claude's answer: it opens in a new tab
+- [ ] macOS light and dark mode: the panel changes color to match
 
-## Pengelola password
+## Password manager
 
-Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
+Reopen the browser with the new build (⌘Q, then `open dist/my-browser.app`).
 
-- [ ] Save pada tawaran simpan: dialog berikutnya (Create Master Password atau Unlock Passwords) langsung tampil, jendela tidak terkunci tanpa dialog (perbaikan 2026-11-25)
-- [ ] Login di sebuah situs: muncul "Save Password for …?"; Save meminta membuat master password (ditolak kalau < 10 karakter atau kedua isian beda)
-- [ ] Keluar lalu buka halaman login lagi, tekan ⌘\: username dan password terisi, situs bisa dipakai login
-- [ ] Passwords > Lock Passwords, lalu ⌘\: diminta master password; master password salah ditolak dengan pesan, yang benar langsung mengisi
-- [ ] Login dengan password berbeda: muncul "Update Password for …?"
-- [ ] "Never for This Site": login berikutnya di situs itu tidak ditanya lagi
-- [ ] Passwords > Manage Passwords…: cari, Lihat (tersembunyi lagi setelah 20 detik), Salin (clipboard kosong lagi setelah 30 detik), Edit, Hapus (minta konfirmasi), Tambah dengan Buat acak
-- [ ] Impor CSV dari Chrome atau app Passwords: jumlah yang diimpor sesuai, muncul pengingat untuk menghapus berkas CSV
-- [ ] Ekspor CSV: meminta master password lagi; master password salah membatalkan ekspor
-- [ ] Ganti master password: master password lama salah ditolak; setelah diganti, kunci lalu buka dengan yang baru berhasil dan yang lama ditolak
-- [ ] Kunci layar Mac (Ctrl+Cmd+Q) lalu buka lagi: password terkunci
-- [ ] Biarkan 10 menit tanpa memakai password: terkunci sendiri
-- [ ] Login Google dua langkah: ⌘\ di langkah email, lalu di langkah password
+- [ ] Save on the save offer: the next dialog (Create Master Password or Unlock Passwords) appears immediately, and the window is not locked without a dialog (fixed 2026-11-25)
+- [ ] Sign in on a site: "Save Password for …?" appears; Save asks you to create a master password (refused if < 10 characters or the two fields differ)
+- [ ] Sign out and open the login page again, press ⌘\: the username and password are filled in, and the site accepts the login
+- [ ] Passwords > Lock Passwords, then ⌘\: the master password is requested; a wrong master password is refused with a message, and the correct one fills immediately
+- [ ] Sign in with a different password: "Update Password for …?" appears
+- [ ] "Never for This Site": the next sign-in on that site does not ask again
+- [ ] Passwords > Manage Passwords…: search, Show (hidden again after 20 seconds), Copy (clipboard cleared again after 30 seconds), Edit, Delete (asks for confirmation), Add with Generate
+- [ ] Import CSV from Chrome or the Passwords app: the imported count is correct, and a reminder to delete the CSV file appears
+- [ ] Export CSV: asks for the master password again; a wrong master password cancels the export
+- [ ] Change the master password: a wrong old master password is refused; after the change, locking and unlocking with the new one works and the old one is refused
+- [ ] Lock the Mac screen (Ctrl+Cmd+Q) and unlock it: passwords are locked
+- [ ] Leave passwords unused for 10 minutes: they lock on their own
+- [ ] Google two-step sign-in: ⌘\ at the email step, then at the password step
 
-## Izin program MCP
+## MCP program permissions
 
-Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`).
+Reopen the browser with the new build (⌘Q, then `open dist/my-browser.app`).
 
-- [ ] Mulai sesi Claude Code baru dan minta Claude melihat daftar tab: my-browser maju ke depan dengan dialog "Allow Claude Code to control my-browser?" yang menampilkan folder proyek sesi itu
-- [ ] Always Allow: Claude langsung mendapat daftar tab; sesi Claude Code berikutnya tidak ditanya lagi
-- [ ] Claude > Revoke MCP Client Access: permintaan berikutnya ditanya lagi
-- [ ] Deny: Claude mendapat pesan penolakan; permintaan berikutnya langsung ditolak sampai browser dibuka ulang
-- [ ] Panel Ask Claude tetap bisa membaca halaman tanpa dialog izin
-- [ ] Panel menampilkan email, paket, dan profil di bawah judul; pilihan profil mengganti akun dan memulai percakapan baru
-- [ ] Pilih profil yang belum login (mis. ~/.claude-flash): muncul kartu Sign In to Claude; Sign In with Claude Subscription membuka halaman login di tab my-browser; setelah disetujui tab login tertutup sendiri dan panel siap dipakai
-- [ ] Cancel saat menunggu login: kembali ke kartu Sign In to Claude
-- [ ] Sign Out: diminta konfirmasi dengan peringatan bahwa Claude Code di Terminal dengan profil yang sama ikut keluar
+- [ ] Start a new Claude Code session and ask Claude to list the tabs: my-browser comes to the front with the dialog "Allow Claude Code to control my-browser?", which shows that session's project folder
+- [ ] Always Allow: Claude gets the tab list immediately; the next Claude Code session is not asked again
+- [ ] Claude > Revoke MCP Client Access: the next request is asked again
+- [ ] Deny: Claude gets a refusal message; subsequent requests are refused immediately until the browser is reopened
+- [ ] The Ask Claude panel can still read the page without a permission dialog
+- [ ] The panel shows the email, plan, and profile below the title; choosing a profile switches the account and starts a new conversation
+- [ ] Choose a profile that is not signed in (e.g. ~/.claude-flash): the Sign In to Claude card appears; Sign In with Claude Subscription opens the login page in a my-browser tab; after approval the login tab closes on its own and the panel is ready to use
+- [ ] Cancel while waiting for login: back to the Sign In to Claude card
+- [ ] Sign Out: asks for confirmation with a warning that Claude Code in Terminal with the same profile is signed out too
 
-## Riwayat dan saran address bar
+## History and address bar suggestions
 
-Buka ulang browser dengan build baru (⌘Q lalu `open dist/my-browser.app`). Riwayat mulai tercatat sejak build ini.
+Reopen the browser with the new build (⌘Q, then `open dist/my-browser.app`). History is recorded starting with this build.
 
-- [ ] Buka beberapa situs, lalu ketik awal alamat yang tadi diketik (mis. `you`): alamat dilengkapi dengan bagian tambahan terseleksi; mengetik lanjut menimpanya, Backspace menghapusnya
-- [ ] Daftar saran tampil rapi di bawah address bar dalam mode terang dan gelap, dan ikut bergeser saat jendela dipindah
-- [ ] ↑ ↓ memilih saran dan mengisi address bar; Enter membuka; klik mouse pada baris juga membuka
-- [ ] Escape pertama menutup daftar, Escape kedua mengembalikan alamat tab
-- [ ] Ketik judul tab lain yang sedang terbuka: muncul "Switch to tab"; memilihnya pindah ke tab itu tanpa memuat ulang
-- [ ] Klik beberapa video di YouTube (tanpa memuat ulang halaman): setiap video muncul di Riwayat dengan judul yang benar
-- [ ] Video yang ditidurkan lalu dibuka lagi tidak membuat entri baru (tidak ada `&t=` di Riwayat)
-- [ ] ⌘Y membuka jendela History yang dikelompokkan per hari; cari, ⌘-klik membuka di tab baru, ✕ menghapus satu halaman
-- [ ] History > Clear History… > Last hour: halaman tadi hilang dari History dan dari saran address bar
-- [ ] IME Jepang (atau input lain yang menyusun huruf) di address bar tidak dilengkapi selama menyusun
-- [ ] VoiceOver membacakan baris saran
-- [ ] Minta Claude "video YouTube apa yang saya tonton hari ini?": Claude memakai search_history
+- [ ] Open a few sites, then type the beginning of an address you typed earlier (e.g. `you`): the address is completed with the added part selected; typing further replaces it, and Backspace deletes it
+- [ ] The suggestion list appears neatly below the address bar in light and dark mode, and moves along when the window is moved
+- [ ] ↑ ↓ select a suggestion and fill the address bar; Enter opens it; a mouse click on a row also opens it
+- [ ] The first Escape closes the list, the second Escape restores the tab's address
+- [ ] Type the title of another open tab: "Switch to tab" appears; choosing it switches to that tab without reloading
+- [ ] Click several videos on YouTube (without reloading the page): each video appears in History with the correct title
+- [ ] A video put to sleep and opened again does not create a new entry (no `&t=` in History)
+- [ ] ⌘Y opens the History window grouped by day; search works, ⌘-click opens in a new tab, ✕ deletes a single page
+- [ ] History > Clear History… > Last hour: the pages from earlier disappear from History and from the address bar suggestions
+- [ ] A Japanese IME (or another input method that composes characters) in the address bar is not autocompleted while composing
+- [ ] VoiceOver reads the suggestion rows aloud
+- [ ] Ask Claude "what YouTube videos did I watch today?": Claude uses search_history

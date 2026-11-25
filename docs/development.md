@@ -1,73 +1,73 @@
-# Pengembangan
+# Development
 
-Panduan singkat untuk membangun, menguji, dan memeriksa my-browser.
+A short guide to building, testing, and checking my-browser.
 
-## Susunan crate
+## Crate layout
 
-| Crate | Isi |
+| Crate | Contents |
 |---|---|
-| `crates/core` | Logika browser tanpa macOS: tab, tidur tab, riwayat, saran address bar, sesi, pengaturan, protokol kontrol. Sebagian besar test ada di sini. |
-| `crates/engine-webkit` | Implementasi trait `Engine`/`Page` (`crates/core/src/engine.rs`) dengan WKWebView. |
-| `crates/app` | Aplikasi AppKit: jendela, menu, address bar, panel, dialog, socket kontrol. |
-| `crates/mcp` | Server MCP (`my-browser --mcp`) yang meneruskan tool ke socket kontrol. |
-| `crates/vault` | Vault password terenkripsi (tanpa macOS). |
-| `crates/memtool`, `crates/blocklist-gen` | Alat ukur memory dan pembuat daftar pemblokir. |
+| `crates/core` | Browser logic without macOS: tabs, tab sleep, history, address bar suggestions, sessions, settings, control protocol. Most tests live here. |
+| `crates/engine-webkit` | Implementation of the `Engine`/`Page` traits (`crates/core/src/engine.rs`) with WKWebView. |
+| `crates/app` | AppKit app: windows, menus, address bar, panels, dialogs, control socket. |
+| `crates/mcp` | MCP server (`my-browser --mcp`) that forwards tools to the control socket. |
+| `crates/vault` | Encrypted password vault (no macOS). |
+| `crates/memtool`, `crates/blocklist-gen` | Memory measurement tool and blocker list generator. |
 
-Aturan: logika yang bisa diuji tanpa AppKit ditaruh di `core` sebagai fungsi murni. `app` hanya menerjemahkan event AppKit ke `core` dan menjalankan hasilnya.
+Rule: logic that can be tested without AppKit goes in `core` as pure functions. `app` only translates AppKit events into `core` calls and carries out the results.
 
-## Membangun dan menjalankan
+## Building and running
 
 ```sh
 cargo build                    # debug
-scripts/run.sh                 # build release, bundle, lalu buka dist/my-browser.app
-scripts/bundle.sh              # hanya membangun dist/my-browser.app (ad-hoc codesign)
+scripts/run.sh                 # release build, bundle, then open dist/my-browser.app
+scripts/bundle.sh              # only build dist/my-browser.app (ad-hoc codesign)
 ```
 
-`scripts/bundle.sh` menghapus bundle lama lalu menyalin yang baru, jadi aman dijalankan selama browser terbuka. Perubahan baru berlaku setelah browser dibuka ulang.
+`scripts/bundle.sh` deletes the old bundle and then copies the new one, so it is safe to run while the browser is open. Changes take effect after the browser is reopened.
 
-## Pemeriksaan
+## Checks
 
 ```sh
-scripts/check.sh               # format, clippy tanpa peringatan, semua test, audit dependensi
-scripts/check.sh --quick       # format dan clippy saja (sekitar 1 detik kalau cache hangat)
+scripts/check.sh               # format, clippy with no warnings, all tests, dependency audit
+scripts/check.sh --quick       # format and clippy only (about 1 second with a warm cache)
 ```
 
-- Format mengikuti `rustfmt.toml` (baris sampai 120 karakter). Rapikan dengan `cargo fmt --all`.
-- Clippy dijalankan dengan `-D warnings`: satu peringatan pun membuat pemeriksaan gagal.
-- Audit dependensi memakai `cargo audit` (database RustSec). Pasang sekali dengan `cargo install cargo-audit --locked`.
-- **Git hook:** `.githooks/pre-commit` menjalankan `scripts/check.sh --quick` sebelum setiap commit. Aktifkan sekali per clone dengan `git config core.hooksPath .githooks`. Lewati sekali dengan `git commit --no-verify`.
-- **CI:** `.github/workflows/ci.yml` menjalankan `scripts/check.sh` di runner macOS GitHub. Repo ini belum punya remote, jadi workflow itu belum pernah berjalan.
+- Formatting follows `rustfmt.toml` (lines up to 120 characters). Format the code with `cargo fmt --all`.
+- Clippy runs with `-D warnings`: a single warning fails the check.
+- The dependency audit uses `cargo audit` (RustSec database). Install it once with `cargo install cargo-audit --locked`.
+- **Git hook:** `.githooks/pre-commit` runs `scripts/check.sh --quick` before every commit. Enable it once per clone with `git config core.hooksPath .githooks`. Skip it once with `git commit --no-verify`.
+- **CI:** `.github/workflows/ci.yml` runs `scripts/check.sh` on a GitHub macOS runner. This repo has no remote yet, so the workflow has never run.
 
-## Test
+## Tests
 
-| Jenis | Perintah | Keterangan |
+| Type | Command | Notes |
 |---|---|---|
-| Unit | `cargo test -p my-browser-core` (juga `-p my-browser-vault`, `-p my-browser-mcp`, `-p my-browser`) | Cepat, tanpa jendela |
-| Smoke WebKit | `cargo test -p engine-webkit --test smoke` | WKWebView sungguhan di main thread (`harness = false`), butuh sesi login macOS |
-| Benchmark saran | `cargo test --release -p my-browser-core suggest_10k -- --ignored --nocapture` | Batas 5 ms per ketikan untuk 10.000 entri riwayat |
-| E2E | Script Python di luar repo | Lihat di bawah |
-| Manual | `docs/testing/daftar-cek-manual.md` | Hal yang butuh mata dan tangan pengguna |
+| Unit | `cargo test -p my-browser-core` (also `-p my-browser-vault`, `-p my-browser-mcp`, `-p my-browser`) | Fast, no windows |
+| WebKit smoke | `cargo test -p engine-webkit --test smoke` | Real WKWebView on the main thread (`harness = false`), needs a logged-in macOS session |
+| Suggestion benchmark | `cargo test --release -p my-browser-core suggest_10k -- --ignored --nocapture` | Limit of 5 ms per keystroke for 10,000 history entries |
+| E2E | Python scripts outside the repo | See below |
+| Manual | `docs/testing/manual-checklist.md` | Things that need the user's eyes and hands |
 
-### Uji E2E di instance terpisah
+### E2E tests on a separate instance
 
-Uji E2E menjalankan build debug dengan folder sementara, supaya browser yang sedang dipakai tidak tersentuh:
+E2E tests run a debug build with temporary folders, so the browser you use every day is not touched:
 
-- `HOME` dan `MYBROWSER_DATA_DIR` diarahkan ke folder sementara. Path-nya harus pendek, misalnya di bawah `$TMPDIR`, karena path socket Unix dibatasi sekitar 104 byte.
-- Tool dipanggil lewat `my-browser --mcp` dengan JSON-RPC di stdin dan stdout.
-- Instance uji dimatikan lewat pid-nya, bukan dengan menutup aplikasi bernama my-browser.
+- `HOME` and `MYBROWSER_DATA_DIR` point to a temporary folder. The path must be short, for example under `$TMPDIR`, because Unix socket paths are limited to about 104 bytes.
+- Tools are called through `my-browser --mcp` with JSON-RPC on stdin and stdout.
+- The test instance is stopped by its pid, not by quitting the app named my-browser.
 
-Pengait khusus build debug (tidak ada di build release; periksa dengan `strings dist/my-browser.app/Contents/MacOS/my-browser`):
+Debug-build-only hooks (absent from release builds; check with `strings dist/my-browser.app/Contents/MacOS/my-browser`):
 
-| Pengait | Fungsi |
+| Hook | Purpose |
 |---|---|
-| `MYBROWSER_DIALOG_SELFTEST=<teks>` | Menjawab setiap dialog otomatis; isian rahasia diisi teks itu |
-| `MYBROWSER_DIALOG_CHOICE=<n>` | Tombol yang dipilih di dialog (0 = tombol pertama) |
-| `MYBROWSER_CHAT_SELFTEST=<berkas>` | Mengirim satu baris berkas ke panel Ask Claude setiap kali panel dibuka |
-| Tool `debug_ui` | Mengetik dan menekan tombol di address bar lewat field editor, mengirim aksi menu, membaca keadaan jendela, keluar (`crates/app/src/debug_ui.rs`) |
+| `MYBROWSER_DIALOG_SELFTEST=<text>` | Answers every dialog automatically; secret fields are filled with that text |
+| `MYBROWSER_DIALOG_CHOICE=<n>` | Button to choose in dialogs (0 = first button) |
+| `MYBROWSER_CHAT_SELFTEST=<file>` | Sends one line of the file to the Ask Claude panel each time the panel opens |
+| `debug_ui` tool | Types and presses keys in the address bar through the field editor, sends menu actions, reads window state, quits (`crates/app/src/debug_ui.rs`) |
 
-`MYBROWSER_DEBUG=1` mencetak log tambahan (event global dan keadaan tidur tab) ke stderr, juga di build release.
+`MYBROWSER_DEBUG=1` prints extra logs (global events and tab sleep state) to stderr, in release builds too.
 
-## Gaya
+## Style
 
-- Seluruh teks UI (menu, dialog, notifikasi, address bar, jendela, panel) dalam bahasa Inggris. Komentar, dokumentasi, log developer, dan teks yang dibaca Claude (prompt panel, deskripsi dan pesan tool MCP) dalam bahasa Indonesia.
-- Commit memakai awalan Conventional Commits (`feat`, `fix`, `refactor`, `style`, `docs`, `test`).
+- All UI text (menus, dialogs, notifications, address bar, windows, panels) and the docs are in English. Code comments, developer logs, and text read by Claude (the panel system prompt, MCP tool descriptions and messages) are in Indonesian.
+- Commits use Conventional Commits prefixes (`feat`, `fix`, `refactor`, `style`, `docs`, `test`).

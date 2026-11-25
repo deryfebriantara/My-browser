@@ -1,42 +1,42 @@
-# Jaringan: HTTP/3 dimatikan
+# Networking: HTTP/3 disabled
 
-my-browser memakai HTTP/2 (lewat TCP), bukan HTTP/3 (QUIC lewat UDP). Pengaturannya `http3_enabled` di `settings.json`, bawaannya `false` (`crates/core/src/settings.rs`).
+my-browser uses HTTP/2 (over TCP), not HTTP/3 (QUIC over UDP). The setting is `http3_enabled` in `settings.json`, and its default is `false` (`crates/core/src/settings.rs`).
 
-## Alasan
+## Reason
 
-Pada 2026-11-25, Hostinger Mail tampil putih setelah login. Pemeriksaan lewat MCP di tab yang bermasalah menemukan:
+On 2026-11-25, Hostinger Mail showed a white page after login. An investigation through MCP in the affected tab found:
 
-- Login berhasil (API `auth/me` membalas 200), tetapi sekitar 170 file JS dan CSS aplikasi gagal dimuat pada milidetik yang sama, lalu aplikasi berhenti ("Router initialization failed") dan memuat ulang dirinya.
-- File-file itu ada di server, kodenya lolos pemeriksaan sintaks mesin JavaScript Safari, dan pemblokir iklan tidak memblokirnya.
-- Koneksinya memakai HTTP/3. Dari tab itu, 30 request bersamaan ke file statis Hostinger gagal semua, dan request berurutan pun kadang gagal.
-- Dari Mac yang sama, 60 request bersamaan lewat HTTP/2 (curl) berhasil semua.
-- my-browser memakai HTTP/3 karena petunjuk `Alt-Svc` dari Cloudflare yang disimpan di `~/Library/Caches/local.my-browser/WebKit/AlternativeServices/AlternativeService.sqlite`. Setelah petunjuk itu dihapus, Inbox langsung terbuka, lalu putih lagi setelah petunjuknya tercatat ulang.
+- The login succeeded (the `auth/me` API returned 200), but about 170 of the app's JS and CSS files failed to load in the same millisecond, then the app stopped ("Router initialization failed") and reloaded itself.
+- Those files exist on the server, their code passes the Safari JavaScript engine's syntax check, and the ad blocker does not block them.
+- The connection used HTTP/3. From that tab, 30 simultaneous requests to Hostinger static files all failed, and even sequential requests sometimes failed.
+- From the same Mac, 60 simultaneous requests over HTTP/2 (curl) all succeeded.
+- my-browser used HTTP/3 because of an `Alt-Svc` hint from Cloudflare stored in `~/Library/Caches/local.my-browser/WebKit/AlternativeServices/AlternativeService.sqlite`. After that hint was deleted, the Inbox opened immediately, then went white again once the hint was recorded again.
 
-Kesimpulannya, jaringan pengguna (gateway CGNAT, tanpa VPN di jalurnya) tidak andal untuk QUIC saat banyak request dikirim bersamaan. Safari tidak terkena, dan penyebab pastinya di Safari tidak diperiksa.
+The conclusion: the user's network (a CGNAT gateway, no VPN in the path) is unreliable for QUIC when many requests are sent at once. Safari is not affected, and the exact reason in Safari was not investigated.
 
-## Cara kerja
+## How it works
 
-WebKit tidak punya sakelar publik maupun SPI untuk mematikan HTTP/3 di WKWebView pada macOS 15.7 (diperiksa lewat runtime). Yang tersedia adalah tipe data situs `_WKWebsiteDataTypeAlternativeServices`. Saat `http3_enabled` mati, `Engine::forget_http3_hints` menghapus data itu dari data store bawaan, baik di memory proses jaringan maupun di berkasnya (`crates/engine-webkit/src/lib.rs`):
+WebKit has no public switch or SPI to disable HTTP/3 in WKWebView on macOS 15.7 (checked at runtime). What is available is the website data type `_WKWebsiteDataTypeAlternativeServices`. When `http3_enabled` is off, `Engine::forget_http3_hints` removes that data from the default data store, both in the network process memory and in its file (`crates/engine-webkit/src/lib.rs`):
 
-- saat browser dibuka;
-- setiap tick (30 detik);
-- sebelum setiap navigasi dan sebelum tab dibangunkan (`crates/core/src/browser.rs`).
+- when the browser opens;
+- on every tick (30 seconds);
+- before every navigation and before a tab is woken (`crates/core/src/browser.rs`).
 
-Dengan begitu koneksi baru tidak pernah memakai HTTP/3. Koneksi yang sedang berjalan tidak terpengaruh.
+This way new connections never use HTTP/3. Connections already in progress are not affected.
 
-## Verifikasi
+## Verification
 
-Dua instance uji, masing-masing membuka mail.hostinger.com, ditutup, lalu dibuka lagi:
+Two test instances, each opening mail.hostinger.com, closed, then opened again:
 
-| Pengaturan | Protokol muatan kedua |
+| Setting | Protocol on second load |
 |---|---|
 | `http3_enabled: true` | h3 |
-| bawaan (`false`) | h2 |
+| default (`false`) | h2 |
 
-Test core: `http3_hints_forgotten_at_start_tick_and_navigation_when_disabled` dan `http3_hints_kept_when_enabled` (`crates/core/src/browser/tests.rs`).
+Core tests: `http3_hints_forgotten_at_start_tick_and_navigation_when_disabled` and `http3_hints_kept_when_enabled` (`crates/core/src/browser/tests.rs`).
 
-## Yang belum terverifikasi dan batasan
+## Not yet verified, and limitations
 
-- Kegagalan HTTP/3 tidak muncul di instance uji saat verifikasi (30 dari 30 request berhasil), jadi gangguannya bersifat sesekali. Bukti kegagalannya berasal dari tab pengguna.
-- Situs yang mengiklankan HTTP/3 lewat DNS (record HTTPS/SVCB) mungkin tetap memakai HTTP/3, karena itu tidak lewat `Alt-Svc`. mail.hostinger.com tidak termasuk.
-- Kalau jaringan sudah baik, HTTP/3 bisa dinyalakan lagi dengan `"http3_enabled": true` (tutup browser dulu sebelum mengedit `settings.json`).
+- The HTTP/3 failure did not occur in the test instances during verification (30 of 30 requests succeeded), so the problem is intermittent. The evidence of the failure comes from the user's tab.
+- Sites that advertise HTTP/3 through DNS (HTTPS/SVCB records) may still use HTTP/3, because that does not go through `Alt-Svc`. mail.hostinger.com is not one of them.
+- If the network becomes reliable, HTTP/3 can be turned back on with `"http3_enabled": true` (quit the browser before editing `settings.json`).

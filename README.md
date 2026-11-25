@@ -2,7 +2,7 @@
 
 A memory-efficient web browser for macOS, written in Rust on top of the system WebKit (`WKWebView`). Built for everyday browsing and YouTube, with a built-in ad blocker, an encrypted password manager, and first-class control by Claude (an in-browser chat panel and an MCP server for Claude Code).
 
-> Personal project, version 0.1.0. It runs well as a daily driver on the author's Mac, but it is ad-hoc signed and not notarized, so it is not yet packaged for distribution. Developer documentation in [`docs/`](docs/) is written in Indonesian.
+> Personal project, version 0.1.0. It runs well as a daily driver on the author's Mac, but it is ad-hoc signed and not notarized, so it is not yet packaged for distribution.
 
 ## Features
 
@@ -13,7 +13,7 @@ A memory-efficient web browser for macOS, written in Rust on top of the system W
 - **Address bar autocomplete:** inline completion and a native suggestion dropdown built from local history and open tabs, including "Switch to tab". Nothing you type is sent to a search engine until you press Enter.
 - **Ad blocker** compiled from EasyList and EasyPrivacy into WebKit content rules, with a per-site toggle. YouTube video ads are skipped automatically.
 - Downloads go to `~/Downloads`.
-- HTTP/3 is disabled by default, because QUIC can collapse on networks that throttle UDP (see [`docs/jaringan.md`](docs/jaringan.md)).
+- HTTP/3 is disabled by default, because QUIC can collapse on networks that throttle UDP (see [`docs/networking.md`](docs/networking.md)).
 
 ### Password manager
 - Encrypted vault: Argon2id (256 MiB, 3 passes) protects a random vault key, and entries are encrypted with XChaCha20-Poly1305. The vault file is created with `0600` permissions.
@@ -40,7 +40,7 @@ A memory-efficient web browser for macOS, written in Rust on top of the system W
 - **Pick Element for Claude** (⌘⇧E): point at an element on the page, then ask Claude about it.
 
 ### Memory
-Measured on an Apple Silicon Mac with 16 GB RAM, one sample each (details and caveats in [`docs/testing/hasil-ukur.md`](docs/testing/hasil-ukur.md)):
+Measured on an Apple Silicon Mac with 16 GB RAM, one sample each (details and caveats in [`docs/testing/measurements.md`](docs/testing/measurements.md)):
 
 | Scenario | my-browser | Safari 18.6 |
 |---|---|---|
@@ -86,16 +86,20 @@ git config core.hooksPath .githooks   # run the quick check before every commit
 | `crates/vault` | Encrypted password vault |
 | `crates/memtool`, `crates/blocklist-gen` | Memory measurement and ad-block rule generator |
 
-Settings live in `~/Library/Application Support/my-browser/settings.json`. Quit the browser before editing that file. See [`docs/pengembangan.md`](docs/pengembangan.md) for testing conventions and debug-only test hooks.
+Settings live in `~/Library/Application Support/my-browser/settings.json`. Quit the browser before editing that file. See [`docs/development.md`](docs/development.md) for testing conventions and debug-only test hooks.
 
-### Documentation (Indonesian)
-- [`docs/tab-tidur.md`](docs/tab-tidur.md): tab sleep
-- [`docs/riwayat.md`](docs/riwayat.md): history and address bar suggestions
+### Documentation
+- [`docs/tab-sleep.md`](docs/tab-sleep.md): tab sleep
+- [`docs/history.md`](docs/history.md): history and address bar suggestions
 - [`docs/password.md`](docs/password.md): password manager
-- [`docs/tanya-claude.md`](docs/tanya-claude.md): Ask Claude panel
+- [`docs/ask-claude.md`](docs/ask-claude.md): Ask Claude panel
 - [`docs/mcp.md`](docs/mcp.md): MCP server and client approval
-- [`docs/jaringan.md`](docs/jaringan.md): why HTTP/3 is disabled
-- [`docs/testing/daftar-cek-manual.md`](docs/testing/daftar-cek-manual.md): manual test checklist
+- [`docs/networking.md`](docs/networking.md): why HTTP/3 is disabled
+- [`docs/development.md`](docs/development.md): development, tests, and debug hooks
+- [`docs/testing/manual-checklist.md`](docs/testing/manual-checklist.md): manual test checklist
+- [`docs/testing/measurements.md`](docs/testing/measurements.md): memory measurements
+
+[`docs/superpowers/`](docs/superpowers/) holds the original design spec and implementation plan (Indonesian, historical).
 
 ## Roadmap
 
@@ -126,4 +130,4 @@ Settings live in `~/Library/Application Support/my-browser/settings.json`. Quit 
 
 ## License
 
-No license has been chosen yet. All rights reserved by the author until one is added.
+[MIT](LICENSE) © 2026 Dery Febriantara

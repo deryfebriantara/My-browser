@@ -1,63 +1,63 @@
-# Ask Claude: chat di samping halaman
+# Ask Claude: chat beside the page
 
-Panel chat di kanan jendela untuk bertanya tentang halaman yang sedang dibuka, misalnya "ringkas artikel ini", "bandingkan dengan tab sebelah", atau "kenapa tombol ini berantakan di HP?". Jawaban datang dari Claude Code di Mac Anda, jadi memakai kuota langganan Claude yang sama, tanpa API key.
+A chat panel on the right side of the window for asking about the page you have open, for example "summarize this article", "compare it with the tab next to it", or "why does this button look broken on mobile?". Answers come from Claude Code on your Mac, so they use the same Claude subscription quota, with no API key.
 
-## Cara pakai
+## How to use
 
-- Buka panel lewat tombol ✦ di kanan nav bar, menu **Claude > Ask Claude**, atau ⌘J. Tutup dengan cara yang sama.
-- Ketik pertanyaan lalu Enter (Shift+Enter untuk baris baru). Tombol **Stop** atau Esc menghentikan jawaban.
-- **New** memulai percakapan baru.
-- Setiap pertanyaan otomatis membawa judul dan URL tab aktif, jadi "halaman ini" selalu merujuk ke tab yang sedang Anda lihat.
-- Untuk bertanya tentang satu elemen: pilih elemennya dulu lewat **Claude > Pick Element for Claude** (⌘⇧E), lalu tanya "jelaskan elemen yang saya tunjuk".
+- Open the panel with the ✦ button on the right of the nav bar, the **Claude > Ask Claude** menu, or ⌘J. Close it the same way.
+- Type a question and press Enter (Shift+Enter for a new line). The **Stop** button or Esc stops the answer.
+- **New** starts a new conversation.
+- Every question automatically carries the title and URL of the active tab, so "this page" always means the tab you are looking at.
+- To ask about one element: pick the element first with **Claude > Pick Element for Claude** (⌘⇧E), then ask "explain the element I picked".
 
-## Akun dan masuk
+## Account and sign-in
 
-- Bilah di bawah judul panel menampilkan akun yang dipakai: email, paket (misalnya Max atau Pro), dan profil Claude Code. Kalau ada beberapa profil (`~/.claude`, `~/.claude-work`, dan seterusnya), pilih di situ. Mengganti profil memulai percakapan baru, karena sesi Claude Code tersimpan per profil.
-- Kalau profil itu belum login, panel menampilkan kartu **Sign In to Claude**. Pilihannya **Sign In with Claude Subscription**, atau **Use API Console (Pay per Use)** yang dibayar per pemakaian.
-  - Halaman login dibuka di **tab my-browser**, tidak di Safari atau Chrome. Masuk dan setujui di sana; panel lanjut sendiri dan tab login ditutup otomatis.
-  - Kalau halaman login menampilkan kode, tempel di kolom "Does the sign-in page show a code?".
-- **Sign Out** mengeluarkan profil itu dari Claude Code. Claude Code di Terminal yang memakai profil yang sama juga ikut keluar, dan itu ditanyakan dulu sebelum dijalankan.
+- The bar below the panel title shows the account in use: email, plan (for example Max or Pro), and Claude Code profile. If there are several profiles (`~/.claude`, `~/.claude-work`, and so on), choose one there. Switching profiles starts a new conversation, because Claude Code stores sessions per profile.
+- If that profile is not signed in, the panel shows a **Sign In to Claude** card. The options are **Sign In with Claude Subscription**, or **Use API Console (Pay per Use)**, which is billed per use.
+  - The sign-in page opens in a **my-browser tab**, not in Safari or Chrome. Sign in and approve there; the panel continues on its own and the sign-in tab closes automatically.
+  - If the sign-in page shows a code, paste it into the "Does the sign-in page show a code?" field.
+- **Sign Out** signs that profile out of Claude Code. Claude Code in Terminal using the same profile is signed out as well, so the panel asks for confirmation before it does this.
 
-Cara kerjanya: panel menjalankan `claude auth login` untuk profil terpilih. CLI membuka halaman login dengan perintah `open`. Khusus untuk proses login itu, `open` diganti skrip kecil lewat PATH yang menyerahkan URL-nya ke my-browser. Setelah disetujui, halaman dialihkan ke localhost tempat CLI menunggu. Status akun dibaca dari `claude auth status --json`.
+How it works: the panel runs `claude auth login` for the selected profile. The CLI opens the sign-in page with the `open` command. For that sign-in process only, `open` is replaced through PATH with a small script that hands the URL to my-browser. After approval, the page redirects to localhost, where the CLI is waiting. Account status is read from `claude auth status --json`.
 
-## Yang bisa dan tidak bisa dilakukan Claude di panel
+## What Claude can and cannot do in the panel
 
-Bisa: membaca teks halaman, memotret tab, melihat daftar tab, mencari riwayat (`search_history`), memeriksa elemen dan elemen yang ditunjuk, membaca console dan log jaringan, menggulir, mengontrol video YouTube.
+Can: read page text, screenshot tabs, list tabs, search history (`search_history`), inspect elements and the picked element, read the console and the network log, scroll, control YouTube videos.
 
-Tidak bisa: membuka URL atau tab, mengklik, mengetik di halaman, menjalankan JavaScript, mengubah file, menjalankan perintah terminal, atau membuka web. Claude dijalankan tanpa tool bawaan (`--tools ""`), hanya dengan tool baca my-browser, dan tool lain ditolak otomatis (`--permission-prompts none`).
+Cannot: open URLs or tabs, click, type into the page, run JavaScript, change files, run terminal commands, or browse the web. Claude runs without its built-in tools (`--tools ""`), only with the my-browser read tools, and any other tool is denied automatically (`--permission-prompts none`).
 
-Alasannya: teks halaman yang dibaca Claude bisa berisi instruksi jahat. Dengan akses baca saja, instruksi seperti itu tidak bisa membuat Claude membuka situs lain (misalnya untuk mengirim isi halaman ke luar) atau menyentuh file Anda. Panelnya sendiri juga dikunci: tidak memuat apa pun dari internet (CSP `default-src 'none'`), dan link di jawaban dibuka di tab baru, bukan di panel.
+The reason: page text that Claude reads can contain malicious instructions. With read-only access, such instructions cannot make Claude open another site (for example to send the page contents out) or touch your files. The panel itself is locked down too: it loads nothing from the internet (CSP `default-src 'none'`), and links in answers open in a new tab, not in the panel.
 
 ## Memory
 
-Proses Claude Code (sekitar 270 MB) baru dijalankan saat pesan pertama dikirim, dan dimatikan saat panel ditutup. Riwayat chat tetap tampil saat panel dibuka lagi, dan percakapannya dilanjutkan dengan `claude --resume`. Selama panel tertutup tidak ada proses Claude yang berjalan. Riwayat hilang saat browser ditutup.
+The Claude Code process (about 270 MB) only starts when the first message is sent, and is stopped when the panel closes. The chat history is still shown when the panel is opened again, and the conversation continues with `claude --resume`. While the panel is closed, no Claude process runs. The history is lost when the browser quits.
 
-## Pengaturan (`settings.json`)
+## Settings (`settings.json`)
 
-| Kunci | Bawaan | Fungsi |
+| Key | Default | Purpose |
 |---|---|---|
-| `claude_config_dir` | `~/.claude` | Profil Claude Code (`CLAUDE_CONFIG_DIR`), misalnya `~/.claude-work` |
-| `claude_path` | dicari otomatis | Lokasi binary `claude`. Dicari di `~/.local/bin`, `~/.claude/local`, Homebrew, lalu nvm (versi Node terbaru) |
-| `claude_model` | model bawaan Claude Code | Misalnya `sonnet` untuk jawaban yang lebih cepat |
+| `claude_config_dir` | `~/.claude` | Claude Code profile (`CLAUDE_CONFIG_DIR`), for example `~/.claude-work` |
+| `claude_path` | detected automatically | Location of the `claude` binary. Searched for in `~/.local/bin`, `~/.claude/local`, Homebrew, then nvm (latest Node version) |
+| `claude_model` | Claude Code's default model | For example `sonnet` for faster answers |
 
-Lokasi berkas: `~/Library/Application Support/my-browser/settings.json`. Tutup browser dulu sebelum mengedit.
+File location: `~/Library/Application Support/my-browser/settings.json`. Quit the browser before editing.
 
-## Kalau muncul "Not logged in" atau "Failed to authenticate"
+## If "Not logged in" or "Failed to authenticate" appears
 
-Login profil itu belum ada atau sudah kedaluwarsa. Panel memeriksa ulang statusnya dan menampilkan kartu masuk. Cara manualnya: jalankan `CLAUDE_CONFIG_DIR=~/.claude claude` di Terminal (sesuaikan profilnya), lalu ketik `/login`. Panel sengaja selalu memasang `CLAUDE_CONFIG_DIR`, karena tanpa variabel itu Claude Code membaca login bawaan yang bisa berbeda dari profil yang Anda pakai di Terminal.
+That profile has no login yet, or the login has expired. The panel checks the status again and shows the sign-in card. To do it by hand: run `CLAUDE_CONFIG_DIR=~/.claude claude` in Terminal (adjust the profile), then type `/login`. The panel always sets `CLAUDE_CONFIG_DIR` on purpose, because without that variable Claude Code reads the default login, which can differ from the profile you use in Terminal.
 
-## Cara kerja
+## How it works
 
 ```
-panel (WKWebView lokal) ──pesan JSON──▶ my-browser ──stdin/stdout stream-json──▶ claude -p
+panel (local WKWebView) ─JSON message─▶ my-browser ──stdin/stdout stream-json──▶ claude -p
                                                                                    │
-                                          my-browser --mcp ◀──── tool baca ────────┘
+                                          my-browser --mcp ◀──── read tools ───────┘
 ```
 
-- `crates/core/src/claude_chat.rs`: argumen CLI, konteks tab, penerjemah event, label tool.
-- `crates/engine-webkit/src/panel.rs`: webview panel (tanpa pemblokir, data tidak disimpan, tidak bisa berpindah halaman).
-- `crates/app/src/chat.rs`: proses Claude, riwayat, sesi, pesan dari dan ke panel.
-- `crates/app/src/chat_account.rs`: status akun, masuk (`claude auth login` dengan pengganti `open`), keluar, ganti profil.
-- `crates/app/src/chat_panel.html`: tampilan panel dan renderer Markdown yang aman.
+- `crates/core/src/claude_chat.rs`: CLI arguments, tab context, event translator, tool labels.
+- `crates/engine-webkit/src/panel.rs`: panel webview (no blocker, no stored data, cannot navigate away).
+- `crates/app/src/chat.rs`: Claude process, history, session, messages to and from the panel.
+- `crates/app/src/chat_account.rs`: account status, sign-in (`claude auth login` with the `open` replacement), sign-out, profile switching.
+- `crates/app/src/chat_panel.html`: panel UI and the safe Markdown renderer.
 
-Untuk pengujian, build debug punya pengait `MYBROWSER_CHAT_SELFTEST=<berkas>`: setiap kali panel dibuka, satu baris berikutnya dari berkas itu dikirim, dan transkripnya ditulis ke `<berkas>.out`. Baris yang diawali `!` dikirim sebagai pesan panel, misalnya `!{"t":"login","method":"claudeai"}`.
+For testing, debug builds have a `MYBROWSER_CHAT_SELFTEST=<file>` hook: each time the panel opens, the next line of that file is sent, and the transcript is written to `<file>.out`. Lines that start with `!` are sent as panel messages, for example `!{"t":"login","method":"claudeai"}`.

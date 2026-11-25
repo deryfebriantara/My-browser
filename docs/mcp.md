@@ -1,84 +1,84 @@
-# Mengontrol my-browser dari Claude Code (MCP)
+# Controlling my-browser from Claude Code (MCP)
 
-Claude Code bisa melihat dan mengatur tab, membaca halaman, membuat screenshot, dan (dengan izin) berinteraksi dengan halaman di my-browser.
+Claude Code can view and manage tabs, read pages, take screenshots, and (with permission) interact with pages in my-browser.
 
-## Pemasangan
+## Installation
 
 ```sh
-scripts/pasang-mcp.sh            # profil ~/.claude
-scripts/pasang-mcp.sh ~/.claude-work   # profil lain
+scripts/pasang-mcp.sh            # ~/.claude profile
+scripts/pasang-mcp.sh ~/.claude-work   # another profile
 ```
 
-Skrip ini mendaftarkan `dist/my-browser.app/Contents/MacOS/my-browser --mcp` sebagai server MCP scope user. Mulai sesi Claude Code baru supaya tool-nya muncul (cek dengan `/mcp`). Kalau browser belum berjalan saat tool dipanggil, server MCP membukanya otomatis.
+This script registers `dist/my-browser.app/Contents/MacOS/my-browser --mcp` as a user-scope MCP server. Start a new Claude Code session so its tools appear (check with `/mcp`). If the browser is not running when a tool is called, the MCP server opens it automatically.
 
-## Cara kerja
+## How it works
 
 ```
-Claude Code ──stdio JSON-RPC──▶ my-browser --mcp ──control.sock──▶ my-browser (jendela)
+Claude Code ──stdio JSON-RPC──▶ my-browser --mcp ──control.sock──▶ my-browser (window)
 ```
 
-- `my-browser --mcp` adalah binary yang sama dalam mode tanpa jendela (crate `crates/mcp`).
-- Browser mendengarkan di `~/Library/Application Support/my-browser/control.sock` (mode 0600, hanya pengguna yang sama). Tidak ada port jaringan.
-- Protokol antar keduanya: `crates/core/src/control.rs`, satu baris JSON per permintaan.
+- `my-browser --mcp` is the same binary in windowless mode (crate `crates/mcp`).
+- The browser listens on `~/Library/Application Support/my-browser/control.sock` (mode 0600, same user only). There is no network port.
+- The protocol between the two: `crates/core/src/control.rs`, one JSON line per request.
 
-## Tool
+## Tools
 
-| Tool | Fungsi | Butuh izin interaksi |
+| Tool | Purpose | Needs interaction permission |
 |---|---|---|
-| `list_tabs`, `open_tab`, `close_tab`, `activate_tab` | Mengatur tab | Tidak |
-| `navigate`, `go_back`, `go_forward`, `reload` | Navigasi, menunggu halaman selesai dimuat | Tidak |
-| `sleep_tab`, `memory_usage` | Menidurkan tab, memory per tab | Tidak |
-| `search_history` | Mencari riwayat halaman yang pernah dibuka: URL, judul, waktu terakhir, jumlah kunjungan (lihat `docs/riwayat.md`) | Tidak |
-| `read_page`, `list_elements`, `scroll` | Membaca halaman | Tidak |
-| `screenshot` | Layar tab aktif; `full_page` untuk seluruh halaman (dipotong per 1600 px, maks 6 gambar); `selector` untuk satu elemen (elemen kecil diperbesar 2x) | Tidak |
-| `emulate` | Meniru HP (390×844 + user agent iPhone), tablet, desktop, ukuran khusus, mode gelap/terang; `device=reset` untuk kembali | Tidak |
-| `get_selection` | Elemen yang Anda tunjuk lewat **Claude > Pick Element for Claude**: selector, style, HTML, dan gambarnya | Tidak |
-| `check_page` | Satu panggilan: reload (atau buka url), tunggu, error console, request gagal, screenshot | Tidak |
-| `youtube` | Status, play, pause, seek, kecepatan | Tidak |
-| `console_logs` | Console, error tak tertangkap (sumber dan stack), promise gagal | Tidak |
-| `network_log` | Request fetch/XHR: status, durasi, error; isi respons untuk situs lokal | Tidak |
-| `wait_for` | Menunggu elemen atau teks muncul, terlihat, atau hilang | Tidak |
-| `inspect_element` | Posisi, ukuran, computed style, outerHTML satu elemen | Tidak |
-| `click`, `type`, `run_js` | Berinteraksi dengan halaman (`run_js` menunggu Promise) | **Ya** |
+| `list_tabs`, `open_tab`, `close_tab`, `activate_tab` | Manage tabs | No |
+| `navigate`, `go_back`, `go_forward`, `reload` | Navigation, waits for the page to finish loading | No |
+| `sleep_tab`, `memory_usage` | Put a tab to sleep, memory per tab | No |
+| `search_history` | Search the history of visited pages: URL, title, last visit time, visit count (see `docs/history.md`) | No |
+| `read_page`, `list_elements`, `scroll` | Read the page | No |
+| `screenshot` | The active tab's screen; `full_page` for the whole page (split every 1600 px, max 6 images); `selector` for one element (small elements are scaled up 2x) | No |
+| `emulate` | Emulate a phone (390×844 + iPhone user agent), tablet, desktop, custom size, dark/light mode; `device=reset` to go back | No |
+| `get_selection` | The element you pointed at through **Claude > Pick Element for Claude**: selector, style, HTML, and its image | No |
+| `check_page` | One call: reload (or open a url), wait, console errors, failed requests, screenshot | No |
+| `youtube` | Status, play, pause, seek, speed | No |
+| `console_logs` | Console, uncaught errors (source and stack), rejected promises | No |
+| `network_log` | fetch/XHR requests: status, duration, error; response bodies for local sites | No |
+| `wait_for` | Wait for an element or text to appear, become visible, or disappear | No |
+| `inspect_element` | Position, size, computed style, outerHTML of one element | No |
+| `click`, `type`, `run_js` | Interact with the page (`run_js` awaits Promises) | **Yes** |
 
-## Membangun website bersama Claude
+## Building a website with Claude
 
-Minta Claude membuat atau memperbaiki website, misalnya "buatkan landing page kedai kopi, jalankan, dan cek di browser". Alur yang dipakai Claude:
+Ask Claude to build or fix a website, for example "build a coffee shop landing page, run it, and check it in the browser". The flow Claude follows:
 
-1. Menulis kode dan menjalankan server lokal (`npm run dev`, `python3 -m http.server`, dan sejenisnya).
-2. `navigate` ke `http://localhost:<port>`.
-3. Setelah setiap perubahan: `check_page`. Isinya sama dengan `reload` lalu `console_logs` (warn dan error), `network_log` (`failed_only`), dan `screenshot`, tetapi dalam satu panggilan. Untuk halaman yang memuat data belakangan, isi `wait_for` dengan selector yang ditunggu.
-4. Tampilan di layar lain: `emulate` dengan `device=mobile` atau `tablet`, dan `color_scheme=dark`. Setelah selesai, `emulate device=reset`. Anda melihat perubahannya di jendela: halaman tampil selebar HP di tengah atas. Kalau Claude lupa mengembalikan, pakai menu **Claude > Reset Device Emulation**.
-5. Detail tampilan: `screenshot` dengan `selector`, `full_page`, atau `inspect_element`.
+1. Write the code and run a local server (`npm run dev`, `python3 -m http.server`, and the like).
+2. `navigate` to `http://localhost:<port>`.
+3. After every change: `check_page`. It does the same as `reload` followed by `console_logs` (warn and error), `network_log` (`failed_only`), and `screenshot`, but in one call. For pages that load data later, set `wait_for` to the selector to wait for.
+4. Other screen sizes: `emulate` with `device=mobile` or `tablet`, and `color_scheme=dark`. When done, `emulate device=reset`. You see the change in the window: the page appears phone-width at the top center. If Claude forgets to reset it, use the **Claude > Reset Device Emulation** menu.
+5. Visual details: `screenshot` with `selector`, `full_page`, or `inspect_element`.
 
-### Menunjuk elemen ke Claude
+### Pointing out an element to Claude
 
-Daripada menjelaskan "tombol oranye di bawah judul", pilih **Claude > Pick Element for Claude** (⌘⇧E). Elemen di bawah kursor disorot; klik elemen yang dimaksud (Esc untuk batal). Klik ini tidak diteruskan ke halaman, jadi tombol dan link tidak ikut jalan. Setelah itu cukup bilang ke Claude, misalnya "perbesar elemen yang saya pilih". Claude memanggil `get_selection` dan menerima selector unik, teks, posisi, computed style, outerHTML, dan potongan gambar elemen itu.
+Instead of describing "the orange button below the heading", choose **Claude > Pick Element for Claude** (⌘⇧E). The element under the cursor is highlighted; click the element you mean (Esc to cancel). This click is not passed to the page, so buttons and links do not fire. Then just tell Claude, for example "make the element I selected bigger". Claude calls `get_selection` and receives a unique selector, the text, position, computed style, outerHTML, and a cropped image of that element.
 
-### Catatan screenshot
+### Screenshot notes
 
-Screenshot biasa adalah foto layar tab aktif, termasuk video. `full_page`, `selector`, dan gambar `get_selection` dirender ulang dari halaman lewat PDF WebKit, sehingga bagian di luar layar ikut tergambar dan bisa dipakai untuk tab latar. Video dan canvas WebGL bisa tampil kosong di gambar jenis ini, dan gambar yang lazy-load di bawah layar mungkin belum dimuat.
+A regular screenshot is a capture of the active tab's screen, including video. `full_page`, `selector`, and `get_selection` images are re-rendered from the page through WebKit PDF, so off-screen parts are drawn too and they work for background tabs. Video and WebGL canvases can appear blank in this kind of image, and lazy-loaded images below the fold may not have loaded yet.
 
-Pencatat console dan network terpasang di awal setiap halaman dan dibatasi jumlahnya (200 catatan console, 300 request). Isi respons hanya disimpan untuk situs lokal (`localhost`, IP lokal, `.local`, `.test`, `file:`), karena isi respons situs sungguhan bisa berisi data pribadi. Mesinnya WebKit, jadi hasilnya sekaligus menunjukkan perilaku di Safari.
+The console and network recorders are installed at the start of every page and are capped (200 console entries, 300 requests). Response bodies are stored only for local sites (`localhost`, local IPs, `.local`, `.test`, `file:`), because response bodies from real sites can contain personal data. The engine is WebKit, so the results also show how the page behaves in Safari.
 
-## Izin program (auth MCP)
+## Program permissions (MCP auth)
 
-Socket kontrol hanya bisa dibuka oleh user macOS yang sama. Itu berarti program apa pun yang Anda jalankan, jadi setiap program juga harus diizinkan dulu.
+The control socket can only be opened by the same macOS user. That means any program you run, so every program must also be allowed first.
 
-- Saat sebuah program tersambung pertama kali, my-browser maju ke depan dan bertanya: "Allow Claude Code to control my-browser?". Dialog itu menampilkan lokasi program, pid, dan folder kerjanya, sehingga Anda bisa mengenali sesi Claude Code mana yang meminta. Pilihannya:
-  - **Always Allow:** lokasi program disimpan di `mcp_allowed_clients` di `settings.json`.
-  - **Allow Once:** berlaku sampai koneksi itu putus.
-  - **Deny:** berlaku sampai browser ditutup.
-- Permintaan pertama menunggu jawaban Anda sampai 35 detik. Kalau Anda menjawab setelah itu, jawabannya tetap berlaku untuk permintaan berikutnya.
-- **Identitas dari kernel**, bukan dari pengakuan program. Pid peer socket menunjuk ke `my-browser --mcp`, dan yang dianggap meminta akses adalah induk proses itu (misalnya `claude`). Program asing yang menjalankan `my-browser --mcp` sendiri akan tampil dengan namanya sendiri.
-- **Program yang diperbarui saat masih berjalan.** Claude Code memperbarui dirinya sendiri di latar belakang. Sesudah itu kernel tidak lagi bisa memberikan jalur berkas untuk sesi yang sudah berjalan (`proc_pidpath` gagal). Sebagai cadangan, browser memakai jalur saat program dijalankan (`KERN_PROCARGS2`, symlink diselesaikan), asalkan berkas program memang ada di jalur itu (`crates/app/src/procinfo.rs`). Kalau tetap tidak dikenali, program menerima pesan error yang menyarankan memulai ulang sesinya, bukan koneksi yang putus diam-diam.
-- **Panel Ask Claude** dikenali dari silsilah proses (proses Claude-nya adalah anak browser ini), jadi tidak ditanya. Browser juga membatasinya ke perintah baca saja, sebagai lapisan kedua di atas daftar tool panel.
-- Program yang diizinkan bisa membaca riwayat lewat `search_history`, dan teks dialognya menyebut hal itu. Program yang sudah diizinkan sebelum tool ini ada tidak ditanya ulang.
-- Menu **Claude > Revoke MCP Client Access** menghapus semua izin; setiap program akan ditanya lagi.
-- Izin disimpan per lokasi program. Setelah Claude Code diperbarui ke lokasi lain (misalnya versi Node di nvm berganti), Anda akan ditanya sekali lagi.
+- When a program connects for the first time, my-browser comes to the front and asks: "Allow Claude Code to control my-browser?". The dialog shows the program's location, pid, and working folder, so you can tell which Claude Code session is asking. The choices:
+  - **Always Allow:** the program's location is saved in `mcp_allowed_clients` in `settings.json`.
+  - **Allow Once:** applies until that connection closes.
+  - **Deny:** applies until the browser is closed.
+- The first request waits up to 35 seconds for your answer. If you answer after that, the answer still applies to subsequent requests.
+- **Identity comes from the kernel**, not from what the program claims. The socket peer's pid points to `my-browser --mcp`, and the parent of that process (for example `claude`) is treated as the one requesting access. A foreign program that runs `my-browser --mcp` itself shows up under its own name.
+- **Programs updated while still running.** Claude Code updates itself in the background. After that, the kernel can no longer return the file path for a session that is already running (`proc_pidpath` fails). As a fallback, the browser uses the path the program was launched from (`KERN_PROCARGS2`, symlinks resolved), provided the program file actually exists at that path (`crates/app/src/procinfo.rs`). If it still cannot be identified, the program receives an error message suggesting it restart its session, rather than a connection that silently drops.
+- **The Ask Claude panel** is identified by process ancestry (its Claude process is a child of this browser), so it is not asked. The browser also limits it to read-only commands, as a second layer on top of the panel's tool list.
+- Allowed programs can read history through `search_history`, and the dialog text mentions this. Programs allowed before this tool existed are not asked again.
+- The **Claude > Revoke MCP Client Access** menu removes all permissions; every program will be asked again.
+- Permissions are stored per program location. After Claude Code is updated to a different location (for example when the Node version in nvm changes), you will be asked once more.
 
-## Izin interaksi
+## Interaction permission
 
-`click`, `type`, dan `run_js` hanya berjalan setelah menu **Claude > Allow Claude to Interact** dinyalakan. Izin ini selalu mati setiap browser dibuka. Selama menyala, judul window diberi penanda "Claude dapat berinteraksi" dan setiap aksi Claude tampil di kanan nav bar.
+`click`, `type`, and `run_js` only run after the **Claude > Allow Claude to Interact** menu is turned on. This permission is always off when the browser opens. While it is on, the window title carries the marker "Claude can interact" and every Claude action appears on the right of the nav bar.
 
-Alasannya: login Anda (Google dan lainnya) ada di browser ini, dan teks halaman yang dibaca Claude bisa berisi instruksi jahat. Nilai input password tidak pernah dikirim oleh `list_elements`.
+The reason: your logins (Google and others) live in this browser, and the page text Claude reads can contain malicious instructions. Password input values are never sent by `list_elements`.
