@@ -12,6 +12,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp target/release/my-browser "$APP/Contents/MacOS/my-browser"
 cp resources/Info.plist "$APP/Contents/Info.plist"
+cp resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 mkdir -p "$APP/Contents/Resources/blocklist"
 cp resources/blocklist/*.json "$APP/Contents/Resources/blocklist/"
 

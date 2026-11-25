@@ -2,24 +2,24 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleName</key>
-	<string>my-browser</string>
 	<key>CFBundleDisplayName</key>
 	<string>my-browser</string>
 	<key>CFBundleExecutable</key>
 	<string>my-browser</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>local.my-browser</string>
+	<key>CFBundleName</key>
+	<string>my-browser</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1.0</string>
+	<string>0.1.1</string>
 	<key>CFBundleVersion</key>
-	<string>1</string>
+	<string>2</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>14.0</string>
-	<key>NSHighResolutionCapable</key>
-	<true/>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsArbitraryLoadsInWebContent</key>
@@ -27,6 +27,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>Situs web meminta akses kamera.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Situs web meminta akses mikrofon.</string>
 </dict>

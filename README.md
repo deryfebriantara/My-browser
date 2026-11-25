@@ -2,7 +2,7 @@
 
 A memory-efficient web browser for macOS, written in Rust on top of the system WebKit (`WKWebView`). Built for everyday browsing and YouTube, with a built-in ad blocker, an encrypted password manager, and first-class control by Claude (an in-browser chat panel and an MCP server for Claude Code).
 
-> Personal project, version 0.1.0. It runs well as a daily driver on the author's Mac, but it is ad-hoc signed and not notarized, so it is not yet packaged for distribution.
+> Personal project. It runs well as a daily driver on the author's Mac, but it is ad-hoc signed and not notarized, so it is not yet packaged for distribution.
 
 ## Download
 
@@ -72,7 +72,7 @@ scripts/run.sh              # build a release bundle into dist/my-browser.app an
 
 `scripts/bundle.sh` only builds `dist/my-browser.app`, which is ad-hoc signed. `scripts/package.sh` wraps it into a DMG and a zip in `dist/`.
 
-Releases are built by CI: bump `CFBundleShortVersionString` in `resources/Info.plist`, then push a matching tag (for example `git tag v0.2.0 && git push origin v0.2.0`). The workflow checks, builds, and publishes the DMG and zip on the Releases page.
+Releases are built by CI: bump `CFBundleShortVersionString` (and the `CFBundleVersion` build number) in `resources/Info.plist` and the workspace `version` in `Cargo.toml`, run `cargo update --workspace --offline`, commit, then push a matching tag (for example `git tag -a v0.2.0 -m v0.2.0 && git push origin v0.2.0`). The workflow checks, builds, and publishes the DMG and zip on the Releases page.
 
 To register the MCP server with Claude Code:
 
