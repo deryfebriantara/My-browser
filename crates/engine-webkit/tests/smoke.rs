@@ -347,7 +347,9 @@ fn visual_tools(engine: &WebKitEngine) {
     let sink = events.clone();
     let page = engine.create_page(Box::new(move |e| sink.borrow_mut().push(e)));
     page.view().setFrameSize(objc2_foundation::NSSize::new(800.0, 600.0));
-    let html = r#"<title>warna</title><style>body{margin:0}div{height:600px}</style>
+    // Scrollbar disembunyikan: tanpa trackpad (mis. runner CI) macOS memakai
+    // scrollbar klasik yang memakan 15 px lebar halaman.
+    let html = r#"<title>warna</title><style>body{margin:0}div{height:600px}::-webkit-scrollbar{display:none}</style>
         <div style="height:300px;background:#f00"></div><div style="height:300px;background:#ff0"></div>
         <div style="background:#0f0"></div><div style="background:#00f;position:relative">
         <span id="tombol" style="position:absolute;left:100px;top:300px;width:120px;height:40px;background:#f0f"></span></div>"#;
