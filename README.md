@@ -4,6 +4,15 @@ A memory-efficient web browser for macOS, written in Rust on top of the system W
 
 > Personal project, version 0.1.0. It runs well as a daily driver on the author's Mac, but it is ad-hoc signed and not notarized, so it is not yet packaged for distribution.
 
+## Download
+
+Get the latest DMG from [Releases](https://github.com/deryfebriantara/My-browser/releases/latest), open it, and drag **my-browser** to **Applications**. Requires macOS 14 or later on Apple Silicon.
+
+The app is ad-hoc signed and not notarized, so macOS blocks the first launch:
+- **macOS 15:** open it once, then click **Open Anyway** in **System Settings > Privacy & Security**.
+- **macOS 14:** right-click the app, choose **Open**, then **Open** again.
+- Or run `xattr -dr com.apple.quarantine /Applications/my-browser.app`.
+
 ## Features
 
 ### Browsing
@@ -61,7 +70,9 @@ scripts/update-filters.sh   # download EasyList/EasyPrivacy and compile the ad-b
 scripts/run.sh              # build a release bundle into dist/my-browser.app and open it
 ```
 
-`scripts/bundle.sh` only builds `dist/my-browser.app`, which is ad-hoc signed.
+`scripts/bundle.sh` only builds `dist/my-browser.app`, which is ad-hoc signed. `scripts/package.sh` wraps it into a DMG and a zip in `dist/`.
+
+Releases are built by CI: bump `CFBundleShortVersionString` in `resources/Info.plist`, then push a matching tag (for example `git tag v0.2.0 && git push origin v0.2.0`). The workflow checks, builds, and publishes the DMG and zip on the Releases page.
 
 To register the MCP server with Claude Code:
 
@@ -131,3 +142,5 @@ Settings live in `~/Library/Application Support/my-browser/settings.json`. Quit 
 ## License
 
 [MIT](LICENSE) © 2026 Dery Febriantara
+
+The bundled ad-blocking rules are generated from [EasyList and EasyPrivacy](https://easylist.to) (GPLv3 / CC BY-SA 3.0); they are downloaded at build time and are not stored in this repository.

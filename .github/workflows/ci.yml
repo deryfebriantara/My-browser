@@ -1,6 +1,7 @@
-# check: the same checks as scripts/check.sh (rustfmt, clippy, all tests
-#        including the real-WebKit smoke test, cargo audit).
-# build: release bundle dist/my-browser.app, uploaded as a zip artifact.
+# check:   the same checks as scripts/check.sh (rustfmt, clippy, all tests
+#          including the real-WebKit smoke test, cargo audit).
+# build:   release bundle, packaged as a DMG and a zip (artifact for 30 days).
+# release: on a version tag (v*), publishes the DMG and zip as a GitHub Release.
 name: ci
 
 on:
@@ -28,6 +29,18 @@ jobs:
       - name: Toolchain from rust-toolchain.toml
         run: rustup show
       - uses: Swatinem/rust-cache@v2
+      - name: Version
+        id: version
+        run: |
+          plist="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' resources/Info.plist)"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag="${GITHUB_REF_NAME#v}"
+            if [[ "$tag" != "$plist" ]]; then
+              echo "tag $GITHUB_REF_NAME does not match Info.plist version $plist" >&2
+              exit 1
+            fi
+          fi
+          echo "value=$plist" >> "$GITHUB_OUTPUT"
       - name: Build release bundle (downloads EasyList/EasyPrivacy for the ad blocker)
         run: scripts/bundle.sh
       - name: Debug-only test hooks are not in the release binary
@@ -38,10 +51,57 @@ jobs:
           fi
       - name: Verify signature
         run: codesign --verify --deep --strict --verbose=2 dist/my-browser.app
-      - name: Zip bundle
-        run: ditto -c -k --keepParent dist/my-browser.app my-browser-macos.zip
+      - name: Package DMG and zip
+        run: scripts/package.sh "${{ steps.version.outputs.value }}"
       - uses: actions/upload-artifact@v4
         with:
-          name: my-browser-macos-${{ github.sha }}
-          path: my-browser-macos.zip
+          name: my-browser-macos
+          path: |
+            dist/my-browser-*-macos-arm64.dmg
+            dist/my-browser-*-macos-arm64.zip
           retention-days: 30
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: my-browser-macos
+          path: out
+      - name: Release notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          cat > notes.md <<EOF
+          ## Download
+
+          - **my-browser-${version}-macos-arm64.dmg**: open it and drag **my-browser** to **Applications**.
+          - **my-browser-${version}-macos-arm64.zip**: the same app, zipped.
+
+          Requirements: macOS 14 or later on Apple Silicon (M1 or newer).
+
+          ## First launch
+
+          This build is ad-hoc signed and not notarized, so macOS blocks it the first time you open it. To open it anyway:
+
+          - **macOS 15:** open my-browser once, then go to **System Settings > Privacy & Security** and click **Open Anyway**.
+          - **macOS 14:** right-click my-browser in Applications, choose **Open**, then **Open** again.
+          - Or in Terminal: \`xattr -dr com.apple.quarantine /Applications/my-browser.app\`
+
+          ## Features
+
+          Tabs with automatic tab sleep, history with address bar autocomplete, a built-in ad blocker, an encrypted password manager, and Claude integration (the Ask Claude panel and an MCP server for Claude Code). See the [README](https://github.com/${GITHUB_REPOSITORY}#readme) for details.
+
+          Ad-blocking rules are generated from [EasyList and EasyPrivacy](https://easylist.to) (GPLv3 / CC BY-SA 3.0).
+          EOF
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "my-browser $GITHUB_REF_NAME" \
+            --notes-file notes.md
