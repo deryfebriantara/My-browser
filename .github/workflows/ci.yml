@@ -1,4 +1,6 @@
-# Pemeriksaan yang sama dengan scripts/check.sh, di runner macOS GitHub.
+# check: the same checks as scripts/check.sh (rustfmt, clippy, all tests
+#        including the real-WebKit smoke test, cargo audit).
+# build: release bundle dist/my-browser.app, uploaded as a zip artifact.
 name: ci
 
 on:
@@ -10,10 +12,36 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - name: Toolchain dari rust-toolchain.toml
+      - name: Toolchain from rust-toolchain.toml
         run: rustup show && rustup component add rustfmt clippy
       - uses: Swatinem/rust-cache@v2
-      - name: Pasang cargo-audit
+      - name: Install cargo-audit
         run: cargo install cargo-audit --locked
       - name: Format, clippy, test, audit
         run: scripts/check.sh
+
+  build:
+    runs-on: macos-15
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain from rust-toolchain.toml
+        run: rustup show
+      - uses: Swatinem/rust-cache@v2
+      - name: Build release bundle (downloads EasyList/EasyPrivacy for the ad blocker)
+        run: scripts/bundle.sh
+      - name: Debug-only test hooks are not in the release binary
+        run: |
+          if strings dist/my-browser.app/Contents/MacOS/my-browser | grep -qE 'debug_ui|SELFTEST|sheet_button'; then
+            echo "debug hooks found in release binary" >&2
+            exit 1
+          fi
+      - name: Verify signature
+        run: codesign --verify --deep --strict --verbose=2 dist/my-browser.app
+      - name: Zip bundle
+        run: ditto -c -k --keepParent dist/my-browser.app my-browser-macos.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: my-browser-macos-${{ github.sha }}
+          path: my-browser-macos.zip
+          retention-days: 30
