@@ -24,6 +24,8 @@ use browser_core::suggest::Suggestion;
 use browser_core::tabs::TabId;
 use engine_webkit::WebKitEngine;
 use objc2::MainThreadMarker;
+use objc2::rc::Retained;
+use objc2::runtime::AnyObject;
 use objc2_foundation::NSRunLoop;
 use objc2_foundation::{NSBundle, NSString};
 use std::cell::{Cell, RefCell};
@@ -64,6 +66,8 @@ pub struct AppState {
     resize_from: Cell<Option<f64>>,
     /// Overlay dibuka untuk mengetik alamat: bertahan sampai pengeditan selesai.
     overlay_for_address: Cell<bool>,
+    /// Monitor klik lokal selama bar alamat lebar tampil.
+    editor_monitor: RefCell<Option<Retained<AnyObject>>>,
     /// `spaces.json` dari versi lebih baru (versi formatnya): status tab
     /// tidak disimpan supaya berkas itu tidak tertimpa.
     newer_spaces: Option<u32>,
@@ -164,6 +168,7 @@ impl AppState {
                 newer_spaces,
                 resize_from: Cell::new(None),
                 overlay_for_address: Cell::new(false),
+                editor_monitor: RefCell::new(None),
                 favicons: Favicons::new(persistence::data_dir().join("favicons")),
             }
         });
@@ -532,12 +537,67 @@ impl AppState {
         }
     }
 
+    /// Menampilkan bar alamat lebar dan memasang monitor klik: klik di jendela
+    /// utama di luar bar (tombol, sidebar, halaman) mengakhiri pengeditan
+    /// sebelum klik itu diproses.
+    pub fn show_address_editor(&self) {
+        self.ui.show_editor(true);
+        if self.editor_monitor.borrow().is_some() {
+            return;
+        }
+        let me = self.me.clone();
+        let handler =
+            RcBlock::new(move |event: std::ptr::NonNull<objc2_app_kit::NSEvent>| -> *mut objc2_app_kit::NSEvent {
+                if let Some(s) = me.upgrade() {
+                    // SAFETY: AppKit memberi event yang berlaku selama handler berjalan.
+                    s.editor_click(unsafe { event.as_ref() });
+                }
+                event.as_ptr()
+            });
+        // SAFETY: monitor lokal berjalan di main thread; handler mengembalikan event apa adanya.
+        let monitor = unsafe {
+            objc2_app_kit::NSEvent::addLocalMonitorForEventsMatchingMask_handler(
+                objc2_app_kit::NSEventMask::LeftMouseDown,
+                &handler,
+            )
+        };
+        *self.editor_monitor.borrow_mut() = monitor;
+    }
+
+    /// Menyembunyikan bar alamat lebar, melepas monitor klik, dan
+    /// mengembalikan isi field ke alamat tab (teks yang ditinggalkan dibuang).
+    fn hide_address_editor(&self) {
+        self.ui.show_editor(false);
+        if let Some(monitor) = self.editor_monitor.borrow_mut().take() {
+            // SAFETY: objek dari addLocalMonitorForEventsMatchingMask_handler.
+            unsafe { objc2_app_kit::NSEvent::removeMonitor(&monitor) };
+        }
+        if !self.ui.sidebar.is_editing() {
+            let url = self.nav_info().url;
+            self.ui.sidebar.address.setStringValue(&NSString::from_str(&url));
+        }
+    }
+
+    fn editor_click(&self, event: &objc2_app_kit::NSEvent) {
+        let in_main = event
+            .window(self.mtm)
+            .is_some_and(|w| std::ptr::eq(Retained::as_ptr(&w), Retained::as_ptr(&self.ui.window)));
+        if !in_main || !self.ui.sidebar.is_editing() {
+            return;
+        }
+        let point = event.locationInWindow();
+        if objc2_foundation::NSPointInRect(point, self.ui.sidebar.editor_box().frame()) {
+            return;
+        }
+        self.end_address_editing();
+    }
+
     /// Mengakhiri pengeditan address bar tanpa menyimpan teksnya. abortEditing
     /// tidak mengirim controlTextDidEndEditing, jadi penutupan overlay
     /// diperiksa di sini juga.
     fn end_address_editing(&self) {
         self.ui.sidebar.address.abortEditing();
-        self.ui.show_editor(false);
+        self.hide_address_editor();
         self.address_editing_ended();
     }
 
@@ -551,7 +611,7 @@ impl AppState {
             if s.ui.sidebar.is_editing() {
                 return;
             }
-            s.ui.show_editor(false);
+            s.hide_address_editor();
             s.overlay_for_address.set(false);
             if s.ui.sidebar_mode() == crate::layout::SidebarMode::Overlay && !s.ui.pointer_in_sidebar() {
                 s.ui.hide_overlay();
@@ -634,7 +694,7 @@ impl AppState {
             self.layout_sidebar();
         }
         // Bar lebar tampil dulu, supaya pengeditan dimulai di field yang terlihat.
-        self.ui.show_editor(true);
+        self.show_address_editor();
         self.address.begin();
         self.ui.window.makeFirstResponder(Some(&self.ui.sidebar.address));
         unsafe { self.ui.sidebar.address.selectText(None) };

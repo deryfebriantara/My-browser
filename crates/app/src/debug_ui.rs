@@ -52,6 +52,34 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
             ok(address_state(state))
         }
         "address_state" => ok(address_state(state)),
+        // "<x>,<y>" (koordinat jendela): klik mouse sintetis lewat antrean event
+        // aplikasi, jadi monitor event lokal ikut melihatnya. Kursor asli tidak bergerak.
+        "click_at" => {
+            let Some((x, y)) = text.unwrap_or_default().split_once(',') else { return err("format: <x>,<y>") };
+            let (Ok(x), Ok(y)) = (x.trim().parse::<f64>(), y.trim().parse::<f64>()) else {
+                return err("koordinat tidak valid");
+            };
+            let app = NSApplication::sharedApplication(state.mtm());
+            let number = state.ui.window.windowNumber();
+            let time = objc2_foundation::NSProcessInfo::processInfo().systemUptime();
+            for kind in [objc2_app_kit::NSEventType::LeftMouseDown, objc2_app_kit::NSEventType::LeftMouseUp] {
+                let event = objc2_app_kit::NSEvent::mouseEventWithType_location_modifierFlags_timestamp_windowNumber_context_eventNumber_clickCount_pressure(
+                    kind,
+                    objc2_foundation::NSPoint::new(x, y),
+                    objc2_app_kit::NSEventModifierFlags::empty(),
+                    time,
+                    number,
+                    None,
+                    0,
+                    1,
+                    1.0,
+                );
+                if let Some(event) = event {
+                    app.postEvent_atStart(&event, false);
+                }
+            }
+            ok(json!({"posted": [x, y]}))
+        }
         // Melepas fokus dari field (seperti klik di halaman): controlTextDidEndEditing.
         "resign_address" => {
             state.ui.window.makeFirstResponder(None);
@@ -381,6 +409,7 @@ fn window_layout(state: &AppState) -> Value {
         "lights_center": state.ui.traffic_light_center(),
         "movable_by_background": state.ui.window.isMovableByWindowBackground(),
         "editor_visible": state.ui.editor_visible(),
+        "back_frame": rect_json(state.ui.sidebar.back.convertRect_toView(state.ui.sidebar.back.bounds(), None)),
         "editor_frame": rect_json(state.ui.sidebar.editor_box().frame()),
         "display_frame": rect_json(state.ui.sidebar.display_frame_in_window()),
         "backdrop": state.ui.backdrop_info(),
