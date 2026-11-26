@@ -21,4 +21,5 @@ pub mod sidebar;
 pub mod sleep;
 pub mod suggest;
 pub mod tabs;
+pub mod theme;
 pub mod youtube;
