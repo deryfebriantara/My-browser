@@ -8,7 +8,7 @@
 
 use crate::chat_account::{ChatAccount, claude_command};
 use crate::persistence;
-use crate::state::{AppState, display_title};
+use crate::state::AppState;
 use browser_core::claude_chat::{self as cc, ChatEvent, Launch, TabContext};
 use dispatch2::DispatchQueue;
 use engine_webkit::PanelView;
@@ -419,7 +419,7 @@ fn active_tab(state: &AppState) -> Option<ActiveTab> {
     let tab = b.tabs().get(b.tabs().active())?;
     Some(ActiveTab {
         id: tab.id.0,
-        title: display_title(tab),
+        title: tab.display_title(),
         url: tab.url.as_ref().map(|u| u.to_string()),
         picked: state.picked_tab.get() == Some(tab.id),
     })

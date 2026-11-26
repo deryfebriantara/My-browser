@@ -60,7 +60,8 @@ impl TabList {
         let mut list = TabList::new(now);
         let blank = list.active();
         let mut active = None;
-        for (i, saved) in s.tabs.iter().enumerate() {
+        // Tab baru selalu masuk di paling atas Today, jadi dibuka dari belakang.
+        for (i, saved) in s.tabs.iter().enumerate().rev() {
             let Ok(url) = Url::parse(&saved.url) else { continue };
             let id = list.open(Some(url), now, true);
             let tab = list.get_mut(id).expect("tab baru ada");
@@ -129,9 +130,9 @@ mod tests {
         assert_eq!(
             got,
             vec![
-                ("https://a.com/".into(), "A".into(), 0.0, false),
-                ("https://b.com/".into(), "B".into(), 120.0, false),
                 ("https://c.com/".into(), "C".into(), 0.0, false),
+                ("https://b.com/".into(), "B".into(), 120.0, false),
+                ("https://a.com/".into(), "A".into(), 0.0, false),
             ]
         );
         assert_eq!(back.get(back.active()).unwrap().title, "B");

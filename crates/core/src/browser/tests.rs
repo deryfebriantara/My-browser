@@ -497,13 +497,13 @@ fn history_suggestion_counts_as_typed() {
 }
 
 #[test]
-fn open_in_new_tab_opens_next_to_opener_and_activates() {
+fn tab_opened_from_page_goes_to_top_of_today() {
     let (mut b, log, t0) = setup(None);
     let a = b.tabs().active();
     assert!(b.navigate("a.com", t0));
     b.handle_event(a, PageEvent::OpenInNewTab(u("https://n.com/")), t0);
     let order: Vec<String> = b.tabs().iter().map(|t| t.url.as_ref().unwrap().to_string()).collect();
-    assert_eq!(order, vec!["https://a.com/".to_string(), "https://n.com/".to_string()]);
+    assert_eq!(order, vec!["https://n.com/".to_string(), "https://a.com/".to_string()]);
     assert_ne!(b.tabs().active(), a);
     assert!(has(&log, Call::Load("https://n.com/".into())));
 }

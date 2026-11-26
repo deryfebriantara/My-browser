@@ -9,7 +9,7 @@ use crate::omnibox::{Parsed, classify_input, parse_input};
 use crate::session::SessionFile;
 use crate::settings::Settings;
 use crate::sleep::{Pressure, tabs_to_sleep};
-use crate::tabs::{PendingVisit, TabId, TabList, Url};
+use crate::tabs::{Closed, PendingVisit, TabId, TabList, Url};
 use crate::youtube::{VIDEO_TIME_JS, is_youtube_watch, with_resume_time};
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -180,8 +180,16 @@ impl<E: Engine> Browser<E> {
     pub fn close_tab(&mut self, id: TabId, now: Instant) {
         let was_active = self.tabs.active() == id;
         self.pages.remove(&id);
-        if self.tabs.close(id, now).is_none() {
-            return;
+        match self.tabs.close(id, now) {
+            None => return,
+            // Slot kembali ke alamat simpanannya; membangunkannya lagi nanti
+            // bukan kunjungan baru.
+            Some(Closed::Unloaded) => {
+                if let Some(tab) = self.tabs.get_mut(id) {
+                    tab.visit_key = tab.url.as_ref().and_then(visit_key);
+                }
+            }
+            Some(Closed::Removed(_)) => {}
         }
         if was_active {
             let next = self.tabs.active();

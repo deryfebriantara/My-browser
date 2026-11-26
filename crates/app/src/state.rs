@@ -24,7 +24,7 @@ use browser_core::session::SessionFile;
 use browser_core::settings::Settings;
 use browser_core::sleep::Pressure;
 use browser_core::suggest::Suggestion;
-use browser_core::tabs::{Tab, TabId};
+use browser_core::tabs::TabId;
 use engine_webkit::WebKitEngine;
 use objc2::MainThreadMarker;
 use objc2_foundation::NSRunLoop;
@@ -72,16 +72,6 @@ struct NavInfo {
     url: String,
     title: String,
     blank: bool,
-}
-
-pub(crate) fn display_title(tab: &Tab) -> String {
-    if !tab.title.is_empty() {
-        return tab.title.clone();
-    }
-    match &tab.url {
-        Some(url) => url.host_str().unwrap_or(url.as_str()).to_string(),
-        None => "New Tab".to_string(),
-    }
 }
 
 /// `Contents/Resources/blocklist` di dalam bundle aplikasi.
@@ -163,7 +153,7 @@ impl AppState {
             .iter()
             .map(|t| TabInfo {
                 id: t.id.0,
-                title: display_title(t),
+                title: t.display_title(),
                 active: t.id == active,
                 sleeping: !t.awake && t.url.is_some(),
             })
@@ -376,6 +366,14 @@ impl AppState {
     pub fn new_tab(&self) {
         self.browser.borrow_mut().new_tab(Instant::now());
         self.refresh();
+        // ⌘T di tab yang masih kosong memakai tab itu lagi: cukup fokus ke address bar.
+        let blank = {
+            let b = self.browser.borrow();
+            b.tabs().get(b.tabs().active()).is_some_and(|t| t.is_blank())
+        };
+        if blank {
+            self.focus_address();
+        }
     }
 
     pub fn close_active_tab(&self) {
