@@ -86,6 +86,16 @@ define_class!(
             self.with(|s| s.tab_action(id, TabAction::CopyLink));
         }
 
+        #[unsafe(method(sidebarDragBegan:))]
+        fn sidebar_drag_began(&self, _sender: Option<&AnyObject>) {
+            self.with(|s| s.ui.sidebar.set_dragging(true));
+        }
+
+        #[unsafe(method(sidebarDragEnded:))]
+        fn sidebar_drag_ended(&self, _sender: Option<&AnyObject>) {
+            self.with(|s| s.ui.sidebar.set_dragging(false));
+        }
+
         #[unsafe(method(selectTab:))]
         fn select_tab(&self, sender: Option<&AnyObject>) {
             let id = tag_of(sender) as u64;

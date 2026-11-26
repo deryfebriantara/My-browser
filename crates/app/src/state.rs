@@ -161,6 +161,7 @@ impl AppState {
                 favicons: Favicons::new(persistence::data_dir().join("favicons")),
             }
         });
+        state.ui.sidebar.install_drops(Rc::downgrade(&state));
         if state.newer_spaces.is_some() {
             state.ui.show_notice("Tabs won't be saved: spaces.json was written by a newer version of my-browser.");
         }
@@ -277,6 +278,12 @@ impl AppState {
             self.ui.window.makeFirstResponder(Some(&view));
         }
         self.ui.show_notice("Click the element to show Claude (Esc to cancel)");
+    }
+
+    /// Rc dari state ini (untuk pengait uji yang butuh `&Rc<AppState>`).
+    #[cfg(debug_assertions)]
+    pub fn me(&self) -> Option<Rc<AppState>> {
+        self.me.upgrade()
     }
 
     pub fn mtm(&self) -> MainThreadMarker {
@@ -449,6 +456,12 @@ impl AppState {
                 }
             }
         }
+        self.refresh();
+    }
+
+    /// Memindahkan tab ke bagian sidebar `kind` di posisi `at` (seret-lepas).
+    pub fn place_tab(&self, id: u64, kind: browser_core::tabs::TabKind, at: usize) {
+        self.browser.borrow_mut().place_tab(TabId(id), kind, at);
         self.refresh();
     }
 

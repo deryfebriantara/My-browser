@@ -4,10 +4,12 @@
 
 use crate::actions::ActionTarget;
 use crate::favicons::Favicons;
-use crate::layout::{Frame, TILE_GAP, TILE_HEIGHT, tile_columns};
-use crate::paint::PaintView;
+use crate::layout::{Frame, TILE_GAP, TILE_HEIGHT, insertion_index, tile_columns};
+use crate::paint::{DropPhase, PaintView};
 use crate::sidebar_row::{ROW_HEIGHT, RowStyle, TabRowView, symbol};
+use crate::state::AppState;
 use browser_core::sidebar::{RowInfo, SidebarModel};
+use browser_core::tabs::TabKind;
 use browser_core::theme::SECONDARY_ALPHA;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject, Sel};
@@ -18,17 +20,25 @@ use objc2_app_kit::{
 };
 use objc2_foundation::{NSAttributedString, NSDictionary, NSPoint, NSRect, NSSize, NSString};
 use std::cell::{Cell, RefCell};
+use std::rc::{Rc, Weak};
 
 const PAD: f64 = 8.0;
 const BUTTON: f64 = 24.0;
 const ADDRESS_HEIGHT: f64 = 30.0;
 const HEADER_HEIGHT: f64 = 24.0;
 
+/// Area sidebar yang menerima lepasan tab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DropRegion {
+    List,
+    Favorites,
+}
+
 /// Satu baris yang sedang tampil (untuk pengujian).
-#[cfg_attr(not(debug_assertions), allow(dead_code))]
 pub struct ShownRow {
     pub info: RowInfo,
     pub view: Retained<TabRowView>,
+    #[cfg_attr(not(debug_assertions), allow(dead_code))]
     pub favicon: bool,
 }
 
@@ -51,6 +61,16 @@ pub struct Sidebar {
     /// Grid ubin favorit (tidak ikut bergulir).
     favs: Retained<PaintView>,
     favs_height: Cell<f64>,
+    /// Kolom dan lebar ubin favorit dari render terakhir.
+    grid: Cell<(usize, f64)>,
+    fav_count: Cell<usize>,
+    /// Ada tab yang sedang diseret (grid favorit kosong menampilkan zona lepas).
+    dragging: Cell<bool>,
+    drop_zone: Retained<PaintView>,
+    drop_line: Retained<PaintView>,
+    /// Posisi y label TODAY dan baris Today pertama di daftar.
+    today_top: Cell<f64>,
+    today_rows_top: Cell<f64>,
     /// Penanda "Claude can interact" di bawah baris atas.
     interact: Retained<PaintView>,
     interact_off: Retained<NSButton>,
@@ -181,6 +201,13 @@ impl Sidebar {
             favs_height: Cell::new(0.0),
             interact,
             interact_off,
+            grid: Cell::new((1, 0.0)),
+            fav_count: Cell::new(0),
+            dragging: Cell::new(false),
+            drop_zone: PaintView::outline(mtm, &NSColor::colorWithWhite_alpha(1.0, 0.35), 1.5, 10.0),
+            drop_line: PaintView::fill(mtm, &NSColor::whiteColor(), 1.0),
+            today_top: Cell::new(0.0),
+            today_rows_top: Cell::new(0.0),
         }
     }
 
@@ -270,10 +297,144 @@ impl Sidebar {
             self.favs.addSubview(&view);
             shown.push(ShownRow { info: row.clone(), view, favicon });
         }
-        let rows = model.favorites.len().div_ceil(columns);
-        let height = if rows == 0 { 0.0 } else { rows as f64 * (TILE_HEIGHT + TILE_GAP) - TILE_GAP };
+        self.grid.set((columns, tile_w));
+        self.fav_count.set(model.favorites.len());
+        self.update_favs_height();
+        self.layout_inner();
+    }
+
+    /// Tinggi grid favorit: baris ubin, atau zona lepas 40 pt saat menyeret
+    /// ke grid yang masih kosong.
+    fn update_favs_height(&self) {
+        let (columns, _) = self.grid.get();
+        let count = self.fav_count.get();
+        let rows = count.div_ceil(columns.max(1));
+        let height = if rows > 0 {
+            rows as f64 * (TILE_HEIGHT + TILE_GAP) - TILE_GAP
+        } else if self.dragging.get() {
+            TILE_HEIGHT
+        } else {
+            0.0
+        };
+        self.drop_zone.removeFromSuperview();
+        if count == 0 && self.dragging.get() {
+            let inner = (self.frame.get().w - 2.0 * PAD).max(0.0);
+            self.drop_zone.setFrame(NSRect::new(NSPoint::new(PAD, 0.0), NSSize::new(inner, TILE_HEIGHT)));
+            self.favs.addSubview(&self.drop_zone);
+        }
         self.favs_height.set(height);
         self.layout_inner();
+    }
+
+    /// Seret tab dimulai atau selesai (dari `TabRowView` lewat responder chain).
+    pub fn set_dragging(&self, on: bool) {
+        self.dragging.set(on);
+        if !on {
+            self.drop_line.removeFromSuperview();
+        }
+        self.update_favs_height();
+    }
+
+    /// Daftar tab dan grid favorit menjadi tujuan lepasan.
+    pub fn install_drops(&self, state: Weak<AppState>) {
+        for (view, region) in [(&self.doc, DropRegion::List), (&self.favs, DropRegion::Favorites)] {
+            let weak = state.clone();
+            view.set_drop_handler(Rc::new(move |phase, point| {
+                let Some(state) = weak.upgrade() else { return false };
+                state.ui.sidebar.drop_event(&state, region, phase, point)
+            }));
+        }
+    }
+
+    fn drop_event(&self, state: &Rc<AppState>, region: DropRegion, phase: DropPhase, point: NSPoint) -> bool {
+        let (kind, at) = self.drop_target(region, point);
+        match phase {
+            DropPhase::Update => {
+                self.show_drop_line(region, kind, at);
+                true
+            }
+            DropPhase::Exit => {
+                self.drop_line.removeFromSuperview();
+                false
+            }
+            DropPhase::Perform(id) => {
+                self.drop_line.removeFromSuperview();
+                // Pindah ke bawah di bagian yang sama: posisi tab itu sendiri
+                // ikut terhitung sebelum ia diangkat.
+                let current = self.rows.borrow().iter().filter(|r| r.info.kind == kind).position(|r| r.info.id.0 == id);
+                let at = match current {
+                    Some(current) if current < at => at - 1,
+                    _ => at,
+                };
+                state.place_tab(id, kind, at);
+                true
+            }
+        }
+    }
+
+    /// Bagian dan posisi sisip untuk titik `point` (koordinat region).
+    fn drop_target(&self, region: DropRegion, point: NSPoint) -> (TabKind, usize) {
+        match region {
+            DropRegion::Favorites => {
+                let (columns, tile_w) = self.grid.get();
+                let col = (((point.x - PAD) / (tile_w + TILE_GAP)).floor().max(0.0) as usize).min(columns - 1);
+                let row = (point.y / (TILE_HEIGHT + TILE_GAP)).floor().max(0.0) as usize;
+                (TabKind::Favorite, (row * columns + col).min(self.fav_count.get()))
+            }
+            DropRegion::List => {
+                let kind = if point.y < self.today_top.get() { TabKind::Pinned } else { TabKind::Today };
+                let mids: Vec<f64> = self
+                    .rows
+                    .borrow()
+                    .iter()
+                    .filter(|r| r.info.kind == kind)
+                    .map(|r| {
+                        let f = r.view.frame();
+                        f.origin.y + f.size.height / 2.0
+                    })
+                    .collect();
+                (kind, insertion_index(&mids, point.y))
+            }
+        }
+    }
+
+    fn show_drop_line(&self, region: DropRegion, kind: TabKind, at: usize) {
+        self.drop_line.removeFromSuperview();
+        match region {
+            DropRegion::Favorites => {
+                let (columns, tile_w) = self.grid.get();
+                let (row, col) = (at / columns, at % columns);
+                let x = PAD + col as f64 * (tile_w + TILE_GAP) - TILE_GAP / 2.0 - 1.0;
+                let y = row as f64 * (TILE_HEIGHT + TILE_GAP);
+                self.drop_line.setFrame(NSRect::new(NSPoint::new(x.max(0.0), y), NSSize::new(2.0, TILE_HEIGHT)));
+                self.favs.addSubview(&self.drop_line);
+            }
+            DropRegion::List => {
+                let frames: Vec<NSRect> =
+                    self.rows.borrow().iter().filter(|r| r.info.kind == kind).map(|r| r.view.frame()).collect();
+                let y = match (frames.get(at), frames.last()) {
+                    (Some(f), _) => f.origin.y - 1.0,
+                    (None, Some(last)) => last.origin.y + last.size.height + 1.0,
+                    (None, None) if kind == TabKind::Pinned => (self.today_top.get() - 4.0).max(0.0),
+                    (None, None) => self.today_rows_top.get(),
+                };
+                let width = (self.scroll.contentSize().width - 2.0 * PAD).max(0.0);
+                self.drop_line.setFrame(NSRect::new(NSPoint::new(PAD, y - 1.0), NSSize::new(width, 2.0)));
+                self.doc.addSubview(&self.drop_line);
+            }
+        }
+    }
+
+    /// Melepas tab `id` di setengah atas baris `target` lewat jalur lepasan
+    /// sungguhan (titik, posisi sisip, koreksi geser ke bawah).
+    #[cfg(debug_assertions)]
+    pub fn debug_drop_before(&self, state: &Rc<AppState>, id: u64, target: u64) -> bool {
+        let found = self.rows.borrow().iter().find(|r| r.info.id.0 == target).map(|r| (r.info.kind, r.view.frame()));
+        let Some((kind, frame)) = found else { return false };
+        let region = if kind == TabKind::Favorite { DropRegion::Favorites } else { DropRegion::List };
+        let point = NSPoint::new(frame.origin.x + 4.0, frame.origin.y + 2.0);
+        self.drop_event(state, region, DropPhase::Update, point);
+        self.drop_event(state, region, DropPhase::Perform(id), point)
     }
 
     pub fn set_interact(&self, on: bool) {
@@ -322,6 +483,7 @@ impl Sidebar {
             self.doc.addSubview(&divider);
             y += 9.0;
         }
+        self.today_top.set(y);
         self.doc.addSubview(&header(mtm, "TODAY", width, y));
         y += HEADER_HEIGHT;
         let new_tab = unsafe {
@@ -338,6 +500,7 @@ impl Sidebar {
         new_tab.setFrame(NSRect::new(NSPoint::new(PAD + 6.0, y), NSSize::new(row_w - 6.0, 26.0)));
         self.doc.addSubview(&new_tab);
         y += 28.0;
+        self.today_rows_top.set(y);
         add_rows(&model.today, &mut y, &mut shown);
 
         let visible = self.scroll.contentSize().height;

@@ -3,11 +3,28 @@
 //! Digambar sekali ke backing store view, bukan per frame isi halaman.
 
 use objc2::rc::Retained;
-use objc2::runtime::Bool;
+use objc2::runtime::{Bool, ProtocolObject};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send};
-use objc2_app_kit::{NSBezierPath, NSColor, NSGraphicsContext, NSShadow, NSView};
-use objc2_foundation::{NSPoint, NSRect, NSSize};
+use objc2_app_kit::{
+    NSBezierPath, NSColor, NSDragOperation, NSDraggingDestination, NSDraggingInfo, NSGraphicsContext, NSShadow, NSView,
+};
+use objc2_foundation::{NSArray, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
 use std::cell::{Cell, RefCell};
+use std::rc::Rc;
+
+/// Tipe pasteboard untuk tab yang diseret di sidebar (isinya id tab).
+pub const TAB_DRAG_TYPE: &str = "dev.my-browser.tab";
+
+/// Tahap seret-lepas yang diteruskan ke penangan lepasan.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DropPhase {
+    Update,
+    Exit,
+    Perform(u64),
+}
+
+/// Penangan lepasan: tahap dan titik (koordinat view). `true` menerima.
+pub type DropHandler = Rc<dyn Fn(DropPhase, NSPoint) -> bool>;
 
 /// Jarak bayangan kartu dari tepi kartu (ruang untuk blur).
 pub const SHADOW_MARGIN: f64 = 20.0;
@@ -22,6 +39,7 @@ pub struct PaintIvars {
     /// Klik di area kosong view ini diteruskan ke view di bawahnya.
     passthrough: Cell<bool>,
     flipped: Cell<bool>,
+    drop: RefCell<Option<DropHandler>>,
 }
 
 define_class!(
@@ -87,6 +105,35 @@ define_class!(
             Bool::YES
         }
     }
+
+    unsafe impl NSObjectProtocol for PaintView {}
+
+    unsafe impl NSDraggingDestination for PaintView {
+        #[unsafe(method(draggingEntered:))]
+        fn dragging_entered(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> NSDragOperation {
+            self.drag_update(sender)
+        }
+
+        #[unsafe(method(draggingUpdated:))]
+        fn dragging_updated(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> NSDragOperation {
+            self.drag_update(sender)
+        }
+
+        #[unsafe(method(draggingExited:))]
+        fn dragging_exited(&self, _sender: Option<&ProtocolObject<dyn NSDraggingInfo>>) {
+            self.call_drop(DropPhase::Exit, NSPoint::new(0.0, 0.0));
+        }
+
+        #[unsafe(method(performDragOperation:))]
+        fn perform_drag_operation(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> Bool {
+            let id = sender
+                .draggingPasteboard()
+                .stringForType(&NSString::from_str(TAB_DRAG_TYPE))
+                .and_then(|s| s.to_string().parse::<u64>().ok());
+            let point = self.convertPoint_fromView(sender.draggingLocation(), None);
+            Bool::new(id.is_some_and(|id| self.call_drop(DropPhase::Perform(id), point)))
+        }
+    }
 );
 
 impl PaintView {
@@ -125,5 +172,21 @@ impl PaintView {
         ivars.flipped.set(flipped);
         ivars.passthrough.set(passthrough);
         Self::make(mtm, ivars)
+    }
+
+    /// Menjadikan view ini tujuan lepasan tab yang diseret di sidebar.
+    pub fn set_drop_handler(&self, handler: DropHandler) {
+        *self.ivars().drop.borrow_mut() = Some(handler);
+        self.registerForDraggedTypes(&NSArray::from_retained_slice(&[NSString::from_str(TAB_DRAG_TYPE)]));
+    }
+
+    fn call_drop(&self, phase: DropPhase, point: NSPoint) -> bool {
+        let handler = self.ivars().drop.borrow().clone();
+        handler.is_some_and(|h| h(phase, point))
+    }
+
+    fn drag_update(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> NSDragOperation {
+        let point = self.convertPoint_fromView(sender.draggingLocation(), None);
+        if self.call_drop(DropPhase::Update, point) { NSDragOperation::Move } else { NSDragOperation::None }
     }
 }

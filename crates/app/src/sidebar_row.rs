@@ -9,13 +9,15 @@ use browser_core::sidebar::RowInfo;
 use browser_core::tabs::TabKind;
 use browser_core::theme::SECONDARY_ALPHA;
 use objc2::rc::Retained;
-use objc2::runtime::{AnyObject, Bool};
+use objc2::runtime::{AnyObject, Bool, ProtocolObject};
 use objc2::{AllocAnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
 use objc2_app_kit::{
-    NSAccessibility, NSBezierPath, NSButton, NSColor, NSEvent, NSFont, NSImage, NSImageView, NSLineBreakMode, NSMenu,
-    NSMenuItem, NSTextField, NSTrackingArea, NSTrackingAreaOptions, NSView,
+    NSAccessibility, NSApplication, NSBezierPath, NSButton, NSColor, NSDragOperation, NSDraggingContext,
+    NSDraggingItem, NSDraggingSession, NSDraggingSource, NSEvent, NSEventMask, NSEventType, NSFont, NSImage,
+    NSImageView, NSLineBreakMode, NSMenu, NSMenuItem, NSPasteboardItem, NSTextField, NSTrackingArea,
+    NSTrackingAreaOptions, NSView,
 };
-use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
+use objc2_foundation::{NSArray, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
 use std::cell::{Cell, RefCell};
 
 pub const ROW_HEIGHT: f64 = 28.0;
@@ -102,9 +104,34 @@ define_class!(
             Bool::YES
         }
 
+        /// Klik memilih tab; menyeret lebih dari 3 pt memulai seret-lepas.
+        #[unsafe(method(mouseDown:))]
+        fn mouse_down(&self, event: &NSEvent) {
+            self.track_press(event);
+        }
+
         #[unsafe(method(mouseDownCanMoveWindow))]
         fn mouse_down_can_move_window(&self) -> Bool {
             Bool::NO
+        }
+    }
+
+    unsafe impl NSObjectProtocol for TabRowView {}
+
+    unsafe impl NSDraggingSource for TabRowView {
+        #[unsafe(method(draggingSession:sourceOperationMaskForDraggingContext:))]
+        fn source_operation_mask(&self, _session: &NSDraggingSession, _context: NSDraggingContext) -> NSDragOperation {
+            NSDragOperation::Move
+        }
+
+        #[unsafe(method(draggingSession:willBeginAtPoint:))]
+        fn will_begin(&self, _session: &NSDraggingSession, _point: NSPoint) {
+            self.notify_drag(objc2::sel!(sidebarDragBegan:));
+        }
+
+        #[unsafe(method(draggingSession:endedAtPoint:operation:))]
+        fn ended(&self, _session: &NSDraggingSession, _point: NSPoint, _operation: NSDragOperation) {
+            self.notify_drag(objc2::sel!(sidebarDragEnded:));
         }
     }
 );
@@ -274,6 +301,57 @@ impl TabRowView {
         close.setHidden(true);
         self.addSubview(&close);
         *self.ivars().close.borrow_mut() = Some(close);
+    }
+
+    /// Menunggu mouse dilepas (klik) atau digeser lebih dari 3 pt (seret).
+    fn track_press(&self, down: &NSEvent) {
+        let Some(window) = self.window() else { return };
+        let start = down.locationInWindow();
+        loop {
+            let Some(event) = window.nextEventMatchingMask(NSEventMask::LeftMouseDragged | NSEventMask::LeftMouseUp)
+            else {
+                return;
+            };
+            if event.r#type() == NSEventType::LeftMouseUp {
+                let point = self.convertPoint_fromView(event.locationInWindow(), None);
+                if self.isEnabled() && objc2_foundation::NSPointInRect(point, self.bounds()) {
+                    unsafe { self.sendAction_to(self.action(), self.target().as_deref()) };
+                }
+                return;
+            }
+            let now = event.locationInWindow();
+            if (now.x - start.x).hypot(now.y - start.y) > 3.0 {
+                self.begin_drag(down);
+                return;
+            }
+        }
+    }
+
+    fn begin_drag(&self, event: &NSEvent) {
+        let item = NSPasteboardItem::new();
+        item.setString_forType(
+            &NSString::from_str(&self.tag().to_string()),
+            &NSString::from_str(crate::paint::TAB_DRAG_TYPE),
+        );
+        let dragging =
+            NSDraggingItem::initWithPasteboardWriter(NSDraggingItem::alloc(), ProtocolObject::from_ref(&*item));
+        let bounds = self.bounds();
+        if let Some(rep) = self.bitmapImageRepForCachingDisplayInRect(bounds) {
+            self.cacheDisplayInRect_toBitmapImageRep(bounds, &rep);
+            let image = NSImage::initWithSize(NSImage::alloc(), bounds.size);
+            image.addRepresentation(&rep);
+            // SAFETY: isi gambar seret berupa NSImage.
+            unsafe { dragging.setDraggingFrame_contents(bounds, Some(&image)) };
+        }
+        let items = NSArray::from_retained_slice(&[dragging]);
+        self.beginDraggingSessionWithItems_event_source(&items, event, ProtocolObject::from_ref(self));
+    }
+
+    /// Memberi tahu sidebar (lewat responder chain sampai delegate jendela)
+    /// bahwa seret dimulai atau selesai.
+    fn notify_drag(&self, action: objc2::runtime::Sel) {
+        let app = NSApplication::sharedApplication(MainThreadMarker::from(self));
+        unsafe { app.sendAction_to_from(action, None, Some(self)) };
     }
 
     /// Sama dengan kursor masuk atau keluar dari baris.

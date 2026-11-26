@@ -154,6 +154,35 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
             ok(json!({"clicked": text}))
         }
         "window_layout" => ok(window_layout(state)),
+        // "<id>:<favorite|pinned|today>:<posisi>": sama dengan melepas tab
+        // yang diseret di posisi itu (memanggil state.place_tab).
+        // "<id>:<id_tujuan>": melepas tab di atas baris tujuan lewat jalur
+        // geometri lepasan yang sebenarnya.
+        "sidebar_drop_before" => {
+            let Some((id, target)) = text.unwrap_or_default().split_once(':') else {
+                return err("format: <id>:<id_tujuan>");
+            };
+            let (Ok(id), Ok(target)) = (id.parse::<u64>(), target.parse::<u64>()) else { return err("id tidak valid") };
+            let Some(me) = state.me() else { return err("state hilang") };
+            let dropped = state.ui.sidebar.debug_drop_before(&me, id, target);
+            ok(json!({"dropped": dropped}))
+        }
+        "sidebar_drop" => {
+            use browser_core::tabs::TabKind;
+            let parts: Vec<&str> = text.unwrap_or_default().split(':').collect();
+            let [id, kind, at] = parts[..] else { return err("format: <id>:<favorite|pinned|today>:<posisi>") };
+            let (Ok(id), Ok(at)) = (id.parse::<u64>(), at.parse::<usize>()) else {
+                return err("id atau posisi tidak valid");
+            };
+            let kind = match kind {
+                "favorite" => TabKind::Favorite,
+                "pinned" => TabKind::Pinned,
+                "today" => TabKind::Today,
+                _ => return err("bagian tidak dikenal"),
+            };
+            state.place_tab(id, kind, at);
+            ok(json!({"dropped": id}))
+        }
         // "<id>:<judul item>": menjalankan item menu konteks baris itu, seperti
         // klik kanan lalu memilih item tersebut.
         "sidebar_menu" => {

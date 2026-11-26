@@ -15,6 +15,13 @@ pub const TILE_MIN: f64 = 44.0;
 pub const TILE_GAP: f64 = 6.0;
 pub const TILE_HEIGHT: f64 = 40.0;
 
+/// Posisi sisip saat menyeret: indeks baris pertama yang titik tengahnya di
+/// bawah `y`. `mids` adalah titik tengah baris dari atas ke bawah (koordinat
+/// yang dijungkir, y bertambah ke bawah).
+pub fn insertion_index(mids: &[f64], y: f64) -> usize {
+    mids.iter().position(|&mid| mid > y).unwrap_or(mids.len())
+}
+
 /// Jumlah kolom ubin favorit yang muat di lebar `inner_width`.
 pub fn tile_columns(inner_width: f64) -> usize {
     (((inner_width + TILE_GAP) / (TILE_MIN + TILE_GAP)).floor() as usize).max(1)
@@ -129,6 +136,16 @@ mod tests {
         assert_eq!(tile_columns(184.0), 3);
         assert_eq!(tile_columns(344.0), 7);
         assert_eq!(tile_columns(10.0), 1);
+    }
+
+    #[test]
+    fn insertion_index_picks_gap_under_pointer() {
+        let mids = [14.0, 42.0, 70.0];
+        assert_eq!(insertion_index(&mids, 0.0), 0);
+        assert_eq!(insertion_index(&mids, 30.0), 1);
+        assert_eq!(insertion_index(&mids, 69.0), 2);
+        assert_eq!(insertion_index(&mids, 200.0), 3);
+        assert_eq!(insertion_index(&[], 5.0), 0);
     }
 
     #[test]
