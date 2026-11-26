@@ -18,6 +18,14 @@ pub const TILE_MIN: f64 = 44.0;
 pub const TILE_GAP: f64 = 6.0;
 pub const TILE_HEIGHT: f64 = 40.0;
 
+/// Pusat baris tombol atas sidebar, diukur dari tepi atas sidebar.
+/// `lights_center`: pusat tombol jendela dari tepi atas jendela (None kalau
+/// tidak bisa diukur, mis. di layar penuh). Dibatasi supaya baris tombol
+/// (24 pt) selalu di dalam sidebar dan tidak terdorong jauh ke bawah.
+pub fn sidebar_top_center(lights_center: Option<f64>, top_gap: f64) -> f64 {
+    (lights_center.unwrap_or(14.0) - top_gap).clamp(12.0, 40.0)
+}
+
 /// Posisi sisip saat menyeret: indeks baris pertama yang titik tengahnya di
 /// bawah `y`. `mids` adalah titik tengah baris dari atas ke bawah (koordinat
 /// yang dijungkir, y bertambah ke bawah).
@@ -150,6 +158,15 @@ mod tests {
         assert_eq!(insertion_index(&mids, 69.0), 2);
         assert_eq!(insertion_index(&mids, 200.0), 3);
         assert_eq!(insertion_index(&[], 5.0), 0);
+    }
+
+    #[test]
+    fn sidebar_top_center_falls_back_and_clamps() {
+        assert_eq!(sidebar_top_center(Some(14.0), 0.0), 14.0);
+        assert_eq!(sidebar_top_center(Some(14.0), 2.0), 12.0);
+        assert_eq!(sidebar_top_center(None, 0.0), 14.0);
+        assert_eq!(sidebar_top_center(Some(900.0), 0.0), 40.0);
+        assert_eq!(sidebar_top_center(Some(-50.0), 0.0), 12.0);
     }
 
     #[test]

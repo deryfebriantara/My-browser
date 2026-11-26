@@ -154,6 +154,23 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
             ok(json!({"clicked": text}))
         }
         "window_layout" => ok(window_layout(state)),
+        // "<id>": menggambar ulang sidebar seolah kursor diam di tengah baris itu,
+        // lalu melaporkan baris yang tombol tutupnya tampil.
+        "sidebar_rerender_pointer" => {
+            let Ok(id) = text.unwrap_or_default().parse::<u64>() else { return err("id tidak valid") };
+            let found = state.ui.sidebar.rows().iter().find(|r| r.info.id.0 == id).map(|r| r.view.clone());
+            let Some(row) = found else { return err("baris tidak ada") };
+            let frame = row.convertRect_toView(row.bounds(), None);
+            let point = objc2_foundation::NSPoint::new(
+                frame.origin.x + frame.size.width / 2.0,
+                frame.origin.y + frame.size.height / 2.0,
+            );
+            let model = browser_core::sidebar::sidebar_model(state.browser.borrow().tabs());
+            state.ui.sidebar.render(&model, &state.favicons, &state.ui.target, Some(point));
+            let visible: Vec<u64> =
+                state.ui.sidebar.rows().iter().filter(|r| r.view.close_visible()).map(|r| r.info.id.0).collect();
+            ok(json!({"close_visible": visible}))
+        }
         // Kursor masuk ke pita tepi kiri (penangan yang sama dengan tracking area).
         "sidebar_hover_edge" => {
             state.edge_hover(true);
@@ -349,6 +366,7 @@ fn window_layout(state: &AppState) -> Value {
         "empty_state": state.ui.card.empty_visible(),
         "theme": state.ui.theme_id(),
         "lights_center": state.ui.traffic_light_center(),
+        "movable_by_background": state.ui.window.isMovableByWindowBackground(),
         "backdrop": state.ui.backdrop_info(),
         "address_frame": rect_json(state.ui.sidebar.address.convertRect_toView(state.ui.sidebar.address.bounds(), None)),
     })

@@ -70,6 +70,9 @@ impl Ui {
         unsafe { window.setReleasedWhenClosed(false) };
         window.setTitle(&NSString::from_str("my-browser"));
         window.setTitlebarAppearsTransparent(true);
+        // Area kosong sidebar dan tepi di sekitar kartu ikut menyeret jendela
+        // (view yang mengembalikan mouseDownCanMoveWindow = YES).
+        window.setMovableByWindowBackground(true);
         window.setTitleVisibility(NSWindowTitleVisibility::Hidden);
         window.setContentMinSize(NSSize::new(800.0, 500.0));
         window.setDelegate(Some(ProtocolObject::from_ref(&*target)));
@@ -133,18 +136,24 @@ impl Ui {
     }
 
     /// Jarak pusat tombol jendela (merah/kuning/hijau) dari tepi atas jendela.
-    pub(crate) fn traffic_light_center(&self) -> f64 {
-        let fallback = 14.0;
-        let (Some(root), Some(close)) =
-            (self.window.contentView(), self.window.standardWindowButton(NSWindowButton::CloseButton))
-        else {
-            return fallback;
-        };
-        let Some(parent) = (unsafe { close.superview() }) else { return fallback };
+    /// None kalau tombol jendela tidak berada di jendela ini (layar penuh
+    /// memindahkannya ke jendela toolbar tersendiri).
+    pub(crate) fn traffic_light_center(&self) -> Option<f64> {
+        if self.window.styleMask().contains(NSWindowStyleMask::FullScreen) {
+            return None;
+        }
+        let root = self.window.contentView()?;
+        let close = self.window.standardWindowButton(NSWindowButton::CloseButton)?;
+        let same_window =
+            close.window().is_some_and(|w| std::ptr::eq(Retained::as_ptr(&w), Retained::as_ptr(&self.window)));
+        if !same_window {
+            return None;
+        }
+        let parent = unsafe { close.superview() }?;
         let frame = close.frame();
         let center = NSPoint::new(frame.origin.x + frame.size.width / 2.0, frame.origin.y + frame.size.height / 2.0);
         let in_root = parent.convertPoint_toView(center, Some(&root));
-        root.bounds().size.height - in_root.y
+        Some(root.bounds().size.height - in_root.y)
     }
 
     /// Menata ulang sidebar, kartu, dan panel sesuai ukuran jendela.
@@ -153,7 +162,7 @@ impl Ui {
         // Pusat tombol jendela diukur dari tepi atas sidebar (bukan jendela).
         let window_h = self.window.contentView().map_or(0.0, |v| v.bounds().size.height);
         let top_gap = window_h - (frames.sidebar.y + frames.sidebar.h);
-        let top = self.traffic_light_center() - top_gap;
+        let top = layout::sidebar_top_center(self.traffic_light_center(), top_gap);
         let mode = self.mode.get();
         self.sidebar.set_frame(frames.sidebar, top);
         self.sidebar.set_overlay(mode == SidebarMode::Overlay);
@@ -316,6 +325,13 @@ impl Ui {
     pub fn set_sidebar_width(&self, width: f64) {
         self.sidebar_width.set(width.clamp(layout::SIDEBAR_MIN, layout::SIDEBAR_MAX));
         self.relayout();
+    }
+
+    /// Kursor sedang di atas sidebar (koordinat jendela).
+    pub fn pointer_in_sidebar(&self) -> bool {
+        let point = self.window.mouseLocationOutsideOfEventStream();
+        let frame = self.sidebar.view.convertRect_toView(self.sidebar.view.bounds(), None);
+        objc2_foundation::NSPointInRect(point, frame)
     }
 
     pub fn set_edge_hovered(&self, inside: bool) {

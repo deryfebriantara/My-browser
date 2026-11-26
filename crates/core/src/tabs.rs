@@ -228,6 +228,14 @@ impl TabList {
             tab.can_forward = false;
             tab.awake = false;
             tab.loading = false;
+            // Sama dengan saat tab ditidurkan: status aktivitas halaman lama tidak berlaku lagi.
+            tab.media_active = false;
+            tab.draft = false;
+            tab.sleep_pending = false;
+            tab.sleep_forced = false;
+            tab.activity_clear = false;
+            tab.awaiting_video_time = false;
+            tab.pending_visit = None;
             if self.active == id {
                 let below = self.tabs[index + 1..].iter().find(|t| !t.is_blank()).map(|t| t.id);
                 let above = self.tabs[..index].iter().rev().find(|t| !t.is_blank()).map(|t| t.id);
@@ -567,6 +575,27 @@ mod tests {
         assert_eq!(p.kind, TabKind::Pinned);
         assert_eq!(l.active(), ids[1]);
         assert!(l.reopen_closed(t0).is_none());
+    }
+
+    #[test]
+    fn closing_pinned_tab_clears_activity_state() {
+        let t0 = Instant::now();
+        let (mut l, ids) = today_list(&["p", "a"], t0);
+        l.place(ids[0], TabKind::Pinned, 0);
+        {
+            let p = l.get_mut(ids[0]).unwrap();
+            p.media_active = true;
+            p.draft = true;
+            p.sleep_pending = true;
+            p.sleep_forced = true;
+            p.activity_clear = true;
+            p.awaiting_video_time = true;
+            p.pending_visit = Some(PendingVisit { typed: true });
+        }
+        l.close(ids[0], t0);
+        let p = l.get(ids[0]).unwrap();
+        assert!(!p.media_active && !p.draft && !p.sleep_pending && !p.sleep_forced);
+        assert!(!p.activity_clear && !p.awaiting_video_time && p.pending_visit.is_none());
     }
 
     #[test]

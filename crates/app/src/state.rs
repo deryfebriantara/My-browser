@@ -62,6 +62,8 @@ pub struct AppState {
     last_history_save: Cell<Instant>,
     /// Lebar sidebar saat pegangan ubah lebar mulai diseret.
     resize_from: Cell<Option<f64>>,
+    /// Overlay dibuka untuk mengetik alamat: bertahan sampai pengeditan selesai.
+    overlay_for_address: Cell<bool>,
     /// `spaces.json` dari versi lebih baru (versi formatnya): status tab
     /// tidak disimpan supaya berkas itu tidak tertimpa.
     newer_spaces: Option<u32>,
@@ -161,11 +163,15 @@ impl AppState {
                 history_window: HistoryWindow::default(),
                 newer_spaces,
                 resize_from: Cell::new(None),
+                overlay_for_address: Cell::new(false),
                 favicons: Favicons::new(persistence::data_dir().join("favicons")),
             }
         });
         state.ui.sidebar.install_drops(Rc::downgrade(&state));
         state.install_window_hooks();
+        // Ikon situs yang tidak lagi ada di tab atau riwayat (mis. riwayat
+        // dimatikan, atau sudah kedaluwarsa) tidak disimpan sebagai jejak.
+        state.favicons.forget_unused(&state);
         if state.newer_spaces.is_some() {
             state.ui.show_notice("Tabs won't be saved: spaces.json was written by a newer version of my-browser.");
         }
@@ -210,7 +216,7 @@ impl AppState {
             // otomatis saat jendela aktif), supaya field menampilkan alamat
             // tab yang baru.
             if !nav.blank && self.ui.sidebar.is_editing() {
-                self.ui.sidebar.address.abortEditing();
+                self.end_address_editing();
             }
             if nav.blank {
                 self.ui.sidebar.address.setStringValue(&NSString::new());
@@ -325,7 +331,8 @@ impl AppState {
             if let Some(state) = me.upgrade() {
                 state.tabs_layout_pending.set(false);
                 let model = browser_core::sidebar::sidebar_model(state.browser.borrow().tabs());
-                state.ui.sidebar.render(&model, &state.favicons, &state.ui.target);
+                let pointer = state.ui.window.mouseLocationOutsideOfEventStream();
+                state.ui.sidebar.render(&model, &state.favicons, &state.ui.target, Some(pointer));
             }
         });
         // SAFETY: dijadwalkan dari main thread ke run loop main thread.
@@ -379,6 +386,7 @@ impl AppState {
     /// hanya disimpan saat berubah (UiChange::Settings), supaya editan tangan
     /// di settings.json tidak ditimpa nilai lama di memory.
     pub fn save_all(&self) {
+        self.favicons.forget_unused(self);
         if self.newer_spaces.is_none() {
             let spaces = self.browser.borrow().spaces_file();
             persistence::save_spaces(&spaces);
@@ -404,7 +412,7 @@ impl AppState {
         // Tab kosong saat aplikasi dibuka memfokuskan address bar; setelah
         // URL dibuka, field itu harus menampilkan alamat halaman lagi.
         if !urls.is_empty() && !self.nav_info().blank {
-            self.ui.sidebar.address.abortEditing();
+            self.end_address_editing();
         }
         self.refresh();
     }
@@ -514,9 +522,41 @@ impl AppState {
 
     /// Kursor keluar dari sidebar yang melayang: sidebar kembali tersembunyi.
     pub fn sidebar_hover(&self, inside: bool) {
-        if !inside && self.ui.sidebar_mode() == crate::layout::SidebarMode::Overlay {
+        // Selama mengetik alamat (atau dropdown saran terbuka, yang menjorok
+        // keluar dari overlay) overlay tetap terbuka.
+        if inside || self.overlay_for_address.get() || self.ui.sidebar.is_editing() || self.address.popup_visible() {
+            return;
+        }
+        if self.ui.sidebar_mode() == crate::layout::SidebarMode::Overlay {
             self.ui.hide_overlay();
         }
+    }
+
+    /// Mengakhiri pengeditan address bar tanpa menyimpan teksnya. abortEditing
+    /// tidak mengirim controlTextDidEndEditing, jadi penutupan overlay
+    /// diperiksa di sini juga.
+    fn end_address_editing(&self) {
+        self.ui.sidebar.address.abortEditing();
+        self.address_editing_ended();
+    }
+
+    /// Pengeditan address bar selesai: overlay ditutup kalau kursor tidak di
+    /// atasnya. Diperiksa di putaran run loop berikutnya, karena memfokuskan
+    /// field juga mengakhiri sesi edit sebelumnya sesaat sebelum memulai yang baru.
+    pub fn address_editing_ended(&self) {
+        let me = self.me.clone();
+        let check = RcBlock::new(move || {
+            let Some(s) = me.upgrade() else { return };
+            if s.ui.sidebar.is_editing() {
+                return;
+            }
+            s.overlay_for_address.set(false);
+            if s.ui.sidebar_mode() == crate::layout::SidebarMode::Overlay && !s.ui.pointer_in_sidebar() {
+                s.ui.hide_overlay();
+            }
+        });
+        // SAFETY: dijadwalkan dari main thread ke run loop main thread.
+        unsafe { NSRunLoop::mainRunLoop().performBlock(&check) };
     }
 
     /// Pegangan ubah lebar diseret sejauh `dx`; saat dilepas, lebarnya disimpan.
@@ -585,6 +625,12 @@ impl AppState {
     }
 
     pub fn focus_address(&self) {
+        // Field di sidebar yang tersembunyi tidak terlihat: munculkan sebagai overlay dulu.
+        if self.ui.sidebar_mode() == crate::layout::SidebarMode::Hidden {
+            self.overlay_for_address.set(true);
+            self.ui.show_overlay();
+            self.layout_sidebar();
+        }
         self.address.begin();
         self.ui.window.makeFirstResponder(Some(&self.ui.sidebar.address));
         unsafe { self.ui.sidebar.address.selectText(None) };
@@ -594,7 +640,7 @@ impl AppState {
     pub fn revert_address(&self) {
         self.address.end();
         let url = self.nav_info().url;
-        self.ui.sidebar.address.abortEditing();
+        self.end_address_editing();
         self.ui.sidebar.address.setStringValue(&NSString::from_str(&url));
         self.focus_address();
     }
@@ -617,7 +663,7 @@ impl AppState {
     /// Membuka saran dari dropdown address bar.
     pub fn activate_suggestion(&self, suggestion: &Suggestion) {
         self.address.end();
-        self.ui.sidebar.address.abortEditing();
+        self.end_address_editing();
         self.browser.borrow_mut().open_suggestion(suggestion, Instant::now());
         self.refresh();
         if let Some(view) = self.ui.shown_view() {

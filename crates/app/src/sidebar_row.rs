@@ -181,7 +181,10 @@ fn context_menu(mtm: MainThreadMarker, row: &RowInfo, target: &ActionTarget) -> 
             add("Unpin Tab", sel!(togglePin:), true);
             add("Add to Favorites", sel!(toggleFavorite:), true);
         }
-        TabKind::Favorite => add("Remove from Favorites", sel!(toggleFavorite:), true),
+        TabKind::Favorite => {
+            add("Pin Tab", sel!(togglePin:), true);
+            add("Remove from Favorites", sel!(toggleFavorite:), true);
+        }
     }
     if row.kind != TabKind::Today {
         add("Set Current Page as Pinned URL", sel!(setPinnedURL:), row.saved_differs);
@@ -370,6 +373,11 @@ impl TabRowView {
         }
         let view: &NSView = self;
         view.setNeedsDisplay(true);
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn close_visible(&self) -> bool {
+        self.ivars().close.borrow().as_ref().is_some_and(|c| !c.isHidden())
     }
 
     #[cfg(debug_assertions)]

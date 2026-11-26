@@ -30,8 +30,8 @@ Tabs opened from a page (links that open a new tab) and new tabs go to the top o
 ## Moving tabs
 
 - **Right-click** a row or tile: Pin Tab / Unpin Tab, Add to Favorites / Remove from Favorites, Set Current Page as Pinned URL, Copy Link, Sleep Tab, Close Tab or Unload Tab.
-- **⌘D** pins or unpins the current tab.
-- **Drag** a row or tile to reorder it, or to move it between Favorites, Pinned, and Today. A white line shows where it will land.
+- **⌘D** pins or unpins the current tab. On a favorite it moves the tab to Pinned and keeps its saved address.
+- **Drag** a row or tile to reorder it, or to move it between Favorites, Pinned, and Today. A white line shows where it will land. While there are no pinned tabs yet, there is no Pinned section to drop onto: pin the first tab with ⌘D or the context menu.
 
 ## Shortcuts
 
@@ -49,13 +49,13 @@ Pages that handle ⌘S themselves (editors such as code-server) get the key firs
 
 ## Hidden sidebar
 
-⌘S hides the sidebar and the window buttons; the page card fills the window. Rest the pointer on the left edge of the window for a moment and the sidebar slides in as a floating panel; move away and it hides again. With **Reduce Motion** on, it appears without sliding.
+⌘S hides the sidebar and the window buttons; the page card fills the window. Rest the pointer on the left edge of the window for a moment and the sidebar slides in as a floating panel; move away and it hides again. ⌘L, ⌘T, and an empty Space also bring it in, and it stays while you type an address. With **Reduce Motion** on, it appears without sliding.
 
 Drag the right edge of the sidebar to change its width (200–360 pt). The width and whether the sidebar is hidden are kept in `settings.json` (`sidebar_width`, `sidebar_visible`).
 
 ## Favicons
 
-Icons are fetched once per site, without cookies, and cached as 32 px PNG files in `favicons/` inside the data folder. They are refreshed after 7 days. Sites without an icon, sites that only serve plain `http://` icons, and pages that are not web pages show a colored letter instead. Clearing history also removes the icons of sites that no longer appear in any tab or in history.
+Icons are fetched once per site, without cookies, and cached as 32 px PNG files in `favicons/` inside the data folder. They are refreshed after 7 days. A download stops after 10 seconds or 512 KB, and images larger than 1024 px are rejected. Sites without an icon, sites that only serve plain `http://` icons, and pages that are not web pages show a colored letter instead. The icons of sites that no longer appear in any tab or in history are removed at launch, at quit, and after Clear History, so turning history off also keeps the icon cache to your open tabs.
 
 ## Where tabs are saved
 

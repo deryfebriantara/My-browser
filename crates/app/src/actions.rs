@@ -308,7 +308,10 @@ define_class!(
 
         #[unsafe(method(controlTextDidEndEditing:))]
         fn text_did_end(&self, notification: &NSNotification) {
-            self.with_address(notification, |s| s.address.end());
+            self.with_address(notification, |s| {
+                s.address.end();
+                s.address_editing_ended();
+            });
         }
     }
 

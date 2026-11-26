@@ -951,8 +951,44 @@ fn toggle_favorite_moves_to_end_of_favorites() {
     assert!(b.toggle_favorite(a));
     assert_eq!(b.tabs().get(a).unwrap().kind, TabKind::Today);
     assert_eq!(b.tabs().section(TabKind::Today).next().unwrap().id, a);
+}
+
+#[test]
+fn toggle_pin_on_favorite_moves_it_to_pinned_keeping_saved_url() {
+    let (mut b, _log, t0) = setup(None);
+    let (_a, bb) = two_tabs(&mut b, t0);
+    assert!(b.toggle_favorite(bb));
     assert!(b.toggle_pin(bb));
-    assert_eq!(b.tabs().get(bb).unwrap().kind, TabKind::Today);
+    let tab = b.tabs().get(bb).unwrap();
+    assert_eq!(tab.kind, TabKind::Pinned);
+    assert_eq!(tab.saved_url.as_ref().unwrap().as_str(), "https://b.com/");
+}
+
+#[test]
+fn spaces_file_keeps_other_spaces() {
+    use crate::spaces_file::{SpaceTab, SpacesFile, StoreRef};
+    let mut file = SpacesFile::personal_default();
+    let mut work = file.spaces[0].clone();
+    work.id = 2;
+    work.name = "Work".into();
+    work.store = StoreRef::Identified("1B4E28BA-2FA1-11D2-883F-0016D3CCA427".into());
+    work.tabs = vec![SpaceTab {
+        kind: TabKind::Today,
+        url: "https://w.com/".into(),
+        title: String::new(),
+        scroll_y: 0.0,
+        saved_url: None,
+        saved_title: String::new(),
+    }];
+    file.spaces.push(work.clone());
+    file.active_space = 0;
+    let (mut b, _log, t0) = setup(Some(&file));
+    assert!(b.navigate("a.com", t0));
+    let out = b.spaces_file();
+    assert_eq!(out.spaces.len(), 2);
+    assert_eq!(out.active_space, 0);
+    assert_eq!(out.spaces[1], work);
+    assert_eq!(out.spaces[0].tabs[0].url, "https://a.com/");
 }
 
 #[test]

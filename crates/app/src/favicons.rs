@@ -12,17 +12,19 @@ pub use browser_core::favicon::MAX_ICON_BYTES;
 use browser_core::favicon::{self, FaviconCache, ICON_CANDIDATES_JS};
 use browser_core::sidebar::site_host;
 use browser_core::tabs::{TabId, Url};
-use objc2::AllocAnyThread;
 use objc2::rc::Retained;
-use objc2::runtime::{AnyObject, Bool};
+use objc2::runtime::{AnyObject, Bool, ProtocolObject};
+use objc2::{AllocAnyThread, define_class, msg_send};
 use objc2_app_kit::{
     NSBezierPath, NSBitmapImageFileType, NSBitmapImageRep, NSColor, NSCompositingOperation, NSDeviceRGBColorSpace,
     NSFont, NSFontAttributeName, NSForegroundColorAttributeName, NSGraphicsContext, NSImage, NSImageInterpolation,
     NSStringDrawing,
 };
 use objc2_foundation::{
-    NSData, NSDictionary, NSError, NSHTTPURLResponse, NSOperationQueue, NSPoint, NSRect, NSSize, NSString, NSURL,
-    NSURLResponse, NSURLSession, NSURLSessionConfiguration,
+    NSData, NSDictionary, NSError, NSHTTPURLResponse, NSObject, NSObjectProtocol, NSOperationQueue, NSPoint, NSRect,
+    NSSize, NSString, NSURL, NSURLResponse, NSURLSession, NSURLSessionConfiguration, NSURLSessionDataDelegate,
+    NSURLSessionDataTask, NSURLSessionDelegate, NSURLSessionResponseDisposition, NSURLSessionTask,
+    NSURLSessionTaskDelegate,
 };
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -33,6 +35,8 @@ use std::time::SystemTime;
 /// Sisi PNG di cache (piksel): 16 pt di layar Retina.
 const ICON_PIXELS: isize = 32;
 const TIMEOUT_SECS: f64 = 10.0;
+/// Sisi terbesar (piksel) yang mau didekode.
+const MAX_ICON_PIXELS: f64 = 1024.0;
 
 thread_local! {
     static OWNER: RefCell<Weak<AppState>> = const { RefCell::new(Weak::new()) };
@@ -43,24 +47,104 @@ pub struct Favicons {
     memory: RefCell<HashMap<String, Retained<NSImage>>>,
     in_flight: RefCell<HashSet<String>>,
     session: Retained<NSURLSession>,
+    /// Unduhan yang sedang berjalan, per `taskIdentifier`.
+    tasks: RefCell<HashMap<usize, Fetch>>,
+}
+
+/// Satu unduhan kandidat ikon.
+struct Fetch {
+    host: String,
+    candidates: Vec<Url>,
+    index: usize,
+    body: Vec<u8>,
+    failed: bool,
+}
+
+define_class!(
+    /// Delegate sesi unduhan ikon. Tanpa state: semua data disimpan di
+    /// `Favicons` (main thread), karena delegate queue sesi ini main queue.
+    #[unsafe(super(NSObject))]
+    #[name = "MBFaviconFetchDelegate"]
+    struct FetchDelegate;
+
+    unsafe impl NSObjectProtocol for FetchDelegate {}
+
+    unsafe impl NSURLSessionDelegate for FetchDelegate {}
+
+    unsafe impl NSURLSessionTaskDelegate for FetchDelegate {
+        #[unsafe(method(URLSession:task:didCompleteWithError:))]
+        fn did_complete(&self, _session: &NSURLSession, task: &NSURLSessionTask, error: Option<&NSError>) {
+            with_owner(|state| state.favicons.on_complete(state, task.taskIdentifier(), error.is_none()));
+        }
+    }
+
+    unsafe impl NSURLSessionDataDelegate for FetchDelegate {
+        #[unsafe(method(URLSession:dataTask:didReceiveResponse:completionHandler:))]
+        fn did_receive_response(
+            &self,
+            _session: &NSURLSession,
+            task: &NSURLSessionDataTask,
+            response: &NSURLResponse,
+            handler: &block2::DynBlock<dyn Fn(NSURLSessionResponseDisposition)>,
+        ) {
+            let status = response.downcast_ref::<NSHTTPURLResponse>().map(|r| r.statusCode());
+            let allow = status == Some(200) && !exceeds_limit(0, response.expectedContentLength());
+            if !allow {
+                with_owner(|state| state.favicons.mark_failed(task.taskIdentifier()));
+            }
+            handler.call((if allow {
+                NSURLSessionResponseDisposition::Allow
+            } else {
+                NSURLSessionResponseDisposition::Cancel
+            },));
+        }
+
+        #[unsafe(method(URLSession:dataTask:didReceiveData:))]
+        fn did_receive_data(&self, _session: &NSURLSession, task: &NSURLSessionDataTask, data: &NSData) {
+            let keep =
+                with_owner(|state| state.favicons.on_data(task.taskIdentifier(), &data.to_vec())).unwrap_or(false);
+            if !keep {
+                task.cancel();
+            }
+        }
+    }
+);
+
+// SAFETY: FetchDelegate tidak punya state; metodenya hanya berjalan di main
+// queue (delegate queue sesi) dan membaca AppState lewat thread-local main thread.
+unsafe impl Send for FetchDelegate {}
+unsafe impl Sync for FetchDelegate {}
+
+impl FetchDelegate {
+    fn new() -> Retained<Self> {
+        let this = Self::alloc().set_ivars(());
+        unsafe { msg_send![super(this), init] }
+    }
+}
+
+fn with_owner<T>(f: impl FnOnce(&Rc<AppState>) -> T) -> Option<T> {
+    OWNER.with(|o| o.borrow().upgrade()).map(|state| f(&state))
 }
 
 impl Favicons {
     pub fn new(dir: PathBuf) -> Self {
-        let config = NSURLSessionConfiguration::ephemeralSessionConfiguration();
-        config.setHTTPCookieStorage(None);
-        config.setHTTPShouldSetCookies(false);
-        config.setURLCache(None);
-        config.setTimeoutIntervalForRequest(TIMEOUT_SECS);
-        // SAFETY: tanpa delegate; balasan diproses di main queue.
+        let config = session_configuration();
+        let delegate = FetchDelegate::new();
+        // SAFETY: delegate dipegang sesi; balasan diproses di main queue.
         let session = unsafe {
             NSURLSession::sessionWithConfiguration_delegate_delegateQueue(
                 &config,
-                None,
+                Some(ProtocolObject::from_ref(&*delegate)),
                 Some(&NSOperationQueue::mainQueue()),
             )
         };
-        Self { cache: FaviconCache::new(dir), memory: RefCell::default(), in_flight: RefCell::default(), session }
+        Self {
+            cache: FaviconCache::new(dir),
+            memory: RefCell::default(),
+            in_flight: RefCell::default(),
+            session,
+            tasks: RefCell::default(),
+        }
     }
 
     /// Gambar favicon host dari memory atau disk. None: pakai monogram.
@@ -145,19 +229,35 @@ impl Favicons {
             self.fetch(host, candidates, index + 1);
             return;
         };
-        let block = RcBlock::new(move |data: *mut NSData, response: *mut NSURLResponse, error: *mut NSError| {
-            // SAFETY: pointer dari NSURLSession berlaku selama blok berjalan.
-            let (data, response, failed) = unsafe { (data.as_ref(), response.as_ref(), !error.is_null()) };
-            let status = response.and_then(|r| r.downcast_ref::<NSHTTPURLResponse>()).map(|r| r.statusCode());
-            let body = data.map(|d| d.to_vec()).filter(|b| !failed && status == Some(200) && b.len() <= MAX_ICON_BYTES);
-            let (host, candidates) = (host.clone(), candidates.clone());
-            if let Some(state) = OWNER.with(|o| o.borrow().upgrade()) {
-                state.favicons.finished(&state, host, candidates, index, body);
-            }
-        });
-        // SAFETY: blok hanya memegang data Send (String, Vec<Url>, usize).
-        let task = unsafe { self.session.dataTaskWithURL_completionHandler(&nsurl, &block) };
+        let task = self.session.dataTaskWithURL(&nsurl);
+        let fetch = Fetch { host, candidates, index, body: Vec::new(), failed: false };
+        self.tasks.borrow_mut().insert(task.taskIdentifier(), fetch);
         task.resume();
+    }
+
+    fn mark_failed(&self, task: usize) {
+        if let Some(fetch) = self.tasks.borrow_mut().get_mut(&task) {
+            fetch.failed = true;
+        }
+    }
+
+    /// Menambah data yang diterima; `false` kalau unduhan harus dihentikan.
+    fn on_data(&self, task: usize, bytes: &[u8]) -> bool {
+        let mut tasks = self.tasks.borrow_mut();
+        let Some(fetch) = tasks.get_mut(&task) else { return false };
+        if fetch.failed || exceeds_limit(fetch.body.len() + bytes.len(), -1) {
+            fetch.failed = true;
+            fetch.body.clear();
+            return false;
+        }
+        fetch.body.extend_from_slice(bytes);
+        true
+    }
+
+    fn on_complete(&self, state: &Rc<AppState>, task: usize, ok: bool) {
+        let Some(fetch) = self.tasks.borrow_mut().remove(&task) else { return };
+        let body = (ok && !fetch.failed).then_some(fetch.body);
+        self.finished(state, fetch.host, fetch.candidates, fetch.index, body);
     }
 
     fn finished(&self, state: &Rc<AppState>, host: String, candidates: Vec<Url>, index: usize, body: Option<Vec<u8>>) {
@@ -198,6 +298,25 @@ impl Favicons {
     }
 }
 
+/// Sesi ephemeral tanpa cookie dan tanpa cache, dengan batas waktu total
+/// (bukan hanya jeda antardata) supaya server yang menetes pelan tidak
+/// menahan pengambilan ikon host itu.
+pub fn session_configuration() -> Retained<NSURLSessionConfiguration> {
+    let config = NSURLSessionConfiguration::ephemeralSessionConfiguration();
+    config.setHTTPCookieStorage(None);
+    config.setHTTPShouldSetCookies(false);
+    config.setURLCache(None);
+    config.setTimeoutIntervalForRequest(TIMEOUT_SECS);
+    config.setTimeoutIntervalForResource(TIMEOUT_SECS);
+    config
+}
+
+/// Unduhan ikon dihentikan begitu ukurannya (yang diterima, atau yang
+/// diumumkan server) melewati `MAX_ICON_BYTES`. `expected` negatif: tidak diketahui.
+pub fn exceeds_limit(received: usize, expected: i64) -> bool {
+    received > MAX_ICON_BYTES || usize::try_from(expected).is_ok_and(|e| e > MAX_ICON_BYTES)
+}
+
 /// Host semua tab (termasuk alamat simpanan slot) dan semua entri riwayat.
 fn known_hosts(state: &AppState) -> HashSet<String> {
     let b = state.browser.borrow();
@@ -230,6 +349,16 @@ pub fn normalize_icon(bytes: &[u8]) -> Option<Vec<u8>> {
     let image = NSImage::initWithData(NSImage::alloc(), &NSData::with_bytes(bytes))?;
     let size = image.size();
     if !(size.width > 0.0 && size.height > 0.0) {
+        return None;
+    }
+    // Header dibaca tanpa mendekode piksel: ikon raksasa ditolak sebelum digambar.
+    let too_big = size.width > MAX_ICON_PIXELS
+        || size.height > MAX_ICON_PIXELS
+        || image
+            .representations()
+            .iter()
+            .any(|rep| rep.pixelsWide() as f64 > MAX_ICON_PIXELS || rep.pixelsHigh() as f64 > MAX_ICON_PIXELS);
+    if too_big {
         return None;
     }
     // SAFETY: planes null meminta NSBitmapImageRep mengalokasikan bufernya sendiri.
@@ -318,6 +447,30 @@ mod tests {
         let mut big = png(64);
         big.resize(MAX_ICON_BYTES + 1, 0);
         assert!(normalize_icon(&big).is_none());
+    }
+
+    #[test]
+    fn normalize_rejects_huge_dimensions() {
+        // PNG kecil di disk bisa berukuran piksel raksasa (bom dekompresi).
+        assert!(normalize_icon(&png(2048)).is_none());
+    }
+
+    #[test]
+    fn session_configuration_limits_time_and_cookies() {
+        let config = session_configuration();
+        assert_eq!(config.timeoutIntervalForRequest(), 10.0);
+        assert_eq!(config.timeoutIntervalForResource(), 10.0);
+        assert!(!config.HTTPShouldSetCookies());
+        assert!(config.HTTPCookieStorage().is_none());
+        assert!(config.URLCache().is_none());
+    }
+
+    #[test]
+    fn download_stops_once_over_the_limit() {
+        assert!(exceeds_limit(0, (MAX_ICON_BYTES + 1) as i64));
+        assert!(!exceeds_limit(0, -1));
+        assert!(exceeds_limit(MAX_ICON_BYTES + 1, -1));
+        assert!(!exceeds_limit(10, 100));
     }
 
     #[test]

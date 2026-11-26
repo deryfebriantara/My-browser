@@ -478,7 +478,8 @@ impl Sidebar {
 
     /// Menggambar ulang daftar tab. Dipanggil dari putaran run loop berikutnya
     /// (lihat `AppState::layout_sidebar`), tidak dari dalam aksi baris.
-    pub fn render(&self, model: &SidebarModel, favicons: &Favicons, target: &ActionTarget) {
+    /// `pointer`: posisi kursor (koordinat jendela) saat digambar ulang.
+    pub fn render(&self, model: &SidebarModel, favicons: &Favicons, target: &ActionTarget, pointer: Option<NSPoint>) {
         let mtm = MainThreadMarker::from(&*self.view);
         for old in self.doc.subviews().iter() {
             old.removeFromSuperview();
@@ -529,6 +530,17 @@ impl Sidebar {
 
         let visible = self.scroll.contentSize().height;
         self.doc.setFrame(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(width, y.max(visible))));
+        // Baris baru tidak menerima mouseEntered sampai kursor bergerak: baris
+        // yang sudah di bawah kursor langsung disorot (tombol tutupnya tampil),
+        // supaya klik ✕ beruntun tidak memilih tab berikutnya.
+        if let Some(point) = pointer {
+            for row in &shown {
+                let frame = row.view.convertRect_toView(row.view.bounds(), None);
+                if objc2_foundation::NSPointInRect(point, frame) {
+                    row.view.set_hover(true);
+                }
+            }
+        }
         *self.rows.borrow_mut() = shown;
     }
 

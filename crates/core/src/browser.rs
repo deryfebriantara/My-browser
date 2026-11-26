@@ -61,6 +61,10 @@ pub struct Browser<E: Engine> {
     tabs: TabList,
     /// Space yang sedang dipakai (tahap ini selalu satu: Personal).
     space: SpaceMeta,
+    /// Isi `spaces.json` saat dimuat. Space lain (dari versi yang lebih baru
+    /// dengan format sama) ikut disimpan apa adanya, supaya tidak hilang.
+    loaded: SpacesFile,
+    space_index: usize,
     pages: HashMap<TabId, E::Page>,
     settings: Settings,
     sinks: SinkFactory,
@@ -82,9 +86,14 @@ impl<E: Engine> Browser<E> {
         sinks: SinkFactory,
         now: Instant,
     ) -> Self {
-        let fallback = SpacesFile::personal_default();
-        let saved =
-            spaces.spaces.get(spaces.active_space).or_else(|| spaces.spaces.first()).unwrap_or(&fallback.spaces[0]);
+        let (loaded, space_index) = if spaces.spaces.get(spaces.active_space).is_some() {
+            (spaces.clone(), spaces.active_space)
+        } else if !spaces.spaces.is_empty() {
+            (spaces.clone(), 0)
+        } else {
+            (SpacesFile::personal_default(), 0)
+        };
+        let saved = &loaded.spaces[space_index];
         let space = saved.meta();
         let mut tabs = TabList::from_space(saved, now);
         // Tab dari sesi sudah tercatat saat dibuka dulu; memuatnya lagi
@@ -103,6 +112,8 @@ impl<E: Engine> Browser<E> {
             engine,
             tabs,
             space,
+            loaded,
+            space_index,
             pages: HashMap::new(),
             settings,
             sinks,
@@ -218,15 +229,15 @@ impl<E: Engine> Browser<E> {
         true
     }
 
-    /// ⌘D: Today menjadi Pinned (paling bawah); Pinned atau Favorite kembali
-    /// ke paling atas Today.
+    /// ⌘D: Today atau Favorite menjadi Pinned (paling bawah, alamat simpanan
+    /// favorit tetap); Pinned kembali ke paling atas Today.
     pub fn toggle_pin(&mut self, id: TabId) -> bool {
         match self.tabs.get(id).map(|t| t.kind) {
-            Some(TabKind::Today) => {
+            Some(TabKind::Pinned) => self.place_tab(id, TabKind::Today, 0),
+            Some(_) => {
                 let end = self.tabs.section(TabKind::Pinned).count();
                 self.place_tab(id, TabKind::Pinned, end)
             }
-            Some(_) => self.place_tab(id, TabKind::Today, 0),
             None => false,
         }
     }
@@ -643,11 +654,11 @@ impl<E: Engine> Browser<E> {
 
     /// Status lengkap untuk `spaces.json`.
     pub fn spaces_file(&self) -> SpacesFile {
-        SpacesFile {
-            version: crate::spaces_file::SPACES_VERSION,
-            active_space: 0,
-            spaces: vec![self.tabs.to_space(&self.space)],
-        }
+        let mut file = self.loaded.clone();
+        file.version = crate::spaces_file::SPACES_VERSION;
+        file.active_space = self.space_index;
+        file.spaces[self.space_index] = self.tabs.to_space(&self.space);
+        file
     }
 
     pub fn space(&self) -> &SpaceMeta {
