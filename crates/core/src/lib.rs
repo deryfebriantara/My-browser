@@ -17,6 +17,7 @@ pub mod password_scripts;
 pub mod persist;
 pub mod session;
 pub mod settings;
+pub mod sidebar;
 pub mod sleep;
 pub mod suggest;
 pub mod tabs;

@@ -7,7 +7,7 @@ use crate::session::{SESSION_VERSION, SavedTab, SessionFile};
 use crate::settings::Settings;
 use crate::sleep::Pressure;
 use crate::suggest::{Suggestion, SuggestionKind};
-use crate::tabs::{TabId, Url};
+use crate::tabs::{TabId, TabKind, Url};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
@@ -903,4 +903,80 @@ fn http3_hints_kept_when_enabled() {
     assert!(b.navigate("a.com", t0));
     b.tick(t0 + secs(30), Pressure::Normal);
     assert_eq!(log.borrow().http3_forgets, 0);
+}
+
+#[test]
+fn toggle_pin_moves_between_today_and_pinned() {
+    let (mut b, _log, t0) = setup(None);
+    let (a, _) = two_tabs(&mut b, t0);
+    assert!(b.toggle_pin(a));
+    assert_eq!(b.tabs().get(a).unwrap().kind, TabKind::Pinned);
+    assert_eq!(b.tabs().iter().next().unwrap().id, a);
+    assert!(b.toggle_pin(a));
+    assert_eq!(b.tabs().get(a).unwrap().kind, TabKind::Today);
+    assert_eq!(b.tabs().section(TabKind::Today).next().unwrap().id, a);
+}
+
+#[test]
+fn toggle_favorite_moves_to_end_of_favorites() {
+    let (mut b, _log, t0) = setup(None);
+    let (a, bb) = two_tabs(&mut b, t0);
+    assert!(b.toggle_favorite(a));
+    assert!(b.toggle_favorite(bb));
+    let favs: Vec<TabId> = b.tabs().section(TabKind::Favorite).map(|t| t.id).collect();
+    assert_eq!(favs, vec![a, bb]);
+    assert!(b.toggle_favorite(a));
+    assert_eq!(b.tabs().get(a).unwrap().kind, TabKind::Today);
+    assert_eq!(b.tabs().section(TabKind::Today).next().unwrap().id, a);
+    assert!(b.toggle_pin(bb));
+    assert_eq!(b.tabs().get(bb).unwrap().kind, TabKind::Today);
+}
+
+#[test]
+fn closing_pinned_tab_drops_page_and_wake_is_not_a_visit() {
+    let (mut b, log, t0) = setup(None);
+    b.set_clock(Box::new(|| 1_000));
+    let (a, bb) = two_tabs(&mut b, t0);
+    b.handle_event(a, PageEvent::LoadFinished, t0);
+    b.handle_event(bb, PageEvent::LoadFinished, t0);
+    assert_eq!(visits(&b, "https://a.com/"), 1);
+    assert!(b.toggle_pin(a));
+    b.activate(a, t0);
+    b.close_tab(a, t0);
+    assert!(b.page(a).is_none());
+    let tab = b.tabs().get(a).unwrap();
+    assert_eq!(tab.kind, TabKind::Pinned);
+    assert!(!tab.awake);
+    let live = log.borrow().live;
+    b.activate(a, t0);
+    assert!(b.page(a).is_some());
+    assert_eq!(log.borrow().live, live + 1);
+    b.handle_event(a, PageEvent::LoadFinished, t0);
+    assert_eq!(visits(&b, "https://a.com/"), 1);
+}
+
+#[test]
+fn load_finished_emits_loaded_only_for_http_pages() {
+    let (mut b, _log, t0) = setup(None);
+    let a = b.tabs().active();
+    assert!(b.navigate("a.com", t0));
+    b.take_changes();
+    b.handle_event(a, PageEvent::LoadFinished, t0);
+    assert!(b.take_changes().contains(&UiChange::Loaded(a)));
+    assert!(b.navigate_url(a, u("about:blank"), false, t0));
+    b.take_changes();
+    b.handle_event(a, PageEvent::LoadFinished, t0);
+    assert!(!b.take_changes().iter().any(|c| matches!(c, UiChange::Loaded(_))));
+}
+
+#[test]
+fn place_tab_marks_session_dirty() {
+    let (mut b, _log, t0) = setup(None);
+    let (a, _) = two_tabs(&mut b, t0);
+    b.session_if_dirty();
+    assert!(!b.place_tab(TabId(9999), TabKind::Pinned, 0));
+    assert!(b.session_if_dirty().is_none());
+    assert!(b.place_tab(a, TabKind::Pinned, 0));
+    assert!(b.session_if_dirty().is_some());
+    assert!(b.take_changes().contains(&UiChange::Tabs));
 }

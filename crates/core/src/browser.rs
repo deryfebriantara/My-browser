@@ -9,7 +9,7 @@ use crate::omnibox::{Parsed, classify_input, parse_input};
 use crate::session::SessionFile;
 use crate::settings::Settings;
 use crate::sleep::{Pressure, tabs_to_sleep};
-use crate::tabs::{Closed, PendingVisit, TabId, TabList, Url};
+use crate::tabs::{Closed, PendingVisit, TabId, TabKind, TabList, Url};
 use crate::youtube::{VIDEO_TIME_JS, is_youtube_watch, with_resume_time};
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -46,6 +46,8 @@ pub enum UiChange {
     Settings,
     /// Riwayat berubah (kunjungan baru, judul, atau dihapus).
     History,
+    /// Halaman http(s) di tab ini selesai dimuat (mis. untuk mengambil favicon).
+    Loaded(TabId),
     Notice(String),
 }
 
@@ -199,6 +201,51 @@ impl<E: Engine> Browser<E> {
         }
         self.change(UiChange::Tabs);
         self.dirty = true;
+    }
+
+    /// Memindahkan tab ke bagian sidebar `kind` di posisi `at`.
+    pub fn place_tab(&mut self, id: TabId, kind: TabKind, at: usize) -> bool {
+        if !self.tabs.place(id, kind, at) {
+            return false;
+        }
+        self.dirty = true;
+        self.change(UiChange::Tabs);
+        true
+    }
+
+    /// ⌘D: Today menjadi Pinned (paling bawah); Pinned atau Favorite kembali
+    /// ke paling atas Today.
+    pub fn toggle_pin(&mut self, id: TabId) -> bool {
+        match self.tabs.get(id).map(|t| t.kind) {
+            Some(TabKind::Today) => {
+                let end = self.tabs.section(TabKind::Pinned).count();
+                self.place_tab(id, TabKind::Pinned, end)
+            }
+            Some(_) => self.place_tab(id, TabKind::Today, 0),
+            None => false,
+        }
+    }
+
+    /// Favorite kembali ke paling atas Today; selain itu menjadi favorit terakhir.
+    pub fn toggle_favorite(&mut self, id: TabId) -> bool {
+        match self.tabs.get(id).map(|t| t.kind) {
+            Some(TabKind::Favorite) => self.place_tab(id, TabKind::Today, 0),
+            Some(_) => {
+                let end = self.tabs.section(TabKind::Favorite).count();
+                self.place_tab(id, TabKind::Favorite, end)
+            }
+            None => false,
+        }
+    }
+
+    /// "Set Current Page as Pinned URL".
+    pub fn set_pinned_url(&mut self, id: TabId) -> bool {
+        if !self.tabs.set_saved_to_current(id) {
+            return false;
+        }
+        self.dirty = true;
+        self.change(UiChange::Tabs);
+        true
     }
 
     pub fn reopen_closed_tab(&mut self, now: Instant) {
@@ -440,6 +487,10 @@ impl<E: Engine> Browser<E> {
                     tab.restore_scroll = false;
                     let script = format!("window.scrollTo(0, {})", tab.scroll_y.round() as i64);
                     self.pages[&id].run_script(&script);
+                }
+                // Halaman web selesai dimuat: UI boleh mengambil favicon-nya.
+                if tab.url.as_ref().is_some_and(|u| matches!(u.scheme(), "http" | "https")) {
+                    self.change(UiChange::Loaded(id));
                 }
             }
             PageEvent::NavState { can_back, can_forward } => {
