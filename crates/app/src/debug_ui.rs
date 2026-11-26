@@ -33,7 +33,7 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
         }
         // Satu insertText per huruf, seperti mengetik di keyboard.
         "type_address" => {
-            let Some(editor) = state.ui.nav.address.currentEditor() else {
+            let Some(editor) = state.ui.sidebar.address.currentEditor() else {
                 return err("address bar tidak sedang diedit");
             };
             for ch in text.unwrap_or_default().chars() {
@@ -44,7 +44,7 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
         }
         // Selector field editor, mis. moveDown:, insertNewline:, cancelOperation:.
         "key_address" => {
-            let Some(editor) = state.ui.nav.address.currentEditor() else {
+            let Some(editor) = state.ui.sidebar.address.currentEditor() else {
                 return err("address bar tidak sedang diedit");
             };
             let Some(sel) = selector(text) else { return err("selector tidak valid") };
@@ -64,7 +64,9 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
             let windows: Vec<Value> = app
                 .windows()
                 .iter()
-                .map(|w| json!({"title": w.title().to_string(), "visible": w.isVisible(), "key": w.isKeyWindow()}))
+                .map(|w| {
+                    json!({"title": w.title().to_string(), "visible": w.isVisible(), "key": w.isKeyWindow(), "number": w.windowNumber()})
+                })
                 .collect();
             ok(json!({"windows": windows}))
         }
@@ -127,6 +129,34 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
                 .collect();
             ok(json!({"cached": cached}))
         }
+        "sidebar_state" => ok(sidebar_state(state)),
+        // "<id>" mengklik baris; "<id>:close" mengklik tombol tutupnya (seperti
+        // kursor di atas baris lalu klik), lewat performClick tombol sungguhan.
+        "sidebar_click" => {
+            let text = text.unwrap_or_default();
+            let (id, part) = text.split_once(':').unwrap_or((text, ""));
+            let Ok(id) = id.parse::<u64>() else { return err("id tab tidak valid") };
+            let target = state.ui.sidebar.rows().iter().find(|r| r.info.id.0 == id).map(|r| r.view.clone());
+            let Some(row) = target else { return err("baris tab tidak ada di sidebar") };
+            match part {
+                "" => unsafe { row.performClick(None) },
+                "close" => {
+                    row.set_hover(true);
+                    let Some(close) = row.close_button() else { return err("baris tanpa tombol tutup") };
+                    unsafe { close.performClick(None) };
+                }
+                _ => return err("bagian baris tidak dikenal"),
+            }
+            ok(json!({"clicked": text}))
+        }
+        "window_layout" => ok(window_layout(state)),
+        // "<lebar>x<tinggi>" mengubah ukuran area isi jendela (seperti menyeret pojoknya).
+        "window_size" => {
+            let Some((w, h)) = text.unwrap_or_default().split_once('x') else { return err("format: <lebar>x<tinggi>") };
+            let (Ok(w), Ok(h)) = (w.parse::<f64>(), h.parse::<f64>()) else { return err("ukuran tidak valid") };
+            state.ui.window.setContentSize(objc2_foundation::NSSize::new(w, h));
+            ok(window_layout(state))
+        }
         _ => err("aksi debug_ui tidak dikenal"),
     }
 }
@@ -168,7 +198,7 @@ fn sheets_state(state: &AppState) -> Value {
 }
 
 fn address_state(state: &AppState) -> Value {
-    let field = &state.ui.nav.address;
+    let field = &state.ui.sidebar.address;
     let (text, selection, editing) = match field.currentEditor() {
         Some(editor) => {
             let range = editor.selectedRange();
@@ -192,5 +222,55 @@ fn address_state(state: &AppState) -> Value {
         "field_frame": rect(screen),
         "rows": rows,
         "selected": selected,
+    })
+}
+
+fn rect_json(r: objc2_foundation::NSRect) -> Value {
+    json!([r.origin.x, r.origin.y, r.size.width, r.size.height])
+}
+
+fn sidebar_state(state: &AppState) -> Value {
+    use browser_core::tabs::TabKind;
+    let rows = state.ui.sidebar.rows();
+    let section = |kind: TabKind| -> Vec<Value> {
+        rows.iter()
+            .filter(|r| r.info.kind == kind)
+            .map(|r| {
+                let frame = r.view.convertRect_toView(r.view.bounds(), None);
+                json!({
+                    "id": r.info.id.0,
+                    "title": r.info.title,
+                    "url": r.info.url,
+                    "active": r.info.active,
+                    "asleep": r.info.asleep,
+                    "playing": r.info.playing,
+                    "icon": if r.favicon { "favicon" } else { "monogram" },
+                    "frame": rect_json(frame),
+                    "title_lines": r.view.title_lines(),
+                })
+            })
+            .collect()
+    };
+    json!({"favorites": section(TabKind::Favorite), "pinned": section(TabKind::Pinned), "today": section(TabKind::Today)})
+}
+
+fn window_layout(state: &AppState) -> Value {
+    use crate::layout::SidebarMode;
+    let (sidebar, card, panel) = state.ui.frames_in_window();
+    let mode = match state.ui.sidebar_mode() {
+        SidebarMode::Docked => "docked",
+        SidebarMode::Hidden => "hidden",
+        SidebarMode::Overlay => "overlay",
+    };
+    json!({
+        "mode": mode,
+        "sidebar": rect_json(sidebar),
+        "card": rect_json(card),
+        "panel": panel.map(rect_json),
+        "traffic_lights_hidden": state.ui.traffic_lights_hidden(),
+        "outline": state.ui.card.outline_visible(),
+        "toast": state.ui.card.toast_text(),
+        "empty_state": state.ui.card.empty_visible(),
+        "theme": state.ui.theme_id(),
     })
 }

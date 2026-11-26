@@ -110,7 +110,7 @@ fn run_script_on_page(state: &AppState, tab_id: Option<u64>, kind: Script, scrip
 }
 
 fn notice(state: &AppState, message: &str) {
-    state.ui.nav.show_notice(message);
+    state.ui.show_notice(message);
 }
 
 const PANEL_READ_ONLY: &str = "Panel Tanya Claude hanya boleh membaca halaman.";

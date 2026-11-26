@@ -210,10 +210,10 @@ pub fn clear_dialog(state: &Rc<AppState>) {
             state.favicons.forget_unused(&state);
             state.refresh();
             let pages = if removed == 1 { "page" } else { "pages" };
-            state.ui.nav.show_notice(&format!("History cleared ({removed} {pages})"));
+            state.ui.show_notice(&format!("History cleared ({removed} {pages})"));
         });
     if !shown {
-        state.ui.nav.show_notice("Close the other dialog first, then try Clear History again");
+        state.ui.show_notice("Close the other dialog first, then try Clear History again");
     }
 }
 

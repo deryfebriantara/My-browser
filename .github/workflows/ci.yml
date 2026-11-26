@@ -45,7 +45,7 @@ jobs:
         run: scripts/bundle.sh
       - name: Debug-only test hooks are not in the release binary
         run: |
-          if strings dist/my-browser.app/Contents/MacOS/my-browser | grep -qE 'debug_ui|SELFTEST|sheet_button'; then
+          if strings dist/my-browser.app/Contents/MacOS/my-browser | grep -qE 'debug_ui|SELFTEST|sheet_button|sidebar_state'; then
             echo "debug hooks found in release binary" >&2
             exit 1
           fi

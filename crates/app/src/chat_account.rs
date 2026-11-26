@@ -318,7 +318,7 @@ impl ChatAccount {
         if success {
             self.close_login_tab(state);
             *self.message.borrow_mut() = None;
-            state.ui.nav.show_notice("Signed in to Claude");
+            state.ui.show_notice("Signed in to Claude");
         } else {
             let detail = output
                 .lines()

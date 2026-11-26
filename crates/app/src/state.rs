@@ -13,7 +13,6 @@ use crate::mcp_access::McpAccess;
 use crate::password_manager::PasswordManager;
 use crate::passwords::Passwords;
 use crate::persistence::{self, Loaded};
-use crate::tab_strip::TabInfo;
 use crate::window::Ui;
 use block2::RcBlock;
 use browser_core::browser::{Browser, SinkFactory, UiChange};
@@ -112,7 +111,14 @@ impl AppState {
         let Loaded { settings, spaces, newer_spaces, history } = loaded;
         let state = Rc::new_cyclic(|weak: &Weak<AppState>| {
             let target = ActionTarget::new(mtm, weak.clone());
-            let ui = Ui::build(mtm, target);
+            let theme = browser_core::theme::theme(
+                &spaces
+                    .spaces
+                    .get(spaces.active_space)
+                    .or(spaces.spaces.first())
+                    .map_or("personal".to_string(), |s| s.theme.clone()),
+            );
+            let ui = Ui::build(mtm, target, theme, settings.sidebar_width, settings.sidebar_visible);
             let engine = WebKitEngine::new(mtm);
             engine.load_blocklists(&blocklist_dir());
             let global = weak.clone();
@@ -146,23 +152,9 @@ impl AppState {
             }
         });
         if state.newer_spaces.is_some() {
-            state.ui.nav.show_notice("Tabs won't be saved: spaces.json was written by a newer version of my-browser.");
+            state.ui.show_notice("Tabs won't be saved: spaces.json was written by a newer version of my-browser.");
         }
         state
-    }
-
-    fn tab_infos(&self) -> Vec<TabInfo> {
-        let b = self.browser.borrow();
-        let active = b.tabs().active();
-        b.tabs()
-            .iter()
-            .map(|t| TabInfo {
-                id: t.id.0,
-                title: t.display_title(),
-                active: t.id == active,
-                sleeping: !t.awake && t.url.is_some(),
-            })
-            .collect()
     }
 
     fn nav_info(&self) -> NavInfo {
@@ -187,7 +179,7 @@ impl AppState {
         let nav = self.nav_info();
 
         if has(UiChange::Tabs) || has(UiChange::Active) {
-            self.layout_tabs();
+            self.layout_sidebar();
             self.update_window_title(&nav.title);
         }
         if has(UiChange::Active) {
@@ -197,7 +189,10 @@ impl AppState {
                 (b.active_view(), b.active_viewport())
             };
             self.ui.show_content(view, viewport);
+            let space = self.browser.borrow().space().name.clone();
+            self.ui.card.show_empty(nav.blank.then_some(space.as_str()));
             if nav.blank {
+                self.ui.sidebar.address.setStringValue(&NSString::new());
                 self.focus_address();
             }
         } else if has(UiChange::Layout) {
@@ -205,7 +200,7 @@ impl AppState {
             self.ui.layout_content(viewport);
         }
         if has(UiChange::Nav) || has(UiChange::Active) {
-            self.ui.nav.update(nav.can_back, nav.can_forward, nav.loading, &nav.url);
+            self.ui.sidebar.update_nav(nav.can_back, nav.can_forward, nav.loading, &nav.url);
         }
         if has(UiChange::Settings) {
             let settings = self.browser.borrow().settings().clone();
@@ -216,7 +211,7 @@ impl AppState {
         }
         for change in changes {
             match change {
-                UiChange::Notice(message) => self.ui.nav.show_notice(&message),
+                UiChange::Notice(message) => self.ui.show_notice(&message),
                 UiChange::Loaded(id) => {
                     if let Some(me) = self.me.upgrade() {
                         self.favicons.page_loaded(&me, id);
@@ -242,7 +237,8 @@ impl AppState {
         self.claude_interact.set(on);
         let title = self.nav_info().title;
         self.update_window_title(&title);
-        self.ui.nav.show_notice(if on {
+        self.ui.card.set_outline(on);
+        self.ui.show_notice(if on {
             "Claude can now click, type, and run JavaScript"
         } else {
             "Claude interaction turned off"
@@ -255,7 +251,7 @@ impl AppState {
         let id = self.browser.borrow().tabs().active();
         let started = self.browser.borrow().page(id).map(|page| page.run_script(ELEMENT_PICKER)).is_some();
         if !started {
-            self.ui.nav.show_notice("Open a page first to pick an element");
+            self.ui.show_notice("Open a page first to pick an element");
             return;
         }
         self.picked_tab.set(Some(id));
@@ -263,7 +259,7 @@ impl AppState {
         if let Some(view) = self.ui.shown_view() {
             self.ui.window.makeFirstResponder(Some(&view));
         }
-        self.ui.nav.show_notice("Click the element to show Claude (Esc to cancel)");
+        self.ui.show_notice("Click the element to show Claude (Esc to cancel)");
     }
 
     pub fn mtm(&self) -> MainThreadMarker {
@@ -286,13 +282,13 @@ impl AppState {
         let id = self.browser.borrow().tabs().active();
         self.browser.borrow_mut().set_emulation(id, Emulation::default());
         self.refresh();
-        self.ui.nav.show_notice("Back to normal view");
+        self.ui.show_notice("Back to normal view");
     }
 
-    /// Menjadwalkan penggambaran ulang tab strip di putaran run loop berikutnya.
-    /// Tidak langsung, karena aksi tombol tab sendiri yang sering memicunya, dan
-    /// membuang tombol itu di tengah aksinya berisiko crash.
-    pub fn layout_tabs(&self) {
+    /// Menjadwalkan penggambaran ulang sidebar di putaran run loop berikutnya.
+    /// Tidak langsung, karena aksi baris tab sendiri yang sering memicunya, dan
+    /// membuang baris itu di tengah aksinya berisiko crash.
+    pub fn layout_sidebar(&self) {
         if self.tabs_layout_pending.replace(true) {
             return;
         }
@@ -300,8 +296,8 @@ impl AppState {
         let block = RcBlock::new(move || {
             if let Some(state) = me.upgrade() {
                 state.tabs_layout_pending.set(false);
-                let infos = state.tab_infos();
-                state.ui.tabs.render(state.mtm, &infos, &state.ui.target);
+                let model = browser_core::sidebar::sidebar_model(state.browser.borrow().tabs());
+                state.ui.sidebar.render(&model, &state.favicons, &state.ui.target);
             }
         });
         // SAFETY: dijadwalkan dari main thread ke run loop main thread.
@@ -368,12 +364,19 @@ impl AppState {
     /// URL dari argumen baris perintah. URL pertama memakai tab aktif kalau
     /// tab itu masih kosong.
     pub fn open_urls(&self, urls: &[String]) {
-        for (i, url) in urls.iter().enumerate() {
+        // Tab baru masuk di paling atas Today, jadi URL dibuka dari belakang
+        // supaya urutan di sidebar sama dengan urutan argumen (yang pertama aktif).
+        for (i, url) in urls.iter().rev().enumerate() {
             let blank = self.nav_info().blank;
             if !(i == 0 && blank) {
                 self.browser.borrow_mut().new_tab(Instant::now());
             }
             self.browser.borrow_mut().navigate(url, Instant::now());
+        }
+        // Tab kosong saat aplikasi dibuka memfokuskan address bar; setelah
+        // URL dibuka, field itu harus menampilkan alamat halaman lagi.
+        if !urls.is_empty() && !self.nav_info().blank {
+            self.ui.sidebar.address.abortEditing();
         }
         self.refresh();
     }
@@ -405,9 +408,7 @@ impl AppState {
     pub fn select_tab(&self, id: u64) {
         self.browser.borrow_mut().activate(TabId(id), Instant::now());
         self.refresh();
-        // Tombol on/off berganti status saat diklik; gambar ulang supaya
-        // klik pada tab yang sudah aktif tidak mematikan tandanya.
-        self.layout_tabs();
+        self.layout_sidebar();
     }
 
     pub fn select_tab_index(&self, index: usize) {
@@ -432,15 +433,16 @@ impl AppState {
 
     pub fn focus_address(&self) {
         self.address.begin();
-        self.ui.window.makeFirstResponder(Some(&self.ui.nav.address));
-        unsafe { self.ui.nav.address.selectText(None) };
+        self.ui.window.makeFirstResponder(Some(&self.ui.sidebar.address));
+        unsafe { self.ui.sidebar.address.selectText(None) };
+        self.ui.sidebar.style_editor();
     }
 
     pub fn revert_address(&self) {
         self.address.end();
         let url = self.nav_info().url;
-        self.ui.nav.address.abortEditing();
-        self.ui.nav.address.setStringValue(&NSString::from_str(&url));
+        self.ui.sidebar.address.abortEditing();
+        self.ui.sidebar.address.setStringValue(&NSString::from_str(&url));
         self.focus_address();
     }
 
@@ -448,9 +450,9 @@ impl AppState {
     pub fn navigate_from_address(&self) {
         self.address.end();
         // Selama diedit, teks terbaru ada di field editor.
-        let text = match self.ui.nav.address.currentEditor() {
+        let text = match self.ui.sidebar.address.currentEditor() {
             Some(editor) => editor.string().to_string(),
-            None => self.ui.nav.address.stringValue().to_string(),
+            None => self.ui.sidebar.address.stringValue().to_string(),
         };
         let ok = self.browser.borrow_mut().navigate_from_address(&text, Instant::now());
         self.refresh();
@@ -462,7 +464,7 @@ impl AppState {
     /// Membuka saran dari dropdown address bar.
     pub fn activate_suggestion(&self, suggestion: &Suggestion) {
         self.address.end();
-        self.ui.nav.address.abortEditing();
+        self.ui.sidebar.address.abortEditing();
         self.browser.borrow_mut().open_suggestion(suggestion, Instant::now());
         self.refresh();
         if let Some(view) = self.ui.shown_view() {

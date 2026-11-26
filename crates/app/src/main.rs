@@ -2,7 +2,9 @@
 
 mod actions;
 mod address_bar;
+mod backdrop;
 mod background;
+mod card;
 mod chat;
 mod chat_account;
 mod control;
@@ -12,18 +14,20 @@ mod debug_ui;
 mod dialogs;
 mod favicons;
 mod history_window;
+mod layout;
 mod local_time;
 mod mcp_access;
 mod memory_pressure;
 mod menu;
-mod nav_bar;
+mod paint;
 mod password_manager;
 mod passwords;
 mod persistence;
 mod procinfo;
+mod sidebar;
+mod sidebar_row;
 mod state;
 mod suggest_popup;
-mod tab_strip;
 mod timer;
 mod window;
 

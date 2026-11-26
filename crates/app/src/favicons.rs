@@ -64,7 +64,6 @@ impl Favicons {
     }
 
     /// Gambar favicon host dari memory atau disk. None: pakai monogram.
-    #[expect(dead_code, reason = "dipakai sidebar mulai Task 7")]
     pub fn image(&self, host: &str) -> Option<Retained<NSImage>> {
         if let Some(image) = self.memory.borrow().get(host) {
             return Some(image.clone());
@@ -75,7 +74,6 @@ impl Favicons {
     }
 
     /// Ubin bersudut dengan huruf pertama host, seukuran `size` poin.
-    #[expect(dead_code, reason = "dipakai sidebar mulai Task 7")]
     pub fn monogram_image(host: &str, size: f64) -> Retained<NSImage> {
         let (letter, [r, g, b]) = favicon::monogram(host);
         let text = NSString::from_str(&letter.to_string());
@@ -174,7 +172,7 @@ impl Favicons {
             self.memory.borrow_mut().insert(host.clone(), image);
         }
         self.in_flight.borrow_mut().remove(&host);
-        state.layout_tabs();
+        state.layout_sidebar();
     }
 
     /// Setelah riwayat dihapus: ikon host yang tidak lagi muncul di tab atau

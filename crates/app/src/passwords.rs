@@ -52,7 +52,7 @@ pub(crate) fn host(origin: &str) -> &str {
 }
 
 fn notice(state: &AppState, message: &str) {
-    state.ui.nav.show_notice(message);
+    state.ui.show_notice(message);
 }
 
 /// Setelah pengguna login: tawarkan simpan atau perbarui, atau diam.

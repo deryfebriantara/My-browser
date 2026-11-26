@@ -61,7 +61,7 @@ impl AddressBar {
     }
 
     fn editor(state: &AppState) -> Option<Retained<NSText>> {
-        state.ui.nav.address.currentEditor()
+        state.ui.sidebar.address.currentEditor()
     }
 
     /// Isi field berubah karena pengguna mengetik, menempel, atau menghapus.
@@ -184,6 +184,6 @@ impl AddressBar {
         }
         let mut popup = self.popup.borrow_mut();
         let popup = popup.get_or_insert_with(|| SuggestPopup::new(state.mtm()));
-        popup.show(&rows, selected, &state.ui.nav.address, &state.ui.window, &state.ui.target);
+        popup.show(&rows, selected, &state.ui.sidebar.address, &state.ui.window, &state.ui.target);
     }
 }

@@ -218,7 +218,10 @@ define_class!(
 
         #[unsafe(method(controlTextDidBeginEditing:))]
         fn text_did_begin(&self, notification: &NSNotification) {
-            self.with_address(notification, |s| s.address.begin());
+            self.with_address(notification, |s| {
+                s.ui.sidebar.style_editor();
+                s.address.begin();
+            });
         }
 
         #[unsafe(method(controlTextDidChange:))]
@@ -237,7 +240,10 @@ define_class!(
     unsafe impl NSWindowDelegate for ActionTarget {
         #[unsafe(method(windowDidResize:))]
         fn window_did_resize(&self, notification: &NSNotification) {
-            self.with(|s| s.layout_tabs());
+            self.with_main_window(notification, |s| {
+                s.ui.relayout();
+                s.layout_sidebar();
+            });
             self.with_main_window(notification, |s| s.address.hide_popup());
         }
 
@@ -278,7 +284,7 @@ impl ActionTarget {
     fn with_address(&self, notification: &NSNotification, f: impl FnOnce(&Rc<AppState>)) {
         self.with(|s| {
             if notification.object().is_some_and(|o| {
-                std::ptr::eq(Retained::as_ptr(&o).cast::<u8>(), Retained::as_ptr(&s.ui.nav.address).cast())
+                std::ptr::eq(Retained::as_ptr(&o).cast::<u8>(), Retained::as_ptr(&s.ui.sidebar.address).cast())
             }) {
                 f(s);
             }
