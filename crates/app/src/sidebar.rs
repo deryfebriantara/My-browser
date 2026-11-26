@@ -53,8 +53,13 @@ pub struct Sidebar {
     claude: Retained<NSButton>,
     /// Menempelkan sidebar atau mengaktifkan sembunyi otomatis (⌘S).
     toggle: Retained<NSButton>,
+    /// Field alamat yang bisa diedit. Berada di `editor_box` (bar lebar di
+    /// atas halaman), yang hanya tampil selama mengetik.
     pub address: Retained<NSTextField>,
     address_box: Retained<PaintView>,
+    /// Tampilan alamat satu baris di sidebar; diklik membuka bar lebar.
+    address_display: Retained<NSButton>,
+    editor_box: Retained<PaintView>,
     scroll: Retained<NSScrollView>,
     doc: Retained<PaintView>,
     reload_icon: Retained<NSImage>,
@@ -143,7 +148,7 @@ impl Sidebar {
         address.setBezeled(false);
         address.setDrawsBackground(false);
         address.setFocusRingType(NSFocusRingType::None);
-        address.setFont(Some(&NSFont::systemFontOfSize(13.0)));
+        address.setFont(Some(&NSFont::systemFontOfSize(14.0)));
         address.setTextColor(Some(&NSColor::whiteColor()));
         address.setLineBreakMode(NSLineBreakMode::ByTruncatingTail);
         address.setUsesSingleLineMode(true);
@@ -164,7 +169,27 @@ impl Sidebar {
             address.setAction(Some(sel!(addressEntered:)));
             address.setDelegate(Some(ProtocolObject::from_ref(target)));
         }
-        address_box.addSubview(&address);
+        let editor_box =
+            PaintView::raised(mtm, &NSColor::colorWithSRGBRed_green_blue_alpha(0.11, 0.11, 0.13, 0.97), 10.0);
+        editor_box.setAppearance(NSAppearance::appearanceNamed(unsafe { NSAppearanceNameDarkAqua }).as_deref());
+        editor_box.addSubview(&address);
+        editor_box.setHidden(true);
+
+        let address_display = unsafe {
+            NSButton::buttonWithTitle_target_action(
+                &NSString::from_str("Search or enter address"),
+                Some(target as &AnyObject),
+                Some(sel!(focusAddress:)),
+                mtm,
+            )
+        };
+        address_display.setBordered(false);
+        address_display.setAlignment(objc2_app_kit::NSTextAlignment::Left);
+        address_display.setLineBreakMode(NSLineBreakMode::ByTruncatingTail);
+        address_display.setFont(Some(&NSFont::systemFontOfSize(13.0)));
+        address_display.setAlphaValue(0.85);
+        address_display.setToolTip(Some(&NSString::from_str("Search or enter address (⌘L)")));
+        address_box.addSubview(&address_display);
         view.addSubview(&address_box);
 
         let interact = PaintView::fill(mtm, &NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 0.58, 0.0, 0.32), 8.0);
@@ -208,6 +233,8 @@ impl Sidebar {
             toggle,
             address,
             address_box,
+            address_display,
+            editor_box,
             scroll,
             doc,
             reload_icon,
@@ -260,7 +287,7 @@ impl Sidebar {
         }
         self.address_box
             .setFrame(NSRect::new(NSPoint::new(PAD, address_y), NSSize::new(w - 2.0 * PAD, ADDRESS_HEIGHT)));
-        self.address.setFrame(NSRect::new(NSPoint::new(10.0, 4.0), NSSize::new(w - 2.0 * PAD - 20.0, 22.0)));
+        self.address_display.setFrame(NSRect::new(NSPoint::new(10.0, 4.0), NSSize::new(w - 2.0 * PAD - 20.0, 22.0)));
         let mut list_y = address_y + ADDRESS_HEIGHT + 8.0;
         let favs_height = self.favs_height.get();
         self.favs.setFrame(NSRect::new(NSPoint::new(0.0, list_y), NSSize::new(w, favs_height)));
@@ -274,9 +301,27 @@ impl Sidebar {
         self.back.setEnabled(can_back);
         self.forward.setEnabled(can_forward);
         self.reload.setImage(Some(if loading { &self.stop_icon } else { &self.reload_icon }));
+        let shown = if url.is_empty() { "Search or enter address" } else { url };
+        self.address_display.setTitle(&NSString::from_str(shown));
+        self.address_display.setAlphaValue(if url.is_empty() { 0.6 } else { 0.85 });
         if !self.is_editing() {
             self.address.setStringValue(&NSString::from_str(url));
         }
+    }
+
+    /// Bar lebar berisi field alamat; dipasang `Ui` di atas semua view.
+    pub fn editor_box(&self) -> Retained<PaintView> {
+        self.editor_box.clone()
+    }
+
+    /// Kotak tampilan alamat di sidebar, dalam koordinat jendela.
+    pub fn display_frame_in_window(&self) -> NSRect {
+        self.address_box.convertRect_toView(self.address_box.bounds(), None)
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn display_button(&self) -> Retained<NSButton> {
+        self.address_display.clone()
     }
 
     pub fn is_editing(&self) -> bool {

@@ -296,6 +296,7 @@ define_class!(
         #[unsafe(method(controlTextDidBeginEditing:))]
         fn text_did_begin(&self, notification: &NSNotification) {
             self.with_address(notification, |s| {
+                s.ui.show_editor(true);
                 s.ui.sidebar.style_editor();
                 s.address.begin();
             });

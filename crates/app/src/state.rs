@@ -537,6 +537,7 @@ impl AppState {
     /// diperiksa di sini juga.
     fn end_address_editing(&self) {
         self.ui.sidebar.address.abortEditing();
+        self.ui.show_editor(false);
         self.address_editing_ended();
     }
 
@@ -550,6 +551,7 @@ impl AppState {
             if s.ui.sidebar.is_editing() {
                 return;
             }
+            s.ui.show_editor(false);
             s.overlay_for_address.set(false);
             if s.ui.sidebar_mode() == crate::layout::SidebarMode::Overlay && !s.ui.pointer_in_sidebar() {
                 s.ui.hide_overlay();
@@ -631,6 +633,8 @@ impl AppState {
             self.ui.show_overlay();
             self.layout_sidebar();
         }
+        // Bar lebar tampil dulu, supaya pengeditan dimulai di field yang terlihat.
+        self.ui.show_editor(true);
         self.address.begin();
         self.ui.window.makeFirstResponder(Some(&self.ui.sidebar.address));
         unsafe { self.ui.sidebar.address.selectText(None) };

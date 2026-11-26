@@ -42,6 +42,8 @@ pub struct Ui {
     overlay_shadow: Retained<PaintView>,
     /// Pegangan ubah lebar di tepi kanan sidebar.
     handle: Retained<DragHandle>,
+    /// Bar alamat lebar sedang tampil.
+    editor_shown: Cell<bool>,
 }
 
 impl Ui {
@@ -101,6 +103,8 @@ impl Ui {
         root.addSubview(&sidebar.view);
         let handle = DragHandle::new(mtm, None);
         root.addSubview(&handle);
+        // Bar alamat lebar paling atas: melayang di atas sidebar dan kartu.
+        root.addSubview(&sidebar.editor_box());
 
         let mode = if sidebar_visible { SidebarMode::Docked } else { SidebarMode::Hidden };
         let ui = Ui {
@@ -119,6 +123,7 @@ impl Ui {
             edge_hovered: Cell::new(false),
             overlay_shadow,
             handle,
+            editor_shown: Cell::new(false),
         };
         ui.relayout();
         ui
@@ -194,6 +199,33 @@ impl Ui {
         }
         let viewport = self.shown_viewport.get();
         self.layout_content(viewport);
+        if self.editor_shown.get() {
+            self.show_editor(true);
+        }
+    }
+
+    /// Menampilkan bar alamat lebar sejajar kotak alamat di sidebar
+    /// (lebar min(760, lebar jendela − x − 16), tinggi 34), atau menyembunyikannya.
+    pub fn show_editor(&self, visible: bool) {
+        self.editor_shown.set(visible);
+        let editor = self.sidebar.editor_box();
+        if !visible {
+            editor.setHidden(true);
+            return;
+        }
+        let window_w = self.window.contentView().map_or(0.0, |v| v.bounds().size.width);
+        let anchor = self.sidebar.display_frame_in_window();
+        let x = anchor.origin.x;
+        let width = (window_w - x - 16.0).clamp(0.0, 760.0);
+        let top = anchor.origin.y + anchor.size.height;
+        editor.setFrame(NSRect::new(NSPoint::new(x, top - 34.0), NSSize::new(width, 34.0)));
+        self.sidebar.address.setFrame(NSRect::new(NSPoint::new(12.0, 6.0), NSSize::new((width - 24.0).max(0.0), 22.0)));
+        editor.setHidden(false);
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn editor_visible(&self) -> bool {
+        self.editor_shown.get() && !self.sidebar.editor_box().isHidden()
     }
 
     /// Mengganti view di kartu halaman. `None` untuk tab kosong. `viewport`

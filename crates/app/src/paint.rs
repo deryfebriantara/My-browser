@@ -190,6 +190,19 @@ impl PaintView {
         Self::make(mtm, ivars)
     }
 
+    /// Kotak bersudut berisi `color` dengan bayangan dan garis tepi tipis
+    /// (tetap terlihat di atas halaman gelap), melayang di atas halaman.
+    pub fn raised(mtm: MainThreadMarker, color: &NSColor, radius: f64) -> Retained<Self> {
+        let ivars = PaintIvars {
+            fill: RefCell::new(Some(color.retain())),
+            stroke: RefCell::new(Some((NSColor::colorWithWhite_alpha(1.0, 0.16), 1.0))),
+            ..PaintIvars::default()
+        };
+        ivars.radius.set(radius);
+        ivars.shadow.set(true);
+        Self::make(mtm, ivars)
+    }
+
     /// Wadah transparan; `flipped` menaruh titik nol di kiri atas.
     pub fn container(mtm: MainThreadMarker, flipped: bool, passthrough: bool) -> Retained<Self> {
         let ivars = PaintIvars::default();

@@ -4,9 +4,9 @@ my-browser shows its tabs in a colored sidebar on the left, and the page in a ro
 
 From top to bottom, the sidebar holds:
 
-1. **Top row:** back, forward, reload (stop while loading), and ✦ Ask Claude.
+1. **Top row:** the sidebar button (hide or keep open), back, forward, reload (stop while loading), and ✦ Ask Claude.
 2. **"Claude can interact"** pill with a **Turn Off** button, only while Claude may click, type, and run JavaScript. The page card also gets an orange outline.
-3. **Address field.** It works as before: type an address or a search, with inline completion and suggestions.
+3. **Address:** a one-line display of the current address. Clicking it (or ⌘L, ⌘T, an empty tab) opens a wide bar over the top of the page, up to 760 pt, that shows the full address while you type, with inline completion and suggestions below it. The bar closes after Enter, when you click elsewhere, or when you switch tabs.
 4. **Favorites:** a grid of site icons.
 5. **Pinned** tabs.
 6. **Today:** everyday tabs, newest at the top, under **＋ New Tab**.
@@ -49,7 +49,7 @@ Pages that handle ⌘S themselves (editors such as code-server) get the key firs
 
 ## Hidden sidebar
 
-⌘S hides the sidebar and the window buttons; the page card fills the window. Rest the pointer on the left edge of the window for a moment and the sidebar slides in as a floating panel; move away and it hides again. ⌘L, ⌘T, and an empty Space also bring it in, and it stays while you type an address. With **Reduce Motion** on, it appears without sliding.
+⌘S, the sidebar button in the top row, or **View > Hide Sidebar** hides the sidebar and the window buttons; the page card fills the window. Rest the pointer on the left edge of the window for a moment and the sidebar slides in as a floating panel; move away and it hides again. The sidebar button in the floating panel keeps it open again. ⌘L, ⌘T, and an empty Space also bring it in, and it stays while you type an address. With **Reduce Motion** on, it appears without sliding.
 
 Drag the right edge of the sidebar to change its width (200–360 pt). The width and whether the sidebar is hidden are kept in `settings.json` (`sidebar_width`, `sidebar_visible`).
 

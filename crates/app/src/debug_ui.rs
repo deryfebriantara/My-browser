@@ -52,6 +52,11 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
             ok(address_state(state))
         }
         "address_state" => ok(address_state(state)),
+        // Melepas fokus dari field (seperti klik di halaman): controlTextDidEndEditing.
+        "resign_address" => {
+            state.ui.window.makeFirstResponder(None);
+            ok(address_state(state))
+        }
         // Aksi menu milik my-browser, mis. showHistory:.
         "menu" => {
             let Some(sel) = selector(text) else { return err("selector tidak valid") };
@@ -135,6 +140,10 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
         "sidebar_click" => {
             let text = text.unwrap_or_default();
             let (id, part) = text.split_once(':').unwrap_or((text, ""));
+            if id == "address" {
+                unsafe { state.ui.sidebar.display_button().performClick(None) };
+                return ok(json!({"clicked": text}));
+            }
             if id == "toggle" {
                 unsafe { state.ui.sidebar.toggle_button().performClick(None) };
                 return ok(json!({"clicked": text}));
@@ -371,6 +380,9 @@ fn window_layout(state: &AppState) -> Value {
         "theme": state.ui.theme_id(),
         "lights_center": state.ui.traffic_light_center(),
         "movable_by_background": state.ui.window.isMovableByWindowBackground(),
+        "editor_visible": state.ui.editor_visible(),
+        "editor_frame": rect_json(state.ui.sidebar.editor_box().frame()),
+        "display_frame": rect_json(state.ui.sidebar.display_frame_in_window()),
         "backdrop": state.ui.backdrop_info(),
         "address_frame": rect_json(state.ui.sidebar.address.convertRect_toView(state.ui.sidebar.address.bounds(), None)),
     })

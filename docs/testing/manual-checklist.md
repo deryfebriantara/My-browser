@@ -178,6 +178,8 @@ Reopen the browser with the new build (⌘Q, then `open dist/my-browser.app`). H
 - [ ] Right-click a row or favorite tile: Pin/Unpin, Add to/Remove from Favorites, Set Current Page as Pinned URL, Copy Link, Sleep Tab, Close/Unload
 - [ ] ⌘D pins and unpins the current tab; the File menu titles change accordingly
 - [ ] Drag a row with the mouse: Today → Pinned → Favorites → Today, and reorder within a section; a white line shows where it lands; with no favorites yet, an empty drop zone appears above the list while dragging
+- [ ] The sidebar button in the top row hides the sidebar; in the floating overlay the same button keeps it open
+- [ ] Clicking the address in the sidebar opens the wide address bar over the page with the full URL and suggestions below; it looks right on light and dark pages and closes after Enter, a click on the page, or a tab switch
 - [ ] With the sidebar hidden, ⌘L and ⌘T bring it in as an overlay with the address field focused; it stays while typing and hides after Enter or Escape
 - [ ] ⌘S hides the sidebar (window buttons hide too); resting the pointer on the left edge slides it in as a floating panel; moving away hides it again; with Reduce Motion on, it appears without sliding
 - [ ] Dragging the sidebar's right edge resizes it (200–360 pt); the width and the hidden state survive a relaunch
