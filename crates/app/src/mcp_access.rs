@@ -101,7 +101,7 @@ impl McpAccess {
                     }
                 });
                 state.refresh();
-                state.ui.nav.show_notice(&format!("{} can now control the browser", display_name(path)));
+                state.ui.show_notice(&format!("{} can now control the browser", display_name(path)));
                 Ok(())
             }
             1 => {
@@ -132,6 +132,6 @@ impl McpAccess {
         self.denied.borrow_mut().clear();
         self.once.borrow_mut().clear();
         state.refresh();
-        state.ui.nav.show_notice("MCP client access revoked; programs will be asked again when they connect");
+        state.ui.show_notice("MCP client access revoked; programs will be asked again when they connect");
     }
 }

@@ -6,10 +6,10 @@ use crate::blocking::{host_matches, normalize_host};
 use crate::engine::{ColorScheme, Emulation, Engine, JsTag, Page, PageEvent};
 use crate::history::{History, note_visit, visit_key};
 use crate::omnibox::{Parsed, classify_input, parse_input};
-use crate::session::SessionFile;
 use crate::settings::Settings;
 use crate::sleep::{Pressure, tabs_to_sleep};
-use crate::tabs::{PendingVisit, TabId, TabList, Url};
+use crate::spaces_file::{SpaceMeta, SpacesFile};
+use crate::tabs::{Closed, PendingVisit, TabId, TabKind, TabList, Url};
 use crate::youtube::{VIDEO_TIME_JS, is_youtube_watch, with_resume_time};
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -46,6 +46,8 @@ pub enum UiChange {
     Settings,
     /// Riwayat berubah (kunjungan baru, judul, atau dihapus).
     History,
+    /// Halaman http(s) di tab ini selesai dimuat (mis. untuk mengambil favicon).
+    Loaded(TabId),
     Notice(String),
 }
 
@@ -57,6 +59,12 @@ fn unix_now() -> u64 {
 pub struct Browser<E: Engine> {
     engine: E,
     tabs: TabList,
+    /// Space yang sedang dipakai (tahap ini selalu satu: Personal).
+    space: SpaceMeta,
+    /// Isi `spaces.json` saat dimuat. Space lain (dari versi yang lebih baru
+    /// dengan format sama) ikut disimpan apa adanya, supaya tidak hilang.
+    loaded: SpacesFile,
+    space_index: usize,
     pages: HashMap<TabId, E::Page>,
     settings: Settings,
     sinks: SinkFactory,
@@ -68,19 +76,26 @@ pub struct Browser<E: Engine> {
 }
 
 impl<E: Engine> Browser<E> {
-    /// Memulihkan sesi (semua tab tidur) lalu membangunkan tab aktif.
+    /// Memulihkan Space aktif dari `spaces` (semua tab tidur) lalu
+    /// membangunkan tab aktif.
     pub fn new(
         engine: E,
         settings: Settings,
-        session: Option<&SessionFile>,
+        spaces: &SpacesFile,
         history: History,
         sinks: SinkFactory,
         now: Instant,
     ) -> Self {
-        let mut tabs = match session {
-            Some(s) => TabList::from_session(s, now),
-            None => TabList::new(now),
+        let (loaded, space_index) = if spaces.spaces.get(spaces.active_space).is_some() {
+            (spaces.clone(), spaces.active_space)
+        } else if !spaces.spaces.is_empty() {
+            (spaces.clone(), 0)
+        } else {
+            (SpacesFile::personal_default(), 0)
         };
+        let saved = &loaded.spaces[space_index];
+        let space = saved.meta();
+        let mut tabs = TabList::from_space(saved, now);
         // Tab dari sesi sudah tercatat saat dibuka dulu; memuatnya lagi
         // bukan kunjungan baru.
         let ids: Vec<TabId> = tabs.iter().map(|t| t.id).collect();
@@ -96,6 +111,9 @@ impl<E: Engine> Browser<E> {
         let mut b = Self {
             engine,
             tabs,
+            space,
+            loaded,
+            space_index,
             pages: HashMap::new(),
             settings,
             sinks,
@@ -180,8 +198,16 @@ impl<E: Engine> Browser<E> {
     pub fn close_tab(&mut self, id: TabId, now: Instant) {
         let was_active = self.tabs.active() == id;
         self.pages.remove(&id);
-        if self.tabs.close(id, now).is_none() {
-            return;
+        match self.tabs.close(id, now) {
+            None => return,
+            // Slot kembali ke alamat simpanannya; membangunkannya lagi nanti
+            // bukan kunjungan baru.
+            Some(Closed::Unloaded) => {
+                if let Some(tab) = self.tabs.get_mut(id) {
+                    tab.visit_key = tab.url.as_ref().and_then(visit_key);
+                }
+            }
+            Some(Closed::Removed(_)) => {}
         }
         if was_active {
             let next = self.tabs.active();
@@ -191,6 +217,51 @@ impl<E: Engine> Browser<E> {
         }
         self.change(UiChange::Tabs);
         self.dirty = true;
+    }
+
+    /// Memindahkan tab ke bagian sidebar `kind` di posisi `at`.
+    pub fn place_tab(&mut self, id: TabId, kind: TabKind, at: usize) -> bool {
+        if !self.tabs.place(id, kind, at) {
+            return false;
+        }
+        self.dirty = true;
+        self.change(UiChange::Tabs);
+        true
+    }
+
+    /// ⌘D: Today atau Favorite menjadi Pinned (paling bawah, alamat simpanan
+    /// favorit tetap); Pinned kembali ke paling atas Today.
+    pub fn toggle_pin(&mut self, id: TabId) -> bool {
+        match self.tabs.get(id).map(|t| t.kind) {
+            Some(TabKind::Pinned) => self.place_tab(id, TabKind::Today, 0),
+            Some(_) => {
+                let end = self.tabs.section(TabKind::Pinned).count();
+                self.place_tab(id, TabKind::Pinned, end)
+            }
+            None => false,
+        }
+    }
+
+    /// Favorite kembali ke paling atas Today; selain itu menjadi favorit terakhir.
+    pub fn toggle_favorite(&mut self, id: TabId) -> bool {
+        match self.tabs.get(id).map(|t| t.kind) {
+            Some(TabKind::Favorite) => self.place_tab(id, TabKind::Today, 0),
+            Some(_) => {
+                let end = self.tabs.section(TabKind::Favorite).count();
+                self.place_tab(id, TabKind::Favorite, end)
+            }
+            None => false,
+        }
+    }
+
+    /// "Set Current Page as Pinned URL".
+    pub fn set_pinned_url(&mut self, id: TabId) -> bool {
+        if !self.tabs.set_saved_to_current(id) {
+            return false;
+        }
+        self.dirty = true;
+        self.change(UiChange::Tabs);
+        true
     }
 
     pub fn reopen_closed_tab(&mut self, now: Instant) {
@@ -433,6 +504,10 @@ impl<E: Engine> Browser<E> {
                     let script = format!("window.scrollTo(0, {})", tab.scroll_y.round() as i64);
                     self.pages[&id].run_script(&script);
                 }
+                // Halaman web selesai dimuat: UI boleh mengambil favicon-nya.
+                if tab.url.as_ref().is_some_and(|u| matches!(u.scheme(), "http" | "https")) {
+                    self.change(UiChange::Loaded(id));
+                }
             }
             PageEvent::NavState { can_back, can_forward } => {
                 tab.can_back = can_back;
@@ -569,12 +644,25 @@ impl<E: Engine> Browser<E> {
         std::mem::take(&mut self.changes)
     }
 
-    pub fn session_if_dirty(&mut self) -> Option<crate::session::SessionFile> {
+    pub fn session_if_dirty(&mut self) -> Option<SpacesFile> {
         if !self.dirty {
             return None;
         }
         self.dirty = false;
-        Some(self.tabs.to_session())
+        Some(self.spaces_file())
+    }
+
+    /// Status lengkap untuk `spaces.json`.
+    pub fn spaces_file(&self) -> SpacesFile {
+        let mut file = self.loaded.clone();
+        file.version = crate::spaces_file::SPACES_VERSION;
+        file.active_space = self.space_index;
+        file.spaces[self.space_index] = self.tabs.to_space(&self.space);
+        file
+    }
+
+    pub fn space(&self) -> &SpaceMeta {
+        &self.space
     }
 
     /// HTTP/3 dimatikan (bawaan): petunjuk HTTP/3 dihapus sebelum koneksi baru

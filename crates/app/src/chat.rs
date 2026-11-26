@@ -8,7 +8,7 @@
 
 use crate::chat_account::{ChatAccount, claude_command};
 use crate::persistence;
-use crate::state::{AppState, display_title};
+use crate::state::AppState;
 use browser_core::claude_chat::{self as cc, ChatEvent, Launch, TabContext};
 use dispatch2::DispatchQueue;
 use engine_webkit::PanelView;
@@ -107,6 +107,8 @@ impl Chat {
         let view = panel.view();
         *self.panel.borrow_mut() = Some(panel);
         state.ui.set_panel(Some(view.clone()));
+        // Panel bisa mempersempit sidebar: baris tab digambar ulang selebar sidebar baru.
+        state.layout_sidebar();
         state.ui.window.makeFirstResponder(Some(&view));
     }
 
@@ -114,6 +116,7 @@ impl Chat {
         self.stop();
         let panel = self.panel.borrow_mut().take();
         state.ui.set_panel(None);
+        state.layout_sidebar();
         drop(panel);
         // Fokus kembali ke halaman.
         if let Some(view) = state.ui.shown_view() {
@@ -419,7 +422,7 @@ fn active_tab(state: &AppState) -> Option<ActiveTab> {
     let tab = b.tabs().get(b.tabs().active())?;
     Some(ActiveTab {
         id: tab.id.0,
-        title: display_title(tab),
+        title: tab.display_title(),
         url: tab.url.as_ref().map(|u| u.to_string()),
         picked: state.picked_tab.get() == Some(tab.id),
     })

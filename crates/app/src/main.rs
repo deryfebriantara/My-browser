@@ -2,7 +2,9 @@
 
 mod actions;
 mod address_bar;
+mod backdrop;
 mod background;
+mod card;
 mod chat;
 mod chat_account;
 mod control;
@@ -10,19 +12,22 @@ mod control_server;
 #[cfg(debug_assertions)]
 mod debug_ui;
 mod dialogs;
+mod favicons;
 mod history_window;
+mod layout;
 mod local_time;
 mod mcp_access;
 mod memory_pressure;
 mod menu;
-mod nav_bar;
+mod paint;
 mod password_manager;
 mod passwords;
 mod persistence;
 mod procinfo;
+mod sidebar;
+mod sidebar_row;
 mod state;
 mod suggest_popup;
-mod tab_strip;
 mod timer;
 mod window;
 
@@ -101,8 +106,7 @@ fn main() {
     // tanpa pool, referensi itu bocor dan tab sesi yang dipulihkan tidak pernah
     // bisa melepas proses WebContent-nya saat ditidurkan.
     let (_state, _timer, _pressure) = objc2::rc::autoreleasepool(|_| {
-        let (settings, session, history) = persistence::load();
-        let state = AppState::new(mtm, settings, session.as_ref(), history);
+        let state = AppState::new(mtm, persistence::load());
         *delegate.ivars().state.borrow_mut() = Some(state.clone());
         app.setMainMenu(Some(&menu::build(mtm, &state.ui.target)));
         state.refresh();

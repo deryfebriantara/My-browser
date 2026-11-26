@@ -16,7 +16,8 @@ The app is ad-hoc signed and not notarized, so macOS blocks the first launch:
 ## Features
 
 ### Browsing
-- Tabs with keyboard shortcuts (⌘T, ⌘W, ⇧⌘T, ⌘1–9, ⌃⇥), session restore, and back/forward.
+- **Sidebar and page card:** tabs in a colored sidebar with **Favorites** (icon tiles), **Pinned**, and **Today** sections, real favicons, and the page in a rounded card. Drag tabs between sections, right-click for tab actions, hide the sidebar with ⌘S (it slides in when the pointer rests on the left edge), and resize it by dragging its edge. Closing a pinned or favorite tab unloads it and keeps it in the sidebar (see [`docs/sidebar.md`](docs/sidebar.md)).
+- Tabs with keyboard shortcuts (⌘T, ⌘W, ⇧⌘T, ⌘D, ⌘S, ⌘1–9, ⌃⇥), session restore, and back/forward.
 - **Tab sleep:** background tabs release their WebKit process after 30 minutes unseen, or when more than 5 tabs are awake. When macOS reports memory pressure, all eligible background tabs sleep immediately. Tabs playing media and tabs with unsent typed text (comments, forms, messages) are kept awake. Scroll position and YouTube playback position are restored on wake.
 - **History** (⌘Y) with per-day grouping, search, and Clear History. URLs are normalized: tracking parameters and fragments are stripped, and reloads, tab wakes, and session restores are not counted as new visits.
 - **Address bar autocomplete:** inline completion and a native suggestion dropdown built from local history and open tabs, including "Switch to tab". Nothing you type is sent to a search engine until you press Enter.
@@ -90,9 +91,9 @@ git config core.hooksPath .githooks   # run the quick check before every commit
 
 | Crate | Purpose |
 |---|---|
-| `crates/core` | Browser logic without macOS dependencies: tabs, tab sleep, history, suggestions, settings, control protocol |
+| `crates/core` | Browser logic without macOS dependencies: tabs and sidebar sections, tab sleep, history, suggestions, themes, favicon cache, `spaces.json`, settings, control protocol |
 | `crates/engine-webkit` | `Engine`/`Page` implementation on `WKWebView` |
-| `crates/app` | AppKit application: window, menus, address bar, panels, dialogs, control socket |
+| `crates/app` | AppKit application: window, sidebar, page card, menus, address bar, favicons, panels, dialogs, control socket |
 | `crates/mcp` | MCP server that relays tools to the browser's control socket |
 | `crates/vault` | Encrypted password vault |
 | `crates/memtool`, `crates/blocklist-gen` | Memory measurement and ad-block rule generator |
@@ -100,6 +101,7 @@ git config core.hooksPath .githooks   # run the quick check before every commit
 Settings live in `~/Library/Application Support/my-browser/settings.json`. Quit the browser before editing that file. See [`docs/development.md`](docs/development.md) for testing conventions and debug-only test hooks.
 
 ### Documentation
+- [`docs/sidebar.md`](docs/sidebar.md): sidebar, sections, favicons, and where tabs are saved
 - [`docs/tab-sleep.md`](docs/tab-sleep.md): tab sleep
 - [`docs/history.md`](docs/history.md): history and address bar suggestions
 - [`docs/password.md`](docs/password.md): password manager
@@ -110,13 +112,18 @@ Settings live in `~/Library/Application Support/my-browser/settings.json`. Quit 
 - [`docs/testing/manual-checklist.md`](docs/testing/manual-checklist.md): manual test checklist
 - [`docs/testing/measurements.md`](docs/testing/measurements.md): memory measurements
 
-[`docs/superpowers/`](docs/superpowers/) holds the original design spec and implementation plan (Indonesian, historical).
+[`docs/superpowers/`](docs/superpowers/) holds design specs and implementation plans: the original ones (Indonesian, historical) and the [sidebar redesign spec](docs/superpowers/specs/2026-11-26-arc-style-redesign-design.md).
 
 ## Roadmap
 
-**Next**
+**Next** (sidebar redesign, see the [spec](docs/superpowers/specs/2026-11-26-arc-style-redesign-design.md))
+- [x] Sidebar, page card, favorites, pinned tabs, favicons
+- [ ] Spaces (Work and Personal) with separate logins
+- [ ] Automatic archiving of Today tabs
+- [ ] Command bar (⌘T)
+
+**Then**
 - [ ] Reload Ignoring Cache (⇧⌘R) and Clear Website Data
-- [ ] Bookmarks
 - [ ] Find in page and zoom
 - [ ] Autofill and unsent-text protection inside iframes
 - [ ] Private window (no history, non-persistent storage)

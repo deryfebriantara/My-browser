@@ -377,7 +377,16 @@ mod tests {
     }
 
     fn tab(id: u64, active: bool, loading: bool, loads: u64) -> TabInfo {
-        TabInfo { id, title: format!("tab {id}"), url: None, active, asleep: false, loading, loads }
+        TabInfo {
+            id,
+            title: format!("tab {id}"),
+            url: None,
+            active,
+            asleep: false,
+            loading,
+            loads,
+            kind: browser_core::tabs::TabKind::Today,
+        }
     }
 
     fn tabs(list: Vec<TabInfo>) -> Result<ControlResponse, String> {

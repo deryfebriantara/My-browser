@@ -17,6 +17,8 @@ use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 
 const ROW_HEIGHT: f64 = 36.0;
 const PADDING: f64 = 4.0;
+/// Lebar paling kecil: address field di sidebar lebih sempit dari isi saran.
+const MIN_WIDTH: f64 = 480.0;
 
 define_class!(
     /// Tombol transparan di atas satu baris. Menerima klik pertama walaupun
@@ -116,7 +118,7 @@ impl SuggestPopup {
     ) {
         let field = anchor.convertRect_toView(anchor.bounds(), None);
         let field = parent.convertRectToScreen(field);
-        let width = field.size.width + 8.0;
+        let width = (field.size.width + 8.0).max(MIN_WIDTH);
         let height = rows.len() as f64 * ROW_HEIGHT + 2.0 * PADDING;
         let frame =
             NSRect::new(NSPoint::new(field.origin.x - 4.0, field.origin.y - 3.0 - height), NSSize::new(width, height));

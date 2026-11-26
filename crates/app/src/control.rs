@@ -1,6 +1,6 @@
 //! Menjalankan permintaan kontrol dari server MCP di main thread.
 
-use crate::state::{AppState, display_title};
+use crate::state::AppState;
 use browser_core::capture::{self, Plan};
 use browser_core::control::{
     ControlRequest as R, ControlResponse, Device, LogLevel, TabInfo, WaitState, emulation_for,
@@ -36,12 +36,13 @@ pub fn tab_infos(state: &AppState) -> Vec<TabInfo> {
         .iter()
         .map(|t| TabInfo {
             id: t.id.0,
-            title: display_title(t),
+            title: t.display_title(),
             url: t.url.as_ref().map(|u| u.to_string()),
             active: t.id == active,
             asleep: !t.awake && t.url.is_some(),
             loading: t.loading,
             loads: t.loads,
+            kind: t.kind,
         })
         .collect()
 }
@@ -110,7 +111,7 @@ fn run_script_on_page(state: &AppState, tab_id: Option<u64>, kind: Script, scrip
 }
 
 fn notice(state: &AppState, message: &str) {
-    state.ui.nav.show_notice(message);
+    state.ui.show_notice(message);
 }
 
 const PANEL_READ_ONLY: &str = "Panel Tanya Claude hanya boleh membaca halaman.";
@@ -572,7 +573,7 @@ fn memory_usage(state: &AppState) -> Value {
         .zip(&tab_pids)
         .map(|(t, (_, pid))| {
             let memory = pid.and_then(|pid| procs.iter().find(|p| p.pid == pid)).map(|p| megabytes(p.footprint));
-            json!({"id": t.id.0, "title": display_title(t), "asleep": !t.awake, "pid": pid, "memory_mb": memory})
+            json!({"id": t.id.0, "title": t.display_title(), "asleep": !t.awake, "pid": pid, "memory_mb": memory})
         })
         .collect();
     let processes: Vec<Value> =

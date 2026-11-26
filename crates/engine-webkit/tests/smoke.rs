@@ -719,6 +719,24 @@ fn panel_bridge(mtm: MainThreadMarker) {
     println!("ok: panel: webview dibebaskan setelah ditutup");
 }
 
+fn favicon_candidates(engine: &WebKitEngine) {
+    use browser_core::favicon::ICON_CANDIDATES_JS;
+    let events: Rc<RefCell<Vec<PageEvent>>> = Rc::default();
+    let sink = events.clone();
+    let page = engine.create_page(Box::new(move |e| sink.borrow_mut().push(e)));
+    let html = r#"<title>ikon</title><link rel="icon" sizes="32x32" href="/a.png">
+        <script>document.querySelectorAll = () => []; Array.from = () => [];</script>"#;
+    load_and_wait(&page, &events, html, "https://example.com/");
+    let slot: Rc<RefCell<Option<Result<String, String>>>> = Rc::default();
+    let reply = slot.clone();
+    page.evaluate_isolated(ICON_CANDIDATES_JS, Box::new(move |r| *reply.borrow_mut() = Some(r)));
+    assert!(slot.borrow().is_none(), "balasan evaluate_isolated tidak boleh sinkron");
+    assert!(spin_until(Duration::from_secs(5), || slot.borrow().is_some()), "evaluate_isolated tidak dibalas");
+    let text = slot.borrow_mut().take().unwrap().expect("script berhasil");
+    assert!(text.contains("https://example.com/a.png"), "kandidat ikon tidak terbaca: {text}");
+    println!("ok: kandidat favicon dibaca di dunia script terpisah");
+}
+
 fn main() {
     let mtm = MainThreadMarker::new().expect("smoke test harus di main thread");
     let _app = NSApplication::sharedApplication(mtm);
@@ -810,6 +828,7 @@ fn main() {
 
     youtube_ad_skip(&engine);
     page_scripts(&engine);
+    favicon_candidates(&engine);
     developer_tools(&engine);
     visual_tools(&engine);
     panel_bridge(mtm);

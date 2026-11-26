@@ -7,24 +7,21 @@
 use crate::actions::ActionTarget;
 use crate::address_bar::AddressBar;
 use crate::chat::Chat;
+use crate::favicons::Favicons;
 use crate::history_window::HistoryWindow;
 use crate::mcp_access::McpAccess;
 use crate::password_manager::PasswordManager;
 use crate::passwords::Passwords;
-use crate::persistence;
-use crate::tab_strip::TabInfo;
+use crate::persistence::{self, Loaded};
 use crate::window::Ui;
 use block2::RcBlock;
 use browser_core::browser::{Browser, SinkFactory, UiChange};
 use browser_core::engine::Engine;
 use browser_core::engine::{Emulation, Page};
-use browser_core::history::History;
 use browser_core::page_scripts::ELEMENT_PICKER;
-use browser_core::session::SessionFile;
-use browser_core::settings::Settings;
 use browser_core::sleep::Pressure;
 use browser_core::suggest::Suggestion;
-use browser_core::tabs::{Tab, TabId};
+use browser_core::tabs::TabId;
 use engine_webkit::WebKitEngine;
 use objc2::MainThreadMarker;
 use objc2_foundation::NSRunLoop;
@@ -63,6 +60,25 @@ pub struct AppState {
     pub history_window: HistoryWindow,
     /// Terakhir kali riwayat disimpan.
     last_history_save: Cell<Instant>,
+    /// Lebar sidebar saat pegangan ubah lebar mulai diseret.
+    resize_from: Cell<Option<f64>>,
+    /// Overlay dibuka untuk mengetik alamat: bertahan sampai pengeditan selesai.
+    overlay_for_address: Cell<bool>,
+    /// `spaces.json` dari versi lebih baru (versi formatnya): status tab
+    /// tidak disimpan supaya berkas itu tidak tertimpa.
+    newer_spaces: Option<u32>,
+    /// Favicon untuk sidebar (cache di `<data>/favicons`).
+    pub favicons: Favicons,
+}
+
+/// Aksi menu konteks tab di sidebar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TabAction {
+    TogglePin,
+    ToggleFavorite,
+    SetPinnedUrl,
+    Sleep,
+    CopyLink,
 }
 
 struct NavInfo {
@@ -72,16 +88,6 @@ struct NavInfo {
     url: String,
     title: String,
     blank: bool,
-}
-
-pub(crate) fn display_title(tab: &Tab) -> String {
-    if !tab.title.is_empty() {
-        return tab.title.clone();
-    }
-    match &tab.url {
-        Some(url) => url.host_str().unwrap_or(url.as_str()).to_string(),
-        None => "New Tab".to_string(),
-    }
 }
 
 /// `Contents/Resources/blocklist` di dalam bundle aplikasi.
@@ -115,15 +121,18 @@ fn sink_factory(weak: Weak<AppState>) -> SinkFactory {
 }
 
 impl AppState {
-    pub fn new(
-        mtm: MainThreadMarker,
-        settings: Settings,
-        session: Option<&SessionFile>,
-        history: History,
-    ) -> Rc<AppState> {
-        Rc::new_cyclic(|weak: &Weak<AppState>| {
+    pub fn new(mtm: MainThreadMarker, loaded: Loaded) -> Rc<AppState> {
+        let Loaded { settings, spaces, newer_spaces, history } = loaded;
+        let state = Rc::new_cyclic(|weak: &Weak<AppState>| {
             let target = ActionTarget::new(mtm, weak.clone());
-            let ui = Ui::build(mtm, target);
+            let theme = browser_core::theme::theme(
+                &spaces
+                    .spaces
+                    .get(spaces.active_space)
+                    .or(spaces.spaces.first())
+                    .map_or("personal".to_string(), |s| s.theme.clone()),
+            );
+            let ui = Ui::build(mtm, target, theme, settings.sidebar_width, settings.sidebar_visible);
             let engine = WebKitEngine::new(mtm);
             engine.load_blocklists(&blocklist_dir());
             let global = weak.clone();
@@ -136,7 +145,7 @@ impl AppState {
                     state.refresh();
                 }
             }));
-            let browser = Browser::new(engine, settings, session, history, sink_factory(weak.clone()), Instant::now());
+            let browser = Browser::new(engine, settings, &spaces, history, sink_factory(weak.clone()), Instant::now());
             AppState {
                 mtm,
                 me: weak.clone(),
@@ -152,22 +161,21 @@ impl AppState {
                 last_history_save: Cell::new(Instant::now()),
                 address: AddressBar::default(),
                 history_window: HistoryWindow::default(),
+                newer_spaces,
+                resize_from: Cell::new(None),
+                overlay_for_address: Cell::new(false),
+                favicons: Favicons::new(persistence::data_dir().join("favicons")),
             }
-        })
-    }
-
-    fn tab_infos(&self) -> Vec<TabInfo> {
-        let b = self.browser.borrow();
-        let active = b.tabs().active();
-        b.tabs()
-            .iter()
-            .map(|t| TabInfo {
-                id: t.id.0,
-                title: display_title(t),
-                active: t.id == active,
-                sleeping: !t.awake && t.url.is_some(),
-            })
-            .collect()
+        });
+        state.ui.sidebar.install_drops(Rc::downgrade(&state));
+        state.install_window_hooks();
+        // Ikon situs yang tidak lagi ada di tab atau riwayat (mis. riwayat
+        // dimatikan, atau sudah kedaluwarsa) tidak disimpan sebagai jejak.
+        state.favicons.forget_unused(&state);
+        if state.newer_spaces.is_some() {
+            state.ui.show_notice("Tabs won't be saved: spaces.json was written by a newer version of my-browser.");
+        }
+        state
     }
 
     fn nav_info(&self) -> NavInfo {
@@ -192,7 +200,7 @@ impl AppState {
         let nav = self.nav_info();
 
         if has(UiChange::Tabs) || has(UiChange::Active) {
-            self.layout_tabs();
+            self.layout_sidebar();
             self.update_window_title(&nav.title);
         }
         if has(UiChange::Active) {
@@ -202,7 +210,16 @@ impl AppState {
                 (b.active_view(), b.active_viewport())
             };
             self.ui.show_content(view, viewport);
+            let space = self.browser.borrow().space().name.clone();
+            self.ui.card.show_empty(nav.blank.then_some(space.as_str()));
+            // Berpindah tab mengakhiri pengeditan address bar (juga fokus
+            // otomatis saat jendela aktif), supaya field menampilkan alamat
+            // tab yang baru.
+            if !nav.blank && self.ui.sidebar.is_editing() {
+                self.end_address_editing();
+            }
             if nav.blank {
+                self.ui.sidebar.address.setStringValue(&NSString::new());
                 self.focus_address();
             }
         } else if has(UiChange::Layout) {
@@ -210,7 +227,7 @@ impl AppState {
             self.ui.layout_content(viewport);
         }
         if has(UiChange::Nav) || has(UiChange::Active) {
-            self.ui.nav.update(nav.can_back, nav.can_forward, nav.loading, &nav.url);
+            self.ui.sidebar.update_nav(nav.can_back, nav.can_forward, nav.loading, &nav.url);
         }
         if has(UiChange::Settings) {
             let settings = self.browser.borrow().settings().clone();
@@ -220,8 +237,14 @@ impl AppState {
             self.history_window.changed(self);
         }
         for change in changes {
-            if let UiChange::Notice(message) = change {
-                self.ui.nav.show_notice(&message);
+            match change {
+                UiChange::Notice(message) => self.ui.show_notice(&message),
+                UiChange::Loaded(id) => {
+                    if let Some(me) = self.me.upgrade() {
+                        self.favicons.page_loaded(&me, id);
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -241,7 +264,9 @@ impl AppState {
         self.claude_interact.set(on);
         let title = self.nav_info().title;
         self.update_window_title(&title);
-        self.ui.nav.show_notice(if on {
+        self.ui.card.set_outline(on);
+        self.ui.sidebar.set_interact(on);
+        self.ui.show_notice(if on {
             "Claude can now click, type, and run JavaScript"
         } else {
             "Claude interaction turned off"
@@ -254,7 +279,7 @@ impl AppState {
         let id = self.browser.borrow().tabs().active();
         let started = self.browser.borrow().page(id).map(|page| page.run_script(ELEMENT_PICKER)).is_some();
         if !started {
-            self.ui.nav.show_notice("Open a page first to pick an element");
+            self.ui.show_notice("Open a page first to pick an element");
             return;
         }
         self.picked_tab.set(Some(id));
@@ -262,7 +287,13 @@ impl AppState {
         if let Some(view) = self.ui.shown_view() {
             self.ui.window.makeFirstResponder(Some(&view));
         }
-        self.ui.nav.show_notice("Click the element to show Claude (Esc to cancel)");
+        self.ui.show_notice("Click the element to show Claude (Esc to cancel)");
+    }
+
+    /// Rc dari state ini (untuk pengait uji yang butuh `&Rc<AppState>`).
+    #[cfg(debug_assertions)]
+    pub fn me(&self) -> Option<Rc<AppState>> {
+        self.me.upgrade()
     }
 
     pub fn mtm(&self) -> MainThreadMarker {
@@ -285,13 +316,13 @@ impl AppState {
         let id = self.browser.borrow().tabs().active();
         self.browser.borrow_mut().set_emulation(id, Emulation::default());
         self.refresh();
-        self.ui.nav.show_notice("Back to normal view");
+        self.ui.show_notice("Back to normal view");
     }
 
-    /// Menjadwalkan penggambaran ulang tab strip di putaran run loop berikutnya.
-    /// Tidak langsung, karena aksi tombol tab sendiri yang sering memicunya, dan
-    /// membuang tombol itu di tengah aksinya berisiko crash.
-    pub fn layout_tabs(&self) {
+    /// Menjadwalkan penggambaran ulang sidebar di putaran run loop berikutnya.
+    /// Tidak langsung, karena aksi baris tab sendiri yang sering memicunya, dan
+    /// membuang baris itu di tengah aksinya berisiko crash.
+    pub fn layout_sidebar(&self) {
         if self.tabs_layout_pending.replace(true) {
             return;
         }
@@ -299,8 +330,9 @@ impl AppState {
         let block = RcBlock::new(move || {
             if let Some(state) = me.upgrade() {
                 state.tabs_layout_pending.set(false);
-                let infos = state.tab_infos();
-                state.ui.tabs.render(state.mtm, &infos, &state.ui.target);
+                let model = browser_core::sidebar::sidebar_model(state.browser.borrow().tabs());
+                let pointer = state.ui.window.mouseLocationOutsideOfEventStream();
+                state.ui.sidebar.render(&model, &state.favicons, &state.ui.target, Some(pointer));
             }
         });
         // SAFETY: dijadwalkan dari main thread ke run loop main thread.
@@ -327,9 +359,11 @@ impl AppState {
             }
         }
         self.refresh();
-        let session = self.browser.borrow_mut().session_if_dirty();
-        if let Some(session) = session {
-            persistence::save_session(&session);
+        let spaces = self.browser.borrow_mut().session_if_dirty();
+        if let Some(spaces) = spaces
+            && self.newer_spaces.is_none()
+        {
+            persistence::save_spaces(&spaces);
         }
         // Riwayat bisa sekitar 1,5 MB: disimpan paling sering sekali per 2 menit.
         if self.last_history_save.get().elapsed() >= HISTORY_SAVE_INTERVAL {
@@ -352,8 +386,11 @@ impl AppState {
     /// hanya disimpan saat berubah (UiChange::Settings), supaya editan tangan
     /// di settings.json tidak ditimpa nilai lama di memory.
     pub fn save_all(&self) {
-        let session = self.browser.borrow().tabs().to_session();
-        persistence::save_session(&session);
+        self.favicons.forget_unused(self);
+        if self.newer_spaces.is_none() {
+            let spaces = self.browser.borrow().spaces_file();
+            persistence::save_spaces(&spaces);
+        }
         let bytes = self.browser.borrow_mut().history_bytes_if_dirty();
         if let Some(bytes) = bytes {
             persistence::save_history(&bytes);
@@ -363,12 +400,19 @@ impl AppState {
     /// URL dari argumen baris perintah. URL pertama memakai tab aktif kalau
     /// tab itu masih kosong.
     pub fn open_urls(&self, urls: &[String]) {
-        for (i, url) in urls.iter().enumerate() {
+        // Tab baru masuk di paling atas Today, jadi URL dibuka dari belakang
+        // supaya urutan di sidebar sama dengan urutan argumen (yang pertama aktif).
+        for (i, url) in urls.iter().rev().enumerate() {
             let blank = self.nav_info().blank;
             if !(i == 0 && blank) {
                 self.browser.borrow_mut().new_tab(Instant::now());
             }
             self.browser.borrow_mut().navigate(url, Instant::now());
+        }
+        // Tab kosong saat aplikasi dibuka memfokuskan address bar; setelah
+        // URL dibuka, field itu harus menampilkan alamat halaman lagi.
+        if !urls.is_empty() && !self.nav_info().blank {
+            self.end_address_editing();
         }
         self.refresh();
     }
@@ -376,6 +420,14 @@ impl AppState {
     pub fn new_tab(&self) {
         self.browser.borrow_mut().new_tab(Instant::now());
         self.refresh();
+        // ⌘T di tab yang masih kosong memakai tab itu lagi: cukup fokus ke address bar.
+        let blank = {
+            let b = self.browser.borrow();
+            b.tabs().get(b.tabs().active()).is_some_and(|t| t.is_blank())
+        };
+        if blank {
+            self.focus_address();
+        }
     }
 
     pub fn close_active_tab(&self) {
@@ -389,12 +441,167 @@ impl AppState {
         self.refresh();
     }
 
+    /// Aksi pada satu tab dari menu konteks sidebar atau menu File (`None`: tab aktif).
+    pub fn tab_action(&self, id: Option<u64>, action: TabAction) {
+        let id = id.map_or_else(|| self.browser.borrow().tabs().active(), TabId);
+        match action {
+            TabAction::TogglePin => {
+                self.browser.borrow_mut().toggle_pin(id);
+            }
+            TabAction::ToggleFavorite => {
+                self.browser.borrow_mut().toggle_favorite(id);
+            }
+            TabAction::SetPinnedUrl => {
+                self.browser.borrow_mut().set_pinned_url(id);
+            }
+            TabAction::Sleep => {
+                self.browser.borrow_mut().request_sleep(id);
+            }
+            TabAction::CopyLink => {
+                let url = self.browser.borrow().tabs().get(id).and_then(|t| t.url.as_ref().map(|u| u.to_string()));
+                if let Some(url) = url {
+                    let board = objc2_app_kit::NSPasteboard::generalPasteboard();
+                    board.clearContents();
+                    // SAFETY: tipe string standar pasteboard.
+                    board
+                        .setString_forType(&NSString::from_str(&url), unsafe { objc2_app_kit::NSPasteboardTypeString });
+                }
+            }
+        }
+        self.refresh();
+    }
+
+    fn install_window_hooks(&self) {
+        let (edge, sidebar, resize) = (self.me.clone(), self.me.clone(), self.me.clone());
+        self.ui.install_hooks(
+            Rc::new(move |inside| {
+                if let Some(s) = edge.upgrade() {
+                    s.edge_hover(inside);
+                }
+            }),
+            Rc::new(move |inside| {
+                if let Some(s) = sidebar.upgrade() {
+                    s.sidebar_hover(inside);
+                }
+            }),
+            Rc::new(move |dx, done| {
+                if let Some(s) = resize.upgrade() {
+                    s.resize_sidebar(dx, done);
+                }
+            }),
+        );
+    }
+
+    /// ⌘S: sembunyikan atau tampilkan sidebar (disimpan di pengaturan).
+    pub fn toggle_sidebar(&self) {
+        let visible = self.ui.sidebar_mode() != crate::layout::SidebarMode::Docked;
+        self.ui.set_sidebar_visible(visible);
+        self.browser.borrow_mut().update_settings(|s| s.sidebar_visible = visible);
+        self.layout_sidebar();
+        self.refresh();
+    }
+
+    /// Kursor masuk/keluar pita tepi kiri saat sidebar tersembunyi; setelah
+    /// diam 150 ms di sana, sidebar muncul melayang.
+    pub fn edge_hover(&self, inside: bool) {
+        self.ui.set_edge_hovered(inside);
+        if !inside || self.ui.sidebar_mode() != crate::layout::SidebarMode::Hidden {
+            return;
+        }
+        let me = self.me.clone();
+        let show = RcBlock::new(move |_timer: std::ptr::NonNull<objc2_foundation::NSTimer>| {
+            if let Some(s) = me.upgrade()
+                && s.ui.edge_hovered()
+            {
+                s.ui.show_overlay();
+                s.layout_sidebar();
+            }
+        });
+        let _ = unsafe { objc2_foundation::NSTimer::scheduledTimerWithTimeInterval_repeats_block(0.15, false, &show) };
+    }
+
+    /// Kursor keluar dari sidebar yang melayang: sidebar kembali tersembunyi.
+    pub fn sidebar_hover(&self, inside: bool) {
+        // Selama mengetik alamat (atau dropdown saran terbuka, yang menjorok
+        // keluar dari overlay) overlay tetap terbuka.
+        if inside || self.overlay_for_address.get() || self.ui.sidebar.is_editing() || self.address.popup_visible() {
+            return;
+        }
+        if self.ui.sidebar_mode() == crate::layout::SidebarMode::Overlay {
+            self.ui.hide_overlay();
+        }
+    }
+
+    /// Mengakhiri pengeditan address bar tanpa menyimpan teksnya. abortEditing
+    /// tidak mengirim controlTextDidEndEditing, jadi penutupan overlay
+    /// diperiksa di sini juga.
+    fn end_address_editing(&self) {
+        self.ui.sidebar.address.abortEditing();
+        self.address_editing_ended();
+    }
+
+    /// Pengeditan address bar selesai: overlay ditutup kalau kursor tidak di
+    /// atasnya. Diperiksa di putaran run loop berikutnya, karena memfokuskan
+    /// field juga mengakhiri sesi edit sebelumnya sesaat sebelum memulai yang baru.
+    pub fn address_editing_ended(&self) {
+        let me = self.me.clone();
+        let check = RcBlock::new(move || {
+            let Some(s) = me.upgrade() else { return };
+            if s.ui.sidebar.is_editing() {
+                return;
+            }
+            s.overlay_for_address.set(false);
+            if s.ui.sidebar_mode() == crate::layout::SidebarMode::Overlay && !s.ui.pointer_in_sidebar() {
+                s.ui.hide_overlay();
+            }
+        });
+        // SAFETY: dijadwalkan dari main thread ke run loop main thread.
+        unsafe { NSRunLoop::mainRunLoop().performBlock(&check) };
+    }
+
+    /// Pegangan ubah lebar diseret sejauh `dx`; saat dilepas, lebarnya disimpan.
+    pub fn resize_sidebar(&self, dx: f64, done: bool) {
+        let from = match self.resize_from.get() {
+            Some(from) => from,
+            None => {
+                let from = self.ui.sidebar_width();
+                self.resize_from.set(Some(from));
+                from
+            }
+        };
+        self.ui.set_sidebar_width(from + dx);
+        if done {
+            self.resize_from.set(None);
+            let width = self.ui.sidebar_width();
+            self.browser.borrow_mut().update_settings(|s| s.sidebar_width = width);
+            self.refresh();
+        }
+        self.layout_sidebar();
+    }
+
+    /// Memindahkan tab ke bagian sidebar `kind` di posisi `at` (seret-lepas).
+    pub fn place_tab(&self, id: u64, kind: browser_core::tabs::TabKind, at: usize) {
+        self.browser.borrow_mut().place_tab(TabId(id), kind, at);
+        self.refresh();
+    }
+
+    /// Bagian tab aktif dan apakah tab itu kosong (untuk judul menu Pin/Favorit).
+    pub fn active_tab_kind(&self) -> Option<(browser_core::tabs::TabKind, bool)> {
+        let b = self.browser.borrow();
+        b.tabs().get(b.tabs().active()).map(|t| (t.kind, t.is_blank()))
+    }
+
+    pub fn active_saved_differs(&self) -> bool {
+        let b = self.browser.borrow();
+        b.tabs().get(b.tabs().active()).is_some_and(|t| {
+            t.kind != browser_core::tabs::TabKind::Today && t.saved_url.is_some() && t.saved_url != t.url
+        })
+    }
+
     pub fn select_tab(&self, id: u64) {
         self.browser.borrow_mut().activate(TabId(id), Instant::now());
         self.refresh();
-        // Tombol on/off berganti status saat diklik; gambar ulang supaya
-        // klik pada tab yang sudah aktif tidak mematikan tandanya.
-        self.layout_tabs();
+        self.layout_sidebar();
     }
 
     pub fn select_tab_index(&self, index: usize) {
@@ -418,16 +625,23 @@ impl AppState {
     }
 
     pub fn focus_address(&self) {
+        // Field di sidebar yang tersembunyi tidak terlihat: munculkan sebagai overlay dulu.
+        if self.ui.sidebar_mode() == crate::layout::SidebarMode::Hidden {
+            self.overlay_for_address.set(true);
+            self.ui.show_overlay();
+            self.layout_sidebar();
+        }
         self.address.begin();
-        self.ui.window.makeFirstResponder(Some(&self.ui.nav.address));
-        unsafe { self.ui.nav.address.selectText(None) };
+        self.ui.window.makeFirstResponder(Some(&self.ui.sidebar.address));
+        unsafe { self.ui.sidebar.address.selectText(None) };
+        self.ui.sidebar.style_editor();
     }
 
     pub fn revert_address(&self) {
         self.address.end();
         let url = self.nav_info().url;
-        self.ui.nav.address.abortEditing();
-        self.ui.nav.address.setStringValue(&NSString::from_str(&url));
+        self.end_address_editing();
+        self.ui.sidebar.address.setStringValue(&NSString::from_str(&url));
         self.focus_address();
     }
 
@@ -435,9 +649,9 @@ impl AppState {
     pub fn navigate_from_address(&self) {
         self.address.end();
         // Selama diedit, teks terbaru ada di field editor.
-        let text = match self.ui.nav.address.currentEditor() {
+        let text = match self.ui.sidebar.address.currentEditor() {
             Some(editor) => editor.string().to_string(),
-            None => self.ui.nav.address.stringValue().to_string(),
+            None => self.ui.sidebar.address.stringValue().to_string(),
         };
         let ok = self.browser.borrow_mut().navigate_from_address(&text, Instant::now());
         self.refresh();
@@ -449,7 +663,7 @@ impl AppState {
     /// Membuka saran dari dropdown address bar.
     pub fn activate_suggestion(&self, suggestion: &Suggestion) {
         self.address.end();
-        self.ui.nav.address.abortEditing();
+        self.end_address_editing();
         self.browser.borrow_mut().open_suggestion(suggestion, Instant::now());
         self.refresh();
         if let Some(view) = self.ui.shown_view() {

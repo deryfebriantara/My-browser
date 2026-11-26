@@ -1,7 +1,8 @@
 //! Target aksi Objective-C untuk tombol, menu, address field, dan window.
 //! Semua handler hanya meneruskan ke `AppState`.
 
-use crate::state::AppState;
+use crate::state::{AppState, TabAction};
+use browser_core::tabs::TabKind;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool, Sel};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
@@ -14,6 +15,12 @@ use std::rc::{Rc, Weak};
 
 pub struct TargetIvars {
     state: Weak<AppState>,
+}
+
+/// Tab dari tag pengirim (menu konteks baris); tag 0 (menu bar) berarti tab aktif.
+fn tab_from(sender: Option<&AnyObject>) -> Option<u64> {
+    let tag = tag_of(sender);
+    (tag > 0).then_some(tag as u64)
 }
 
 fn tag_of(sender: Option<&AnyObject>) -> isize {
@@ -47,6 +54,51 @@ define_class!(
         fn close_tab_button(&self, sender: Option<&AnyObject>) {
             let id = tag_of(sender) as u64;
             self.with(|s| s.close_tab(id));
+        }
+
+        #[unsafe(method(togglePin:))]
+        fn toggle_pin(&self, sender: Option<&AnyObject>) {
+            let id = tab_from(sender);
+            self.with(|s| s.tab_action(id, TabAction::TogglePin));
+        }
+
+        #[unsafe(method(toggleFavorite:))]
+        fn toggle_favorite(&self, sender: Option<&AnyObject>) {
+            let id = tab_from(sender);
+            self.with(|s| s.tab_action(id, TabAction::ToggleFavorite));
+        }
+
+        #[unsafe(method(setPinnedURL:))]
+        fn set_pinned_url(&self, sender: Option<&AnyObject>) {
+            let id = tab_from(sender);
+            self.with(|s| s.tab_action(id, TabAction::SetPinnedUrl));
+        }
+
+        #[unsafe(method(sleepTab:))]
+        fn sleep_tab(&self, sender: Option<&AnyObject>) {
+            let id = tab_from(sender);
+            self.with(|s| s.tab_action(id, TabAction::Sleep));
+        }
+
+        #[unsafe(method(copyTabLink:))]
+        fn copy_tab_link(&self, sender: Option<&AnyObject>) {
+            let id = tab_from(sender);
+            self.with(|s| s.tab_action(id, TabAction::CopyLink));
+        }
+
+        #[unsafe(method(toggleSidebar:))]
+        fn toggle_sidebar(&self, _sender: Option<&AnyObject>) {
+            self.with(|s| s.toggle_sidebar());
+        }
+
+        #[unsafe(method(sidebarDragBegan:))]
+        fn sidebar_drag_began(&self, _sender: Option<&AnyObject>) {
+            self.with(|s| s.ui.sidebar.set_dragging(true));
+        }
+
+        #[unsafe(method(sidebarDragEnded:))]
+        fn sidebar_drag_ended(&self, _sender: Option<&AnyObject>) {
+            self.with(|s| s.ui.sidebar.set_dragging(false));
         }
 
         #[unsafe(method(selectTab:))]
@@ -194,6 +246,31 @@ define_class!(
                 item.setState(if open { NSControlStateValueOn } else { NSControlStateValueOff });
                 return Bool::YES;
             }
+            for (action, on, off) in [
+                (sel!(togglePin:), "Unpin Tab", "Pin Tab"),
+                (sel!(toggleFavorite:), "Remove from Favorites", "Add to Favorites"),
+            ] {
+                if item.action() == Some(action) {
+                    let Some(state) = self.ivars().state.upgrade() else { return Bool::NO };
+                    let Some((kind, blank)) = state.active_tab_kind() else { return Bool::NO };
+                    let current = if action == sel!(togglePin:) { TabKind::Pinned } else { TabKind::Favorite };
+                    item.setTitle(&objc2_foundation::NSString::from_str(if kind == current { on } else { off }));
+                    return Bool::new(!blank);
+                }
+            }
+            if item.action() == Some(sel!(toggleSidebar:)) {
+                let docked = self
+                    .ivars()
+                    .state
+                    .upgrade()
+                    .is_some_and(|s| s.ui.sidebar_mode() == crate::layout::SidebarMode::Docked);
+                item.setTitle(&objc2_foundation::NSString::from_str(if docked { "Hide Sidebar" } else { "Show Sidebar" }));
+                return Bool::YES;
+            }
+            if item.action() == Some(sel!(setPinnedURL:)) {
+                let differs = self.ivars().state.upgrade().is_some_and(|s| s.active_saved_differs());
+                return Bool::new(differs);
+            }
             if item.action() == Some(sel!(resetEmulation:)) {
                 let emulated = self.ivars().state.upgrade().is_some_and(|s| s.active_emulated());
                 return Bool::new(emulated);
@@ -218,7 +295,10 @@ define_class!(
 
         #[unsafe(method(controlTextDidBeginEditing:))]
         fn text_did_begin(&self, notification: &NSNotification) {
-            self.with_address(notification, |s| s.address.begin());
+            self.with_address(notification, |s| {
+                s.ui.sidebar.style_editor();
+                s.address.begin();
+            });
         }
 
         #[unsafe(method(controlTextDidChange:))]
@@ -228,7 +308,10 @@ define_class!(
 
         #[unsafe(method(controlTextDidEndEditing:))]
         fn text_did_end(&self, notification: &NSNotification) {
-            self.with_address(notification, |s| s.address.end());
+            self.with_address(notification, |s| {
+                s.address.end();
+                s.address_editing_ended();
+            });
         }
     }
 
@@ -237,7 +320,10 @@ define_class!(
     unsafe impl NSWindowDelegate for ActionTarget {
         #[unsafe(method(windowDidResize:))]
         fn window_did_resize(&self, notification: &NSNotification) {
-            self.with(|s| s.layout_tabs());
+            self.with_main_window(notification, |s| {
+                s.ui.relayout();
+                s.layout_sidebar();
+            });
             self.with_main_window(notification, |s| s.address.hide_popup());
         }
 
@@ -278,7 +364,7 @@ impl ActionTarget {
     fn with_address(&self, notification: &NSNotification, f: impl FnOnce(&Rc<AppState>)) {
         self.with(|s| {
             if notification.object().is_some_and(|o| {
-                std::ptr::eq(Retained::as_ptr(&o).cast::<u8>(), Retained::as_ptr(&s.ui.nav.address).cast())
+                std::ptr::eq(Retained::as_ptr(&o).cast::<u8>(), Retained::as_ptr(&s.ui.sidebar.address).cast())
             }) {
                 f(s);
             }

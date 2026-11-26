@@ -7,7 +7,7 @@ use std::io;
 use std::path::Path;
 use std::time::Duration;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     /// Template mesin pencari; `{}` diganti kata kunci.
@@ -37,6 +37,10 @@ pub struct Settings {
     /// HTTP/3 bisa runtuh saat situs memuat banyak file sekaligus (mis. Hostinger
     /// Mail jadi putih); HTTP/2 lewat TCP tidak terpengaruh.
     pub http3_enabled: bool,
+    /// Lebar sidebar (poin), dibatasi 200 sampai 360 saat dipakai.
+    pub sidebar_width: f64,
+    /// Sidebar tampil (⌘S menyembunyikannya).
+    pub sidebar_visible: bool,
 }
 
 impl Default for Settings {
@@ -56,6 +60,8 @@ impl Default for Settings {
             mcp_allowed_clients: Vec::new(),
             history_enabled: true,
             http3_enabled: false,
+            sidebar_width: 240.0,
+            sidebar_visible: true,
         }
     }
 }
@@ -90,6 +96,28 @@ mod tests {
         assert_eq!(s.password_lock_minutes, 10);
         assert!(s.history_enabled);
         assert!(!s.http3_enabled);
+    }
+
+    #[test]
+    fn old_settings_without_sidebar_fields_get_defaults() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("settings.json");
+        std::fs::write(&p, r#"{"max_awake": 4}"#).unwrap();
+        let s = Settings::load(&p);
+        assert_eq!(s.max_awake, 4);
+        assert_eq!(s.sidebar_width, 240.0);
+        assert!(s.sidebar_visible);
+    }
+
+    #[test]
+    fn sidebar_settings_round_trip() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("settings.json");
+        let s = Settings { sidebar_width: 300.0, sidebar_visible: false, ..Settings::default() };
+        s.save(&p).unwrap();
+        let back = Settings::load(&p);
+        assert_eq!(back.sidebar_width, 300.0);
+        assert!(!back.sidebar_visible);
     }
 
     #[test]
