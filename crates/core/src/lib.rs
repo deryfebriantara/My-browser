@@ -9,6 +9,7 @@ pub mod control;
 pub mod downloads;
 pub mod drafts;
 pub mod engine;
+pub mod favicon;
 pub mod history;
 pub mod mcp_access;
 pub mod omnibox;

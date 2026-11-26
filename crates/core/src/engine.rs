@@ -128,6 +128,10 @@ pub trait Page {
     /// Seperti `evaluate`, tetapi `function_body` adalah badan fungsi async
     /// (boleh `await`); nilai yang di-`return` (string) menjadi balasan.
     fn evaluate_async(&self, function_body: &str, reply: Box<dyn FnOnce(Result<String, String>)>);
+    /// Seperti `evaluate`, tetapi di dunia script terpisah (yang sama dengan
+    /// script password), jadi script halaman tidak bisa mengganti fungsi DOM
+    /// yang dipakainya. Balasan tidak pernah sinkron.
+    fn evaluate_isolated(&self, script: &str, reply: Box<dyn FnOnce(Result<String, String>)>);
     /// Gambar halaman yang sedang tampil sebagai JPEG, lebar paling besar
     /// `max_width` piksel. Balasan lewat `reply`, tidak pernah sinkron.
     fn snapshot(&self, max_width: f64, reply: Box<dyn FnOnce(Result<Vec<u8>, String>)>);

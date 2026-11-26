@@ -77,6 +77,9 @@ impl Page for FakePage {
     fn evaluate_async(&self, body: &str, _reply: Box<dyn FnOnce(Result<String, String>)>) {
         self.0.borrow_mut().calls.push(Call::Script(body.into()));
     }
+    fn evaluate_isolated(&self, script: &str, _reply: Box<dyn FnOnce(Result<String, String>)>) {
+        self.0.borrow_mut().calls.push(Call::Script(script.into()));
+    }
     fn snapshot(&self, _max_width: f64, _reply: Box<dyn FnOnce(Result<Vec<u8>, String>)>) {}
     fn capture(&self, _area: Rect, _scale: f64, _reply: Box<dyn FnOnce(Result<Vec<u8>, String>)>) {}
     fn set_mobile_user_agent(&self, mobile: bool) {

@@ -242,6 +242,19 @@ impl Page for WebKitPage {
         }
     }
 
+    fn evaluate_isolated(&self, script: &str, reply: Box<dyn FnOnce(Result<String, String>)>) {
+        let block = string_reply(reply);
+        let mtm = MainThreadMarker::from(&*self.webview);
+        unsafe {
+            self.webview.evaluateJavaScript_inFrame_inContentWorld_completionHandler(
+                &NSString::from_str(script),
+                None,
+                &WKContentWorld::worldWithName(&NSString::from_str(PASSWORD_WORLD), mtm),
+                Some(&block),
+            );
+        }
+    }
+
     fn evaluate_async(&self, function_body: &str, reply: Box<dyn FnOnce(Result<String, String>)>) {
         let mtm = MainThreadMarker::from(&*self.webview);
         let world = unsafe { WKContentWorld::pageWorld(mtm) };
