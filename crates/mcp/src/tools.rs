@@ -19,7 +19,12 @@ const INTERACTION: &str = " Butuh izin: pengguna harus menyalakan menu Claude > 
 
 pub fn list() -> Vec<Value> {
     vec![
-        tool("list_tabs", "Daftar tab: id, judul, URL, aktif, tidur (asleep), dan sedang memuat.", json!({}), &[]),
+        tool(
+            "list_tabs",
+            "Daftar tab: id, judul, URL, aktif, tidur (asleep), sedang memuat, dan bagian sidebar (kind: favorite, pinned, today).",
+            json!({}),
+            &[],
+        ),
         tool(
             "open_tab",
             "Membuka tab baru berisi URL atau kata pencarian, lalu menunggu halaman selesai dimuat.",
@@ -29,7 +34,12 @@ pub fn list() -> Vec<Value> {
             }),
             &["url"],
         ),
-        tool("close_tab", "Menutup tab.", json!({"tab_id": tab_id()}), &["tab_id"]),
+        tool(
+            "close_tab",
+            "Menutup tab. Tab favorite atau pinned tidak dihapus: ia dilepas dari memory dan kembali ke alamat simpanannya.",
+            json!({"tab_id": tab_id()}),
+            &["tab_id"],
+        ),
         tool("activate_tab", "Menampilkan tab. Tab yang tidur dimuat ulang.", json!({"tab_id": tab_id()}), &["tab_id"]),
         tool(
             "navigate",

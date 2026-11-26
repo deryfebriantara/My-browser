@@ -33,7 +33,7 @@ One entry per page, holding the URL, title, visit count, the number of times the
 - The limits are 10,000 pages and 90 days. The pages last opened longest ago are dropped first (`crates/core/src/history.rs:16`, `:18`). Titles are truncated at 300 characters.
 - Saved at most once every 2 minutes while browsing (`crates/app/src/state.rs:38`), always on quit, and right after anything is deleted.
 - **Clear History deletes whole entries** last opened within the selected range (`crates/core/src/history.rs:186`). Visits are not stored one by one, so a page that was also opened before that range is deleted too. This is intentional: deleting too much is safer than deleting too little.
-- **What is not cleared:** open tabs, the back/forward list in each tab, `session.json`, the recently closed tabs list, cookies, logins, and cache.
+- **What is not cleared:** open tabs, the back/forward list in each tab, `spaces.json` (open tabs and their sections), the recently closed tabs list, cookies, logins, and cache.
 
 ## How suggestions are chosen
 

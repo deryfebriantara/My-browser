@@ -42,6 +42,7 @@ pub fn tab_infos(state: &AppState) -> Vec<TabInfo> {
             asleep: !t.awake && t.url.is_some(),
             loading: t.loading,
             loads: t.loads,
+            kind: t.kind,
         })
         .collect()
 }

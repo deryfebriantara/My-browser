@@ -17,7 +17,7 @@ Note: checked by the user on 2026-11-15, everything worked. GATE passed.
 ## Task 8: App UI
 
 - [ ] The window opens at 1280x800; it cannot be resized below 800x500
-- [ ] From top to bottom: nav bar, tab strip, content area
+- [ ] Sidebar on the left (window buttons, back/forward/reload, ✦, address, tabs), page card on the right (see "Sidebar and page card" below)
 - [ ] Closing the window quits the app
 - [ ] The back/forward buttons are enabled only when there is history
 - [ ] The reload icon changes to a cross while the page is loading
@@ -70,7 +70,7 @@ For manual testing, quit the browser first (⌘Q), set `"sleep_idle_secs": 20` i
 Already verified automatically (temporary Downloads folder): two simultaneous downloads with the same name become `gitignore-main.zip` and `gitignore-main (1).zip`; a tab whose navigation turns into a download is not saved in the session and does not download again when the app reopens.
 
 - [ ] Downloading a PDF through a `download` link twice produces `nama.pdf` and `nama (1).pdf` in `~/Downloads`
-- [ ] The "Downloaded: ..." label appears on the right of the nav bar and disappears after about 6 seconds
+- [ ] The "Downloaded: ..." notice appears at the top of the page card and disappears after about 6 seconds
 
 ## Fixes after the final review
 
@@ -78,7 +78,7 @@ Already verified automatically (temporary Downloads folder): two simultaneous do
 - [ ] Click tabs repeatedly (including the already active tab) and close tabs with the cross button: no crash, and the active tab marker stays correct
 - [ ] File upload (e.g. an image upload form on any site): the file picker appears
 - [ ] `alert`, `confirm`, and `prompt` dialogs appear (e.g. typing `javascript` does not work in the address bar; use a test site such as https://www.w3schools.com/js/tryit.asp?filename=tryjs_alert)
-- [ ] Opening `localhost:59999` (server down): "Couldn't load page: ..." appears on the right of the nav bar
+- [ ] Opening `localhost:59999` (server down): "Couldn't load page: ..." appears at the top of the page card
 - [ ] Start a download and close its tab immediately: the "Downloaded" notice still appears
 - [ ] Blocker exception from a subdomain (e.g. enable it on www.detik.com, open news.detik.com, disable it again): the blocker is really active again
 
@@ -105,7 +105,7 @@ Reopen the browser with the new build (⌘Q, then `open dist/my-browser.app`), t
 
 Reopen the browser with the new build (⌘Q, then `open dist/my-browser.app`).
 
-- [ ] The ✦ button on the right of the nav bar and ⌘J open the panel on the right; the page narrows (it is not covered by the panel); ⌘J again closes it
+- [ ] The ✦ button at the top right of the sidebar and ⌘J open the panel as a second card on the right; the page narrows (it is not covered by the panel); ⌘J again closes it
 - [ ] On YouTube or an article, ask "summarize this page": the answer streams in, and the label "Reading page" appears above the answer
 - [ ] Point at an element (⌘⇧E), then ask "explain the element I pointed at": Claude discusses the correct element
 - [ ] Ask "open youtube.com": Claude refuses, and no new tab opens
@@ -162,3 +162,22 @@ Reopen the browser with the new build (⌘Q, then `open dist/my-browser.app`). H
 - [ ] A Japanese IME (or another input method that composes characters) in the address bar is not autocompleted while composing
 - [ ] VoiceOver reads the suggestion rows aloud
 - [ ] Ask Claude "what YouTube videos did I watch today?": Claude uses search_history
+
+## Sidebar and page card
+
+- [ ] The window has no title bar; the window buttons sit at the top of the sidebar, level with back/forward/reload and ✦
+- [ ] The empty areas of the sidebar and the margins around the card drag the window; double-click zooms
+- [ ] The page card has rounded corners and a soft shadow; video in the card (1080p YouTube) plays smoothly
+- [ ] System appearance light and dark: the card follows the system, the sidebar stays readable on the gradient
+- [ ] Increase Contrast on: the gradient becomes a solid dark color
+- [ ] Tab rows: favicon (or a colored letter), one-line title truncated at the end, the active row highlighted, sleeping rows dimmed with a moon, a speaker icon while audio plays
+- [ ] Hovering a row shows ✕ (Today) or – (Pinned); clicking it closes or unloads the tab
+- [ ] Right-click a row or favorite tile: Pin/Unpin, Add to/Remove from Favorites, Set Current Page as Pinned URL, Copy Link, Sleep Tab, Close/Unload
+- [ ] ⌘D pins and unpins the current tab; the File menu titles change accordingly
+- [ ] Drag a row with the mouse: Today → Pinned → Favorites → Today, and reorder within a section; a white line shows where it lands; with no favorites yet, an empty drop zone appears above the list while dragging
+- [ ] ⌘S hides the sidebar (window buttons hide too); resting the pointer on the left edge slides it in as a floating panel; moving away hides it again; with Reduce Motion on, it appears without sliding
+- [ ] Dragging the sidebar's right edge resizes it (200–360 pt); the width and the hidden state survive a relaunch
+- [ ] Allow Claude to Interact on: orange outline around the card and a "Claude can interact" pill with Turn Off in the sidebar
+- [ ] VoiceOver reads a row as "title, host[, asleep][, playing audio]"
+- [ ] First launch after upgrading: all previous tabs appear under Today; `session.json` is unchanged so an older build still opens it
+

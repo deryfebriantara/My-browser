@@ -1,6 +1,6 @@
 # Tab sleep
 
-Background tabs that have not been viewed for a long time are put to sleep: their WKWebView is released, which also releases the WebContent process and its memory. The tab stays in the tab strip (dimmed, with the tooltip "Sleeping; reloads when opened", `crates/app/src/tab_strip.rs:82`) and reloads when opened.
+Background tabs that have not been viewed for a long time are put to sleep: their WKWebView is released, which also releases the WebContent process and its memory. The tab stays in the sidebar (dimmed, with a moon icon, `crates/app/src/sidebar_row.rs`) and reloads when opened. Sleep is different from unloading a pinned tab: a sleeping tab keeps its current page and scroll position (see [`sidebar.md`](sidebar.md)).
 
 Task 9 measurements (`docs/testing/measurements.md`): four awake tabs used 399.0 MB. After three background tabs were put to sleep, the total dropped to 122.9 MB.
 

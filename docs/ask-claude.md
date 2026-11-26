@@ -4,7 +4,7 @@ A chat panel on the right side of the window for asking about the page you have 
 
 ## How to use
 
-- Open the panel with the ✦ button on the right of the nav bar, the **Claude > Ask Claude** menu, or ⌘J. Close it the same way.
+- Open the panel with the ✦ button at the top right of the sidebar, the **Claude > Ask Claude** menu, or ⌘J. Close it the same way.
 - Type a question and press Enter (Shift+Enter for a new line). The **Stop** button or Esc stops the answer.
 - **New** starts a new conversation.
 - Every question automatically carries the title and URL of the active tab, so "this page" always means the tab you are looking at.

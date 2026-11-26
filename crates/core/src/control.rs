@@ -346,12 +346,29 @@ pub struct TabInfo {
     pub asleep: bool,
     pub loading: bool,
     pub loads: u64,
+    /// Bagian sidebar: favorite, pinned, atau today.
+    pub kind: crate::tabs::TabKind,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn tab_info_includes_kind() {
+        let info = TabInfo {
+            id: 3,
+            title: "P".into(),
+            url: Some("https://p.example/".into()),
+            active: false,
+            asleep: true,
+            loading: false,
+            loads: 1,
+            kind: crate::tabs::TabKind::Pinned,
+        };
+        assert!(serde_json::to_string(&info).unwrap().contains("\"kind\":\"pinned\""));
+    }
 
     fn parse(v: Value) -> ControlRequest {
         serde_json::from_value(v).unwrap()

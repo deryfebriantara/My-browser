@@ -25,7 +25,7 @@ Claude Code ──stdio JSON-RPC──▶ my-browser --mcp ──control.sock─
 
 | Tool | Purpose | Needs interaction permission |
 |---|---|---|
-| `list_tabs`, `open_tab`, `close_tab`, `activate_tab` | Manage tabs | No |
+| `list_tabs`, `open_tab`, `close_tab`, `activate_tab` | Manage tabs. `list_tabs` reports each tab's sidebar section (`kind`: `favorite`, `pinned`, `today`); `close_tab` on a favorite or pinned tab unloads it instead of removing it | No |
 | `navigate`, `go_back`, `go_forward`, `reload` | Navigation, waits for the page to finish loading | No |
 | `sleep_tab`, `memory_usage` | Put a tab to sleep, memory per tab | No |
 | `search_history` | Search the history of visited pages: URL, title, last visit time, visit count (see `docs/history.md`) | No |
@@ -79,6 +79,6 @@ The control socket can only be opened by the same macOS user. That means any pro
 
 ## Interaction permission
 
-`click`, `type`, and `run_js` only run after the **Claude > Allow Claude to Interact** menu is turned on. This permission is always off when the browser opens. While it is on, the window title carries the marker "Claude can interact" and every Claude action appears on the right of the nav bar.
+`click`, `type`, and `run_js` only run after the **Claude > Allow Claude to Interact** menu is turned on. This permission is always off when the browser opens. While it is on, the page card has an orange outline, the sidebar shows a "Claude can interact" pill with a **Turn Off** button, the window title carries the same marker, and every Claude action appears as a short notice at the top of the page card.
 
 The reason: your logins (Google and others) live in this browser, and the page text Claude reads can contain malicious instructions. Password input values are never sent by `list_elements`.
