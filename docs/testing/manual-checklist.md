@@ -168,6 +168,7 @@ Reopen the browser with the new build (⌘Q, then `open dist/my-browser.app`). H
 - [ ] The window has no title bar; the window buttons sit at the top of the sidebar, level with back/forward/reload and ✦
 - [ ] The empty areas of the sidebar and the margins around the card drag the window; double-click zooms
 - [ ] The page card has rounded corners and a soft shadow; video in the card (1080p YouTube) plays smoothly
+- [ ] CPU check: play the same 1080p YouTube video for 2 minutes in 0.1.1 and in this build (window visible, no other load) and compare my-browser + WebContent + WindowServer CPU in Activity Monitor; flag more than +10%
 - [ ] System appearance light and dark: the card follows the system, the sidebar stays readable on the gradient
 - [ ] Increase Contrast on: the gradient becomes a solid dark color
 - [ ] Tab rows: favicon (or a colored letter), one-line title truncated at the end, the active row highlighted, sleeping rows dimmed with a moon, a speaker icon while audio plays

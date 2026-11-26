@@ -82,3 +82,26 @@ Results (1 = hidden, 0 = shown; the last row counts resources loaded from ad net
 Limit: YouTube video ads still play, because they are served from the same servers as the video and the WebKit content blocker cannot tell them apart. This fix only brings back the "Skip" button for ads that can be skipped.
 
 Another bug found during this testing: removing an old rule list from WebKit storage with an empty completion handler crashed the process (SIGSEGV in `removeContentRuleListForIdentifier:completionHandler:`). This happened every time the rule list contents changed, including when these new lists were installed. Fixed, and covered by a smoke test.
+
+## Sidebar redesign, stage 1 (2026-11-26)
+
+Release builds of `main` (0.1.1, the tab strip UI) and of this stage, each in a separate test instance (temporary `HOME` and data folder). Numbers come from the MCP `memory_usage` tool, which attributes processes to one instance by pid. `scripts/ukur-memory.sh` groups by app name, which would also count the owner's own running browser.
+
+**Memory, 20 tabs** (15 `example.com` pages and 5 Wikipedia articles), `sleep_idle_secs` 20, measured after the background tabs slept (median of 3 samples per run):
+
+| Run | App process, `main` | App process, stage 1 | WebContent processes = awake tabs |
+|---|---|---|---|
+| 1 | 36.3 MB | 29.3 MB | yes (1 = 1) in both |
+| 2 | 26.1 MB | 28.6 MB | yes |
+| 3 | 31.1 MB | 32.1 MB | yes |
+
+The gate (stage 1 at most 15 MB above `main`) passes. The new chrome adds no WebContent process.
+
+The first measurement of stage 1 used **89.0 MB**. `footprint` showed 44 MB of IOSurface (0 in `main`). Every view drawn in `drawRect` had its own full-size bitmap: the gradient, the card shadow, the empty state, and the outline. After moving them to Core Animation layer properties (`CAGradientLayer`, layer background and border colors, `shadowPath`), IOSurface went to 0. One tab then measured a total phys_footprint of 24 MB (`main`: 20 MB).
+
+**CPU: not conclusive yet.** Two automated attempts could not produce a fair comparison:
+
+- **YouTube** (same video, 60 s of `top` samples): the results varied too much between runs. In one `main` run the video did not play. In one stage 1 run there were spikes from ad or quality changes. Steady-state app plus WebContent was about 3.2% (`main`) against 3.7% and 8% (stage 1).
+- **Local full-screen canvas animation at 60 fps:** the `main` test window was apparently covered, so WebKit paused the animation (0% WebContent). For stage 1 the app used 1.4–2.8% and WebContent 1.3–2.8%.
+
+A manual comparison with both windows visible is in the manual checklist.
