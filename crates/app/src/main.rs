@@ -10,6 +10,7 @@ mod control_server;
 #[cfg(debug_assertions)]
 mod debug_ui;
 mod dialogs;
+mod favicons;
 mod history_window;
 mod local_time;
 mod mcp_access;

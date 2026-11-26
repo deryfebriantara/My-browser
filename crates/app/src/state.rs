@@ -7,6 +7,7 @@
 use crate::actions::ActionTarget;
 use crate::address_bar::AddressBar;
 use crate::chat::Chat;
+use crate::favicons::Favicons;
 use crate::history_window::HistoryWindow;
 use crate::mcp_access::McpAccess;
 use crate::password_manager::PasswordManager;
@@ -63,6 +64,8 @@ pub struct AppState {
     /// `spaces.json` dari versi lebih baru (versi formatnya): status tab
     /// tidak disimpan supaya berkas itu tidak tertimpa.
     newer_spaces: Option<u32>,
+    /// Favicon untuk sidebar (cache di `<data>/favicons`).
+    pub favicons: Favicons,
 }
 
 struct NavInfo {
@@ -139,6 +142,7 @@ impl AppState {
                 address: AddressBar::default(),
                 history_window: HistoryWindow::default(),
                 newer_spaces,
+                favicons: Favicons::new(persistence::data_dir().join("favicons")),
             }
         });
         if state.newer_spaces.is_some() {
@@ -211,8 +215,14 @@ impl AppState {
             self.history_window.changed(self);
         }
         for change in changes {
-            if let UiChange::Notice(message) = change {
-                self.ui.nav.show_notice(&message);
+            match change {
+                UiChange::Notice(message) => self.ui.nav.show_notice(&message),
+                UiChange::Loaded(id) => {
+                    if let Some(me) = self.me.upgrade() {
+                        self.favicons.page_loaded(&me, id);
+                    }
+                }
+                _ => {}
             }
         }
     }

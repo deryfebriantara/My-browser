@@ -207,6 +207,7 @@ pub fn clear_dialog(state: &Rc<AppState>) {
                 persistence::remove_history_leftovers();
             }
             state.save_history_now();
+            state.favicons.forget_unused(&state);
             state.refresh();
             let pages = if removed == 1 { "page" } else { "pages" };
             state.ui.nav.show_notice(&format!("History cleared ({removed} {pages})"));

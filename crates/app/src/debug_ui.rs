@@ -117,6 +117,16 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
             unsafe { objc2_foundation::NSRunLoop::mainRunLoop().performBlock(&block) };
             ok(json!({}))
         }
+        // Host (dari tab dan riwayat) yang favicon-nya sudah ada di cache.
+        "favicons" => {
+            let cached: Vec<Value> = state
+                .favicons
+                .cached(state)
+                .into_iter()
+                .map(|(host, path)| json!({"host": host, "path": path.display().to_string()}))
+                .collect();
+            ok(json!({"cached": cached}))
+        }
         _ => err("aksi debug_ui tidak dikenal"),
     }
 }

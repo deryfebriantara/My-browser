@@ -136,22 +136,23 @@ impl FaviconCache {
         Self { dir }
     }
 
-    fn path(&self, host: &str) -> PathBuf {
+    /// Jalur berkas cache untuk host.
+    pub fn path_for(&self, host: &str) -> PathBuf {
         self.dir.join(format!("{}.png", host_key(host)))
     }
 
     pub fn load(&self, host: &str) -> Option<Vec<u8>> {
-        std::fs::read(self.path(host)).ok()
+        std::fs::read(self.path_for(host)).ok()
     }
 
     /// Belum ada, atau lebih tua dari `REFRESH_AFTER`.
     pub fn needs_refresh(&self, host: &str, now: SystemTime) -> bool {
-        let Ok(modified) = std::fs::metadata(self.path(host)).and_then(|m| m.modified()) else { return true };
+        let Ok(modified) = std::fs::metadata(self.path_for(host)).and_then(|m| m.modified()) else { return true };
         now.duration_since(modified).is_ok_and(|age| age > REFRESH_AFTER)
     }
 
     pub fn store(&self, host: &str, png: &[u8]) -> io::Result<()> {
-        write_private(&self.path(host), png)?;
+        write_private(&self.path_for(host), png)?;
         self.prune(MAX_FILES, MAX_BYTES)
     }
 
