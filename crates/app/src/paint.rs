@@ -1,6 +1,6 @@
-//! View kecil yang menggambar dirinya sendiri: isi bersudut, garis tepi,
-//! bayangan kartu, dan wadah yang menjungkir koordinat (atas ke bawah).
-//! Digambar sekali ke backing store view, bukan per frame isi halaman.
+//! View kecil berbasis layer: isi bersudut, garis tepi, bayangan kartu, dan
+//! wadah yang menjungkir koordinat (atas ke bawah). Semua tampilan disetel
+//! sebagai properti Core Animation, jadi tidak ada bitmap per view.
 
 use objc2::AllocAnyThread;
 use objc2::rc::Retained;
@@ -8,9 +8,10 @@ use objc2::runtime::AnyObject;
 use objc2::runtime::{Bool, ProtocolObject};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send};
 use objc2_app_kit::{
-    NSBezierPath, NSColor, NSCursor, NSDragOperation, NSDraggingDestination, NSDraggingInfo, NSEvent, NSEventMask,
-    NSEventType, NSGraphicsContext, NSShadow, NSTrackingArea, NSTrackingAreaOptions, NSView,
+    NSColor, NSCursor, NSDragOperation, NSDraggingDestination, NSDraggingInfo, NSEvent, NSEventMask, NSEventType,
+    NSTrackingArea, NSTrackingAreaOptions, NSView, NSViewLayerContentsRedrawPolicy,
 };
+use objc2_core_graphics::CGPath;
 use objc2_foundation::{NSArray, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -32,7 +33,7 @@ pub type DropHandler = Rc<dyn Fn(DropPhase, NSPoint) -> bool>;
 /// Penangan kursor masuk (`true`) atau keluar (`false`) dari view.
 pub type HoverHandler = Rc<dyn Fn(bool)>;
 
-/// Jarak bayangan kartu dari tepi kartu (ruang untuk blur).
+/// Ruang di sekitar kartu untuk bayangannya (wadah kartu sebesar ini lebih lebar).
 pub const SHADOW_MARGIN: f64 = 20.0;
 
 #[derive(Default)]
@@ -40,7 +41,7 @@ pub struct PaintIvars {
     fill: RefCell<Option<Retained<NSColor>>>,
     stroke: RefCell<Option<(Retained<NSColor>, f64)>>,
     radius: Cell<f64>,
-    /// Bayangan kartu: persegi bersudut seukuran view dikurangi `SHADOW_MARGIN`.
+    /// Bayangan kartu: persegi bersudut seukuran view, berisi warna latar jendela.
     shadow: Cell<bool>,
     /// Klik di area kosong view ini diteruskan ke view di bawahnya.
     passthrough: Cell<bool>,
@@ -57,41 +58,37 @@ define_class!(
     pub struct PaintView;
 
     impl PaintView {
-        #[unsafe(method(drawRect:))]
-        fn draw_rect(&self, _dirty: NSRect) {
+        /// Isi, garis tepi, dan bayangan disetel sebagai properti layer, bukan
+        /// digambar: tidak ada bitmap seukuran view (IOSurface) per view.
+        #[unsafe(method(wantsUpdateLayer))]
+        fn wants_update_layer(&self) -> Bool {
+            Bool::YES
+        }
+
+        #[unsafe(method(updateLayer))]
+        fn update_layer(&self) {
+            let Some(layer) = self.layer() else { return };
             let ivars = self.ivars();
-            let bounds = self.bounds();
             let radius = ivars.radius.get();
+            layer.setCornerRadius(radius);
+            let fill = ivars.fill.borrow().clone().or_else(|| ivars.shadow.get().then(NSColor::windowBackgroundColor));
+            layer.setBackgroundColor(fill.map(|c| c.CGColor()).as_deref());
+            match ivars.stroke.borrow().as_ref() {
+                Some((color, width)) => {
+                    layer.setBorderColor(Some(&color.CGColor()));
+                    layer.setBorderWidth(*width);
+                }
+                None => layer.setBorderWidth(0.0),
+            }
             if ivars.shadow.get() {
-                let m = SHADOW_MARGIN;
-                let rect = NSRect::new(
-                    NSPoint::new(m, m),
-                    NSSize::new((bounds.size.width - 2.0 * m).max(0.0), (bounds.size.height - 2.0 * m).max(0.0)),
-                );
-                let shadow = NSShadow::new();
-                shadow.setShadowColor(Some(&NSColor::colorWithWhite_alpha(0.0, 0.35)));
-                shadow.setShadowBlurRadius(12.0);
-                shadow.setShadowOffset(NSSize::new(0.0, -4.0));
-                NSGraphicsContext::saveGraphicsState_class();
-                shadow.set();
-                NSColor::windowBackgroundColor().setFill();
-                NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(rect, radius, radius).fill();
-                NSGraphicsContext::restoreGraphicsState_class();
-            }
-            if let Some(fill) = ivars.fill.borrow().as_ref() {
-                fill.setFill();
-                NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(bounds, radius, radius).fill();
-            }
-            if let Some((color, width)) = ivars.stroke.borrow().as_ref() {
-                let inset = width / 2.0;
-                let rect = NSRect::new(
-                    NSPoint::new(inset, inset),
-                    NSSize::new(bounds.size.width - *width, bounds.size.height - *width),
-                );
-                color.setStroke();
-                let path = NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(rect, radius, radius);
-                path.setLineWidth(*width);
-                path.stroke();
+                layer.setShadowColor(Some(&NSColor::blackColor().CGColor()));
+                layer.setShadowOpacity(0.35);
+                layer.setShadowRadius(8.0);
+                layer.setShadowOffset(NSSize::new(0.0, -4.0));
+                // Dengan shadowPath, Core Animation tidak menghitung bayangan dari isi layer.
+                // SAFETY: tanpa transformasi (null).
+                let path = unsafe { CGPath::with_rounded_rect(self.bounds(), radius, radius, std::ptr::null()) };
+                layer.setShadowPath(Some(&path));
             }
         }
 
@@ -162,7 +159,11 @@ define_class!(
 impl PaintView {
     fn make(mtm: MainThreadMarker, ivars: PaintIvars) -> Retained<Self> {
         let this = Self::alloc(mtm).set_ivars(ivars);
-        unsafe { msg_send![super(this), initWithFrame: NSRect::ZERO] }
+        let this: Retained<Self> = unsafe { msg_send![super(this), initWithFrame: NSRect::ZERO] };
+        this.setWantsLayer(true);
+        // Bentuk bayangan mengikuti ukuran view saat diubah.
+        this.setLayerContentsRedrawPolicy(NSViewLayerContentsRedrawPolicy::DuringViewResize);
+        this
     }
 
     /// Persegi bersudut berisi `color`.

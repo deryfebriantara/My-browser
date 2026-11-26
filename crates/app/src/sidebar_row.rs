@@ -12,10 +12,9 @@ use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool, ProtocolObject};
 use objc2::{AllocAnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
 use objc2_app_kit::{
-    NSAccessibility, NSApplication, NSBezierPath, NSButton, NSColor, NSDragOperation, NSDraggingContext,
-    NSDraggingItem, NSDraggingSession, NSDraggingSource, NSEvent, NSEventMask, NSEventType, NSFont, NSImage,
-    NSImageView, NSLineBreakMode, NSMenu, NSMenuItem, NSPasteboardItem, NSTextField, NSTrackingArea,
-    NSTrackingAreaOptions, NSView,
+    NSAccessibility, NSApplication, NSButton, NSColor, NSDragOperation, NSDraggingContext, NSDraggingItem,
+    NSDraggingSession, NSDraggingSource, NSEvent, NSEventMask, NSEventType, NSFont, NSImage, NSImageView,
+    NSLineBreakMode, NSMenu, NSMenuItem, NSPasteboardItem, NSTextField, NSTrackingArea, NSTrackingAreaOptions, NSView,
 };
 use objc2_foundation::{NSArray, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
 use std::cell::{Cell, RefCell};
@@ -55,8 +54,15 @@ define_class!(
     pub struct TabRowView;
 
     impl TabRowView {
-        #[unsafe(method(drawRect:))]
-        fn draw_rect(&self, _dirty: NSRect) {
+        /// Latar baris (aktif, disorot) disetel di layer, tanpa bitmap per baris.
+        #[unsafe(method(wantsUpdateLayer))]
+        fn wants_update_layer(&self) -> Bool {
+            Bool::YES
+        }
+
+        #[unsafe(method(updateLayer))]
+        fn update_layer(&self) {
+            let Some(layer) = self.layer() else { return };
             let ivars = self.ivars();
             let (active, hover, base, radius) =
                 if ivars.tile.get() { (0.28, 0.18, 0.12, 10.0) } else { (0.24, 0.10, 0.0, 8.0) };
@@ -67,10 +73,8 @@ define_class!(
             } else {
                 base
             };
-            if alpha > 0.0 {
-                NSColor::colorWithWhite_alpha(1.0, alpha).setFill();
-                NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(self.bounds(), radius, radius).fill();
-            }
+            layer.setCornerRadius(radius);
+            layer.setBackgroundColor(Some(&NSColor::colorWithWhite_alpha(1.0, alpha).CGColor()));
         }
 
         /// Klik di mana pun di baris mengenai baris itu, kecuali tombol tutup.
@@ -205,6 +209,7 @@ impl TabRowView {
         let height = if style == RowStyle::Tile { TILE_HEIGHT } else { ROW_HEIGHT };
         let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(width, height));
         let this: Retained<Self> = unsafe { msg_send![super(this), initWithFrame: frame] };
+        this.setWantsLayer(true);
         this.ivars().tile.set(style == RowStyle::Tile);
         this.ivars().active.set(row.active);
         this.setBordered(false);
@@ -367,11 +372,13 @@ impl TabRowView {
         view.setNeedsDisplay(true);
     }
 
+    #[cfg(debug_assertions)]
     pub fn close_button(&self) -> Option<Retained<NSButton>> {
         self.ivars().close.borrow().clone()
     }
 
     /// Jumlah baris yang dipakai judul (harus selalu 1).
+    #[cfg(debug_assertions)]
     pub fn title_lines(&self) -> usize {
         let Some(title) = self.ivars().title.borrow().clone() else { return 0 };
         let Some(font) = title.font() else { return 1 };

@@ -349,6 +349,7 @@ fn window_layout(state: &AppState) -> Value {
         "empty_state": state.ui.card.empty_visible(),
         "theme": state.ui.theme_id(),
         "lights_center": state.ui.traffic_light_center(),
+        "backdrop": state.ui.backdrop_info(),
         "address_frame": rect_json(state.ui.sidebar.address.convertRect_toView(state.ui.sidebar.address.bounds(), None)),
     })
 }

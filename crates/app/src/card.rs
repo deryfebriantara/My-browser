@@ -26,6 +26,7 @@ pub struct Card {
     /// Induk view halaman.
     pub content: Retained<NSView>,
     clip: Retained<NSView>,
+    shadow: Retained<PaintView>,
     empty: Retained<PaintView>,
     empty_title: Retained<NSTextField>,
     empty_hint: Retained<NSTextField>,
@@ -47,10 +48,8 @@ fn label(mtm: MainThreadMarker, text: &str, font: &NSFont, color: &NSColor) -> R
 impl Card {
     pub fn build(mtm: MainThreadMarker) -> Card {
         let view = PaintView::container(mtm, false, true);
+        // Layer bayangan seukuran kartu, di bawah kartu.
         let shadow = PaintView::shadow(mtm, CARD_RADIUS);
-        shadow.setAutoresizingMask(
-            NSAutoresizingMaskOptions::ViewWidthSizable | NSAutoresizingMaskOptions::ViewHeightSizable,
-        );
         view.addSubview(&shadow);
 
         let clip = NSView::initWithFrame(NSView::alloc(mtm), NSRect::ZERO);
@@ -104,6 +103,7 @@ impl Card {
             view,
             content,
             clip,
+            shadow,
             empty,
             empty_title,
             empty_hint: hint,
@@ -121,6 +121,7 @@ impl Card {
         let inner = NSRect::new(NSPoint::new(m, m), NSSize::new(f.w, f.h));
         self.clip.setFrame(inner);
         self.outline.setFrame(inner);
+        self.shadow.setFrame(inner);
         self.content.setFrame(NSRect::new(NSPoint::new(0.0, 0.0), inner.size));
         self.empty.setFrame(NSRect::new(NSPoint::new(0.0, 0.0), inner.size));
         // Nama Space dan petunjuk di tengah kartu.

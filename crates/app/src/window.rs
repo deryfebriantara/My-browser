@@ -6,7 +6,7 @@ use crate::actions::ActionTarget;
 use crate::backdrop::Backdrop;
 use crate::card::Card;
 use crate::layout::{self, Frames, SidebarMode};
-use crate::paint::{DragHandle, DragHandler, HoverHandler, PaintView, SHADOW_MARGIN};
+use crate::paint::{DragHandle, DragHandler, HoverHandler, PaintView};
 use crate::sidebar::Sidebar;
 use block2::RcBlock;
 use browser_core::theme::Theme;
@@ -26,6 +26,7 @@ pub struct Ui {
     pub sidebar: Sidebar,
     pub card: Card,
     pub target: Retained<ActionTarget>,
+    #[cfg_attr(not(debug_assertions), allow(dead_code))]
     backdrop: Retained<Backdrop>,
     panel_card: Card,
     shown: RefCell<Option<Retained<NSView>>>,
@@ -161,9 +162,7 @@ impl Ui {
         self.edge.setFrame(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(layout::INSET, height)));
         self.edge.setHidden(mode != SidebarMode::Hidden);
         let s = frames.sidebar;
-        let m = SHADOW_MARGIN;
-        self.overlay_shadow
-            .setFrame(NSRect::new(NSPoint::new(s.x - m, s.y - m), NSSize::new(s.w + 2.0 * m, s.h + 2.0 * m)));
+        self.overlay_shadow.setFrame(NSRect::new(NSPoint::new(s.x, s.y), NSSize::new(s.w, s.h)));
         self.overlay_shadow.setHidden(mode != SidebarMode::Overlay);
         self.handle.setFrame(NSRect::new(NSPoint::new(s.w - 2.0, 0.0), NSSize::new(4.0, s.h)));
         self.handle.setHidden(mode != SidebarMode::Docked);
@@ -332,6 +331,11 @@ impl Ui {
         self.edge.set_hover_handler(edge);
         self.sidebar.view.set_hover_handler(sidebar);
         self.handle.set_handler(resize);
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn backdrop_info(&self) -> String {
+        self.backdrop.layer_info()
     }
 
     #[cfg(debug_assertions)]
