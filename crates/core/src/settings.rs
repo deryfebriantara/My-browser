@@ -110,6 +110,17 @@ mod tests {
     }
 
     #[test]
+    fn sidebar_settings_round_trip() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("settings.json");
+        let s = Settings { sidebar_width: 300.0, sidebar_visible: false, ..Settings::default() };
+        s.save(&p).unwrap();
+        let back = Settings::load(&p);
+        assert_eq!(back.sidebar_width, 300.0);
+        assert!(!back.sidebar_visible);
+    }
+
+    #[test]
     fn settings_missing_fields_use_defaults() {
         let s: Settings = serde_json::from_str(r#"{"max_awake":2}"#).unwrap();
         assert_eq!((s.max_awake, s.sleep_idle_secs), (2, 1800));

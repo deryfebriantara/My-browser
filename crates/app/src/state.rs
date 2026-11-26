@@ -60,6 +60,8 @@ pub struct AppState {
     pub history_window: HistoryWindow,
     /// Terakhir kali riwayat disimpan.
     last_history_save: Cell<Instant>,
+    /// Lebar sidebar saat pegangan ubah lebar mulai diseret.
+    resize_from: Cell<Option<f64>>,
     /// `spaces.json` dari versi lebih baru (versi formatnya): status tab
     /// tidak disimpan supaya berkas itu tidak tertimpa.
     newer_spaces: Option<u32>,
@@ -158,10 +160,12 @@ impl AppState {
                 address: AddressBar::default(),
                 history_window: HistoryWindow::default(),
                 newer_spaces,
+                resize_from: Cell::new(None),
                 favicons: Favicons::new(persistence::data_dir().join("favicons")),
             }
         });
         state.ui.sidebar.install_drops(Rc::downgrade(&state));
+        state.install_window_hooks();
         if state.newer_spaces.is_some() {
             state.ui.show_notice("Tabs won't be saved: spaces.json was written by a newer version of my-browser.");
         }
@@ -457,6 +461,82 @@ impl AppState {
             }
         }
         self.refresh();
+    }
+
+    fn install_window_hooks(&self) {
+        let (edge, sidebar, resize) = (self.me.clone(), self.me.clone(), self.me.clone());
+        self.ui.install_hooks(
+            Rc::new(move |inside| {
+                if let Some(s) = edge.upgrade() {
+                    s.edge_hover(inside);
+                }
+            }),
+            Rc::new(move |inside| {
+                if let Some(s) = sidebar.upgrade() {
+                    s.sidebar_hover(inside);
+                }
+            }),
+            Rc::new(move |dx, done| {
+                if let Some(s) = resize.upgrade() {
+                    s.resize_sidebar(dx, done);
+                }
+            }),
+        );
+    }
+
+    /// ⌘S: sembunyikan atau tampilkan sidebar (disimpan di pengaturan).
+    pub fn toggle_sidebar(&self) {
+        let visible = self.ui.sidebar_mode() != crate::layout::SidebarMode::Docked;
+        self.ui.set_sidebar_visible(visible);
+        self.browser.borrow_mut().update_settings(|s| s.sidebar_visible = visible);
+        self.layout_sidebar();
+        self.refresh();
+    }
+
+    /// Kursor masuk/keluar pita tepi kiri saat sidebar tersembunyi; setelah
+    /// diam 150 ms di sana, sidebar muncul melayang.
+    pub fn edge_hover(&self, inside: bool) {
+        self.ui.set_edge_hovered(inside);
+        if !inside || self.ui.sidebar_mode() != crate::layout::SidebarMode::Hidden {
+            return;
+        }
+        let me = self.me.clone();
+        let show = RcBlock::new(move |_timer: std::ptr::NonNull<objc2_foundation::NSTimer>| {
+            if let Some(s) = me.upgrade()
+                && s.ui.edge_hovered()
+            {
+                s.ui.show_overlay();
+                s.layout_sidebar();
+            }
+        });
+        let _ = unsafe { objc2_foundation::NSTimer::scheduledTimerWithTimeInterval_repeats_block(0.15, false, &show) };
+    }
+
+    /// Kursor keluar dari sidebar yang melayang: sidebar kembali tersembunyi.
+    pub fn sidebar_hover(&self, inside: bool) {
+        if !inside && self.ui.sidebar_mode() == crate::layout::SidebarMode::Overlay {
+            self.ui.hide_overlay();
+        }
+    }
+
+    /// Pegangan ubah lebar diseret sejauh `dx`; saat dilepas, lebarnya disimpan.
+    pub fn resize_sidebar(&self, dx: f64, done: bool) {
+        let from = match self.resize_from.get() {
+            Some(from) => from,
+            None => {
+                let from = self.ui.sidebar_width();
+                self.resize_from.set(Some(from));
+                from
+            }
+        };
+        self.ui.set_sidebar_width(from + dx);
+        if done {
+            self.resize_from.set(None);
+            let width = self.ui.sidebar_width();
+            self.browser.borrow_mut().update_settings(|s| s.sidebar_width = width);
+            self.refresh();
+        }
+        self.layout_sidebar();
     }
 
     /// Memindahkan tab ke bagian sidebar `kind` di posisi `at` (seret-lepas).

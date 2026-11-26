@@ -154,6 +154,24 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
             ok(json!({"clicked": text}))
         }
         "window_layout" => ok(window_layout(state)),
+        // Kursor masuk ke pita tepi kiri (penangan yang sama dengan tracking area).
+        "sidebar_hover_edge" => {
+            state.edge_hover(true);
+            ok(json!({}))
+        }
+        // Kursor keluar dari sidebar yang melayang.
+        "sidebar_leave_overlay" => {
+            state.edge_hover(false);
+            state.sidebar_hover(false);
+            ok(window_layout(state))
+        }
+        // "<lebar>": sama dengan menyeret pegangan lalu melepasnya di lebar itu.
+        "sidebar_resize" => {
+            let Ok(width) = text.unwrap_or_default().parse::<f64>() else { return err("lebar tidak valid") };
+            let from = state.ui.sidebar_width();
+            state.resize_sidebar(width - from, true);
+            ok(window_layout(state))
+        }
         // "<id>:<favorite|pinned|today>:<posisi>": sama dengan melepas tab
         // yang diseret di posisi itu (memanggil state.place_tab).
         // "<id>:<id_tujuan>": melepas tab di atas baris tujuan lewat jalur
@@ -330,5 +348,7 @@ fn window_layout(state: &AppState) -> Value {
         "toast": state.ui.card.toast_text(),
         "empty_state": state.ui.card.empty_visible(),
         "theme": state.ui.theme_id(),
+        "lights_center": state.ui.traffic_light_center(),
+        "address_frame": rect_json(state.ui.sidebar.address.convertRect_toView(state.ui.sidebar.address.bounds(), None)),
     })
 }

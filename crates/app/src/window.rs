@@ -6,17 +6,20 @@ use crate::actions::ActionTarget;
 use crate::backdrop::Backdrop;
 use crate::card::Card;
 use crate::layout::{self, Frames, SidebarMode};
+use crate::paint::{DragHandle, DragHandler, HoverHandler, PaintView, SHADOW_MARGIN};
 use crate::sidebar::Sidebar;
+use block2::RcBlock;
 use browser_core::theme::Theme;
 use objc2::rc::Retained;
 use objc2::runtime::ProtocolObject;
 use objc2::{MainThreadMarker, MainThreadOnly};
 use objc2_app_kit::{
-    NSAutoresizingMaskOptions, NSBackingStoreType, NSView, NSWindow, NSWindowButton, NSWindowStyleMask,
-    NSWindowTitleVisibility,
+    NSAnimatablePropertyContainer, NSAnimationContext, NSAutoresizingMaskOptions, NSBackingStoreType, NSView, NSWindow,
+    NSWindowButton, NSWindowStyleMask, NSWindowTitleVisibility, NSWorkspace,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 use std::cell::{Cell, RefCell};
+use std::ptr::NonNull;
 
 pub struct Ui {
     pub window: Retained<NSWindow>,
@@ -32,6 +35,12 @@ pub struct Ui {
     sidebar_width: Cell<f64>,
     /// Viewport emulasi tab yang tampil (None: memenuhi kartu).
     shown_viewport: Cell<Option<(f64, f64)>>,
+    /// Pita tipis di tepi kiri saat sidebar tersembunyi (kursor di sini memunculkan overlay).
+    edge: Retained<PaintView>,
+    edge_hovered: Cell<bool>,
+    overlay_shadow: Retained<PaintView>,
+    /// Pegangan ubah lebar di tepi kanan sidebar.
+    handle: Retained<DragHandle>,
 }
 
 impl Ui {
@@ -80,8 +89,14 @@ impl Ui {
         let panel_card = Card::build(mtm);
         panel_card.view.setHidden(true);
         root.addSubview(&panel_card.view);
-        let sidebar = Sidebar::build(mtm, &target);
+        let edge = PaintView::container(mtm, false, true);
+        root.addSubview(&edge);
+        let overlay_shadow = PaintView::shadow(mtm, layout::CARD_RADIUS);
+        root.addSubview(&overlay_shadow);
+        let sidebar = Sidebar::build(mtm, &target, theme);
         root.addSubview(&sidebar.view);
+        let handle = DragHandle::new(mtm, None);
+        root.addSubview(&handle);
 
         let mode = if sidebar_visible { SidebarMode::Docked } else { SidebarMode::Hidden };
         let ui = Ui {
@@ -96,6 +111,10 @@ impl Ui {
             mode: Cell::new(mode),
             sidebar_width: Cell::new(sidebar_width),
             shown_viewport: Cell::new(None),
+            edge,
+            edge_hovered: Cell::new(false),
+            overlay_shadow,
+            handle,
         };
         ui.relayout();
         ui
@@ -113,7 +132,7 @@ impl Ui {
     }
 
     /// Jarak pusat tombol jendela (merah/kuning/hijau) dari tepi atas jendela.
-    fn traffic_light_center(&self) -> f64 {
+    pub(crate) fn traffic_light_center(&self) -> f64 {
         let fallback = 14.0;
         let (Some(root), Some(close)) =
             (self.window.contentView(), self.window.standardWindowButton(NSWindowButton::CloseButton))
@@ -130,12 +149,32 @@ impl Ui {
     /// Menata ulang sidebar, kartu, dan panel sesuai ukuran jendela.
     pub fn relayout(&self) {
         let frames = self.frames();
-        let top = match self.mode.get() {
-            SidebarMode::Docked => self.traffic_light_center(),
-            SidebarMode::Hidden | SidebarMode::Overlay => self.traffic_light_center() - layout::INSET,
-        };
+        // Pusat tombol jendela diukur dari tepi atas sidebar (bukan jendela).
+        let window_h = self.window.contentView().map_or(0.0, |v| v.bounds().size.height);
+        let top_gap = window_h - (frames.sidebar.y + frames.sidebar.h);
+        let top = self.traffic_light_center() - top_gap;
+        let mode = self.mode.get();
         self.sidebar.set_frame(frames.sidebar, top);
-        self.sidebar.view.setHidden(self.mode.get() == SidebarMode::Hidden);
+        self.sidebar.set_overlay(mode == SidebarMode::Overlay);
+        self.sidebar.view.setHidden(mode == SidebarMode::Hidden);
+        let height = frames.sidebar.h + if mode == SidebarMode::Docked { 0.0 } else { 2.0 * layout::INSET };
+        self.edge.setFrame(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(layout::INSET, height)));
+        self.edge.setHidden(mode != SidebarMode::Hidden);
+        let s = frames.sidebar;
+        let m = SHADOW_MARGIN;
+        self.overlay_shadow
+            .setFrame(NSRect::new(NSPoint::new(s.x - m, s.y - m), NSSize::new(s.w + 2.0 * m, s.h + 2.0 * m)));
+        self.overlay_shadow.setHidden(mode != SidebarMode::Overlay);
+        self.handle.setFrame(NSRect::new(NSPoint::new(s.w - 2.0, 0.0), NSSize::new(4.0, s.h)));
+        self.handle.setHidden(mode != SidebarMode::Docked);
+        if let Some(window) = self.window.contentView().and_then(|v| v.window()) {
+            window.invalidateCursorRectsForView(&self.handle);
+        }
+        for button in [NSWindowButton::CloseButton, NSWindowButton::MiniaturizeButton, NSWindowButton::ZoomButton] {
+            if let Some(button) = self.window.standardWindowButton(button) {
+                button.setHidden(mode == SidebarMode::Hidden);
+            }
+        }
         self.card.set_frame(frames.card);
         match frames.panel {
             Some(panel) => {
@@ -224,9 +263,75 @@ impl Ui {
         self.card.show_toast(text);
     }
 
-    #[cfg(debug_assertions)]
     pub fn sidebar_mode(&self) -> SidebarMode {
         self.mode.get()
+    }
+
+    pub fn sidebar_width(&self) -> f64 {
+        self.sidebar_width.get()
+    }
+
+    /// Menempel (`true`) atau sembunyi (⌘S).
+    pub fn set_sidebar_visible(&self, visible: bool) {
+        self.mode.set(if visible { SidebarMode::Docked } else { SidebarMode::Hidden });
+        self.relayout();
+    }
+
+    /// Sidebar tersembunyi muncul melayang dari kiri (meluncur 180 ms,
+    /// atau langsung kalau Reduce Motion menyala).
+    pub fn show_overlay(&self) {
+        if self.mode.get() != SidebarMode::Hidden {
+            return;
+        }
+        self.mode.set(SidebarMode::Overlay);
+        self.relayout();
+        if NSWorkspace::sharedWorkspace().accessibilityDisplayShouldReduceMotion() {
+            return;
+        }
+        let views: [Retained<NSView>; 2] =
+            [Retained::into_super(self.sidebar.view.clone()), Retained::into_super(self.overlay_shadow.clone())];
+        let finals: Vec<NSRect> = views.iter().map(|v| v.frame()).collect();
+        for (view, end) in views.iter().zip(&finals) {
+            let mut start = *end;
+            start.origin.x -= end.size.width + layout::INSET;
+            view.setFrame(start);
+        }
+        let block = RcBlock::new(move |context: NonNull<NSAnimationContext>| {
+            // SAFETY: AppKit memberi konteks animasi yang berlaku selama blok berjalan.
+            unsafe { context.as_ref() }.setDuration(0.18);
+            for (view, end) in views.iter().zip(&finals) {
+                view.animator().setFrame(*end);
+            }
+        });
+        NSAnimationContext::runAnimationGroup(&block);
+    }
+
+    pub fn hide_overlay(&self) {
+        if self.mode.get() == SidebarMode::Overlay {
+            self.mode.set(SidebarMode::Hidden);
+            self.relayout();
+        }
+    }
+
+    /// Lebar sidebar baru (dibatasi 200–360).
+    pub fn set_sidebar_width(&self, width: f64) {
+        self.sidebar_width.set(width.clamp(layout::SIDEBAR_MIN, layout::SIDEBAR_MAX));
+        self.relayout();
+    }
+
+    pub fn set_edge_hovered(&self, inside: bool) {
+        self.edge_hovered.set(inside);
+    }
+
+    pub fn edge_hovered(&self) -> bool {
+        self.edge_hovered.get()
+    }
+
+    /// Pita tepi kiri, sidebar (untuk keluar dari overlay), dan pegangan ubah lebar.
+    pub fn install_hooks(&self, edge: HoverHandler, sidebar: HoverHandler, resize: DragHandler) {
+        self.edge.set_hover_handler(edge);
+        self.sidebar.view.set_hover_handler(sidebar);
+        self.handle.set_handler(resize);
     }
 
     #[cfg(debug_assertions)]

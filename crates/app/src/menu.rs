@@ -92,6 +92,7 @@ pub fn build(mtm: MainThreadMarker, target: &ActionTarget) -> Retained<NSMenu> {
         "View",
         &[
             it("Reload Page", sel!(reloadPage:), "r", cmd, t, 0),
+            it("Hide Sidebar", sel!(toggleSidebar:), "s", cmd, t, 0),
             it("Enter Full Screen", sel!(toggleFullScreen:), "f", ctrl_cmd, None, 0),
             it("Disable Blocker for This Site", sel!(toggleBlocker:), "", cmd, t, 0),
         ],

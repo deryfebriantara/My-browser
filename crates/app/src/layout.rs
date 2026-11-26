@@ -10,6 +10,9 @@ pub const PANEL_WIDTH: f64 = 380.0;
 /// Lebar kartu halaman paling kecil sebelum sidebar dipersempit.
 pub const CARD_MIN: f64 = 320.0;
 pub const CARD_RADIUS: f64 = 10.0;
+/// Celah atas sidebar yang melayang: cukup kecil supaya baris tombolnya
+/// sejajar dengan tombol jendela (pusat 14 pt dari atas, tombol 24 pt).
+pub const OVERLAY_TOP: f64 = 2.0;
 /// Ubin favorit: lebar minimal, jarak antarubin, dan tinggi.
 pub const TILE_MIN: f64 = 44.0;
 pub const TILE_GAP: f64 = 6.0;
@@ -48,7 +51,6 @@ pub enum SidebarMode {
     /// Sidebar disembunyikan (⌘S): kartu memenuhi jendela.
     Hidden,
     /// Sidebar tersembunyi yang sedang muncul melayang karena kursor di tepi kiri.
-    #[cfg_attr(not(test), expect(dead_code, reason = "overlay sidebar dibuat di Task 10"))]
     Overlay,
 }
 
@@ -74,7 +76,9 @@ pub fn layout(window_w: f64, window_h: f64, mode: SidebarMode, sidebar_w: f64, p
     }
     let (sidebar_frame, card_x) = match mode {
         SidebarMode::Docked => (Frame::new(0.0, 0.0, sidebar, window_h), sidebar),
-        SidebarMode::Hidden | SidebarMode::Overlay => (Frame::new(INSET, INSET, sidebar, inner_h), INSET),
+        SidebarMode::Hidden | SidebarMode::Overlay => {
+            (Frame::new(INSET, INSET, sidebar, window_h - INSET - OVERLAY_TOP), INSET)
+        }
     };
     let card = Frame::new(card_x, INSET, window_w - card_x - INSET - panel_space, inner_h);
     let panel = panel.then(|| Frame::new((window_w - INSET - PANEL_WIDTH).max(0.0), INSET, PANEL_WIDTH, inner_h));
@@ -106,7 +110,7 @@ mod tests {
     #[test]
     fn overlay_sidebar_floats_over_card() {
         let l = layout(1280.0, 800.0, SidebarMode::Overlay, 240.0, false);
-        assert_eq!(l.sidebar, f(8.0, 8.0, 240.0, 784.0));
+        assert_eq!(l.sidebar, f(8.0, 8.0, 240.0, 790.0));
         assert_eq!(l.card, f(8.0, 8.0, 1264.0, 784.0));
     }
 

@@ -86,6 +86,11 @@ define_class!(
             self.with(|s| s.tab_action(id, TabAction::CopyLink));
         }
 
+        #[unsafe(method(toggleSidebar:))]
+        fn toggle_sidebar(&self, _sender: Option<&AnyObject>) {
+            self.with(|s| s.toggle_sidebar());
+        }
+
         #[unsafe(method(sidebarDragBegan:))]
         fn sidebar_drag_began(&self, _sender: Option<&AnyObject>) {
             self.with(|s| s.ui.sidebar.set_dragging(true));
@@ -252,6 +257,15 @@ define_class!(
                     item.setTitle(&objc2_foundation::NSString::from_str(if kind == current { on } else { off }));
                     return Bool::new(!blank);
                 }
+            }
+            if item.action() == Some(sel!(toggleSidebar:)) {
+                let docked = self
+                    .ivars()
+                    .state
+                    .upgrade()
+                    .is_some_and(|s| s.ui.sidebar_mode() == crate::layout::SidebarMode::Docked);
+                item.setTitle(&objc2_foundation::NSString::from_str(if docked { "Hide Sidebar" } else { "Show Sidebar" }));
+                return Bool::YES;
             }
             if item.action() == Some(sel!(setPinnedURL:)) {
                 let differs = self.ivars().state.upgrade().is_some_and(|s| s.active_saved_differs());

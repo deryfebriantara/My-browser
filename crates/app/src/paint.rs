@@ -2,11 +2,14 @@
 //! bayangan kartu, dan wadah yang menjungkir koordinat (atas ke bawah).
 //! Digambar sekali ke backing store view, bukan per frame isi halaman.
 
+use objc2::AllocAnyThread;
 use objc2::rc::Retained;
+use objc2::runtime::AnyObject;
 use objc2::runtime::{Bool, ProtocolObject};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send};
 use objc2_app_kit::{
-    NSBezierPath, NSColor, NSDragOperation, NSDraggingDestination, NSDraggingInfo, NSGraphicsContext, NSShadow, NSView,
+    NSBezierPath, NSColor, NSCursor, NSDragOperation, NSDraggingDestination, NSDraggingInfo, NSEvent, NSEventMask,
+    NSEventType, NSGraphicsContext, NSShadow, NSTrackingArea, NSTrackingAreaOptions, NSView,
 };
 use objc2_foundation::{NSArray, NSObjectProtocol, NSPoint, NSRect, NSSize, NSString};
 use std::cell::{Cell, RefCell};
@@ -26,6 +29,9 @@ pub enum DropPhase {
 /// Penangan lepasan: tahap dan titik (koordinat view). `true` menerima.
 pub type DropHandler = Rc<dyn Fn(DropPhase, NSPoint) -> bool>;
 
+/// Penangan kursor masuk (`true`) atau keluar (`false`) dari view.
+pub type HoverHandler = Rc<dyn Fn(bool)>;
+
 /// Jarak bayangan kartu dari tepi kartu (ruang untuk blur).
 pub const SHADOW_MARGIN: f64 = 20.0;
 
@@ -40,6 +46,7 @@ pub struct PaintIvars {
     passthrough: Cell<bool>,
     flipped: Cell<bool>,
     drop: RefCell<Option<DropHandler>>,
+    hover: RefCell<Option<HoverHandler>>,
 }
 
 define_class!(
@@ -103,6 +110,22 @@ define_class!(
         #[unsafe(method(mouseDownCanMoveWindow))]
         fn mouse_down_can_move_window(&self) -> Bool {
             Bool::YES
+        }
+
+        #[unsafe(method(mouseEntered:))]
+        fn mouse_entered(&self, _event: &NSEvent) {
+            let handler = self.ivars().hover.borrow().clone();
+            if let Some(handler) = handler {
+                handler(true);
+            }
+        }
+
+        #[unsafe(method(mouseExited:))]
+        fn mouse_exited(&self, _event: &NSEvent) {
+            let handler = self.ivars().hover.borrow().clone();
+            if let Some(handler) = handler {
+                handler(false);
+            }
         }
     }
 
@@ -188,5 +211,82 @@ impl PaintView {
     fn drag_update(&self, sender: &ProtocolObject<dyn NSDraggingInfo>) -> NSDragOperation {
         let point = self.convertPoint_fromView(sender.draggingLocation(), None);
         if self.call_drop(DropPhase::Update, point) { NSDragOperation::Move } else { NSDragOperation::None }
+    }
+
+    /// Memanggil `handler(true)` saat kursor masuk ke view dan `handler(false)` saat keluar.
+    pub fn set_hover_handler(&self, handler: HoverHandler) {
+        *self.ivars().hover.borrow_mut() = Some(handler);
+        let options = NSTrackingAreaOptions::MouseEnteredAndExited
+            | NSTrackingAreaOptions::ActiveAlways
+            | NSTrackingAreaOptions::InVisibleRect;
+        // SAFETY: owner (view ini) menangani mouseEntered:/mouseExited:.
+        let area = unsafe {
+            NSTrackingArea::initWithRect_options_owner_userInfo(
+                NSTrackingArea::alloc(),
+                NSRect::ZERO,
+                options,
+                Some(self as &AnyObject),
+                None,
+            )
+        };
+        self.addTrackingArea(&area);
+    }
+}
+
+/// Penangan pegangan seret: geser horizontal total sejak mouse ditekan, dan
+/// apakah mouse sudah dilepas.
+pub type DragHandler = Rc<dyn Fn(f64, bool)>;
+
+pub struct HandleIvars {
+    handler: RefCell<Option<DragHandler>>,
+}
+
+define_class!(
+    /// Pegangan tipis untuk mengubah lebar (kursor panah kiri-kanan).
+    #[unsafe(super(NSView, objc2_app_kit::NSResponder, objc2_foundation::NSObject))]
+    #[thread_kind = MainThreadOnly]
+    #[name = "MBDragHandle"]
+    #[ivars = HandleIvars]
+    pub struct DragHandle;
+
+    impl DragHandle {
+        #[unsafe(method(resetCursorRects))]
+        fn reset_cursor_rects(&self) {
+            // Pengganti (columnResizeCursorInDirections:) baru ada di macOS 15;
+            // my-browser masih mendukung macOS 14.
+            #[allow(deprecated)]
+            let cursor = NSCursor::resizeLeftRightCursor();
+            self.addCursorRect_cursor(self.bounds(), &cursor);
+        }
+
+        #[unsafe(method(mouseDownCanMoveWindow))]
+        fn mouse_down_can_move_window(&self) -> Bool {
+            Bool::NO
+        }
+
+        #[unsafe(method(mouseDown:))]
+        fn mouse_down(&self, event: &NSEvent) {
+            let Some(window) = self.window() else { return };
+            let Some(handler) = self.ivars().handler.borrow().clone() else { return };
+            let start = event.locationInWindow().x;
+            while let Some(next) = window.nextEventMatchingMask(NSEventMask::LeftMouseDragged | NSEventMask::LeftMouseUp) {
+                let done = next.r#type() == NSEventType::LeftMouseUp;
+                handler(next.locationInWindow().x - start, done);
+                if done {
+                    break;
+                }
+            }
+        }
+    }
+);
+
+impl DragHandle {
+    pub fn new(mtm: MainThreadMarker, handler: Option<DragHandler>) -> Retained<Self> {
+        let this = Self::alloc(mtm).set_ivars(HandleIvars { handler: RefCell::new(handler) });
+        unsafe { msg_send![super(this), initWithFrame: NSRect::ZERO] }
+    }
+
+    pub fn set_handler(&self, handler: DragHandler) {
+        *self.ivars().handler.borrow_mut() = Some(handler);
     }
 }

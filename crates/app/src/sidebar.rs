@@ -3,7 +3,9 @@
 //! gradasi tema.
 
 use crate::actions::ActionTarget;
+use crate::backdrop::Backdrop;
 use crate::favicons::Favicons;
+use crate::layout::CARD_RADIUS;
 use crate::layout::{Frame, TILE_GAP, TILE_HEIGHT, insertion_index, tile_columns};
 use crate::paint::{DropPhase, PaintView};
 use crate::sidebar_row::{ROW_HEIGHT, RowStyle, TabRowView, symbol};
@@ -11,6 +13,7 @@ use crate::state::AppState;
 use browser_core::sidebar::{RowInfo, SidebarModel};
 use browser_core::tabs::TabKind;
 use browser_core::theme::SECONDARY_ALPHA;
+use browser_core::theme::Theme;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, ProtocolObject, Sel};
 use objc2::{AllocAnyThread, MainThreadMarker, MainThreadOnly, sel};
@@ -74,6 +77,8 @@ pub struct Sidebar {
     /// Penanda "Claude can interact" di bawah baris atas.
     interact: Retained<PaintView>,
     interact_off: Retained<NSButton>,
+    /// Latar gradasi sidebar saat melayang (overlay); tersembunyi saat menempel.
+    overlay_bg: Retained<Backdrop>,
 }
 
 fn icon_button(mtm: MainThreadMarker, image: &NSImage, target: &ActionTarget, action: Sel) -> Retained<NSButton> {
@@ -105,8 +110,16 @@ fn row_icon(row: &RowInfo, favicons: &Favicons, size: f64) -> (Retained<NSImage>
 }
 
 impl Sidebar {
-    pub fn build(mtm: MainThreadMarker, target: &ActionTarget) -> Sidebar {
+    pub fn build(mtm: MainThreadMarker, target: &ActionTarget, theme: &'static Theme) -> Sidebar {
         let view = PaintView::container(mtm, true, false);
+        let overlay_bg = Backdrop::new(mtm, theme);
+        overlay_bg.setAutoresizingMask(
+            objc2_app_kit::NSAutoresizingMaskOptions::ViewWidthSizable
+                | objc2_app_kit::NSAutoresizingMaskOptions::ViewHeightSizable,
+        );
+        overlay_bg.setHidden(true);
+        view.addSubview(&overlay_bg);
+        view.setWantsLayer(true);
         view.setAppearance(NSAppearance::appearanceNamed(unsafe { NSAppearanceNameDarkAqua }).as_deref());
 
         let reload_icon = symbol("arrow.clockwise", "Reload");
@@ -201,6 +214,7 @@ impl Sidebar {
             favs_height: Cell::new(0.0),
             interact,
             interact_off,
+            overlay_bg,
             grid: Cell::new((1, 0.0)),
             fav_count: Cell::new(0),
             dragging: Cell::new(false),
@@ -435,6 +449,16 @@ impl Sidebar {
         let point = NSPoint::new(frame.origin.x + 4.0, frame.origin.y + 2.0);
         self.drop_event(state, region, DropPhase::Update, point);
         self.drop_event(state, region, DropPhase::Perform(id), point)
+    }
+
+    /// Gaya melayang: latar gradasi sendiri dan sudut membulat.
+    pub fn set_overlay(&self, on: bool) {
+        self.overlay_bg.setFrame(self.view.bounds());
+        self.overlay_bg.setHidden(!on);
+        if let Some(layer) = self.view.layer() {
+            layer.setCornerRadius(if on { CARD_RADIUS } else { 0.0 });
+            layer.setMasksToBounds(on);
+        }
     }
 
     pub fn set_interact(&self, on: bool) {
