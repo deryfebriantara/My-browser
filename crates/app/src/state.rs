@@ -11,17 +11,14 @@ use crate::history_window::HistoryWindow;
 use crate::mcp_access::McpAccess;
 use crate::password_manager::PasswordManager;
 use crate::passwords::Passwords;
-use crate::persistence;
+use crate::persistence::{self, Loaded};
 use crate::tab_strip::TabInfo;
 use crate::window::Ui;
 use block2::RcBlock;
 use browser_core::browser::{Browser, SinkFactory, UiChange};
 use browser_core::engine::Engine;
 use browser_core::engine::{Emulation, Page};
-use browser_core::history::History;
 use browser_core::page_scripts::ELEMENT_PICKER;
-use browser_core::session::SessionFile;
-use browser_core::settings::Settings;
 use browser_core::sleep::Pressure;
 use browser_core::suggest::Suggestion;
 use browser_core::tabs::TabId;
@@ -63,6 +60,9 @@ pub struct AppState {
     pub history_window: HistoryWindow,
     /// Terakhir kali riwayat disimpan.
     last_history_save: Cell<Instant>,
+    /// `spaces.json` dari versi lebih baru (versi formatnya): status tab
+    /// tidak disimpan supaya berkas itu tidak tertimpa.
+    newer_spaces: Option<u32>,
 }
 
 struct NavInfo {
@@ -105,13 +105,9 @@ fn sink_factory(weak: Weak<AppState>) -> SinkFactory {
 }
 
 impl AppState {
-    pub fn new(
-        mtm: MainThreadMarker,
-        settings: Settings,
-        session: Option<&SessionFile>,
-        history: History,
-    ) -> Rc<AppState> {
-        Rc::new_cyclic(|weak: &Weak<AppState>| {
+    pub fn new(mtm: MainThreadMarker, loaded: Loaded) -> Rc<AppState> {
+        let Loaded { settings, spaces, newer_spaces, history } = loaded;
+        let state = Rc::new_cyclic(|weak: &Weak<AppState>| {
             let target = ActionTarget::new(mtm, weak.clone());
             let ui = Ui::build(mtm, target);
             let engine = WebKitEngine::new(mtm);
@@ -126,7 +122,7 @@ impl AppState {
                     state.refresh();
                 }
             }));
-            let browser = Browser::new(engine, settings, session, history, sink_factory(weak.clone()), Instant::now());
+            let browser = Browser::new(engine, settings, &spaces, history, sink_factory(weak.clone()), Instant::now());
             AppState {
                 mtm,
                 me: weak.clone(),
@@ -142,8 +138,13 @@ impl AppState {
                 last_history_save: Cell::new(Instant::now()),
                 address: AddressBar::default(),
                 history_window: HistoryWindow::default(),
+                newer_spaces,
             }
-        })
+        });
+        if state.newer_spaces.is_some() {
+            state.ui.nav.show_notice("Tabs won't be saved: spaces.json was written by a newer version of my-browser.");
+        }
+        state
     }
 
     fn tab_infos(&self) -> Vec<TabInfo> {
@@ -317,9 +318,11 @@ impl AppState {
             }
         }
         self.refresh();
-        let session = self.browser.borrow_mut().session_if_dirty();
-        if let Some(session) = session {
-            persistence::save_session(&session);
+        let spaces = self.browser.borrow_mut().session_if_dirty();
+        if let Some(spaces) = spaces
+            && self.newer_spaces.is_none()
+        {
+            persistence::save_spaces(&spaces);
         }
         // Riwayat bisa sekitar 1,5 MB: disimpan paling sering sekali per 2 menit.
         if self.last_history_save.get().elapsed() >= HISTORY_SAVE_INTERVAL {
@@ -342,8 +345,10 @@ impl AppState {
     /// hanya disimpan saat berubah (UiChange::Settings), supaya editan tangan
     /// di settings.json tidak ditimpa nilai lama di memory.
     pub fn save_all(&self) {
-        let session = self.browser.borrow().tabs().to_session();
-        persistence::save_session(&session);
+        if self.newer_spaces.is_none() {
+            let spaces = self.browser.borrow().spaces_file();
+            persistence::save_spaces(&spaces);
+        }
         let bytes = self.browser.borrow_mut().history_bytes_if_dirty();
         if let Some(bytes) = bytes {
             persistence::save_history(&bytes);

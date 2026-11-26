@@ -6,9 +6,9 @@ use crate::blocking::{host_matches, normalize_host};
 use crate::engine::{ColorScheme, Emulation, Engine, JsTag, Page, PageEvent};
 use crate::history::{History, note_visit, visit_key};
 use crate::omnibox::{Parsed, classify_input, parse_input};
-use crate::session::SessionFile;
 use crate::settings::Settings;
 use crate::sleep::{Pressure, tabs_to_sleep};
+use crate::spaces_file::{SpaceMeta, SpacesFile};
 use crate::tabs::{Closed, PendingVisit, TabId, TabKind, TabList, Url};
 use crate::youtube::{VIDEO_TIME_JS, is_youtube_watch, with_resume_time};
 use std::collections::HashMap;
@@ -59,6 +59,8 @@ fn unix_now() -> u64 {
 pub struct Browser<E: Engine> {
     engine: E,
     tabs: TabList,
+    /// Space yang sedang dipakai (tahap ini selalu satu: Personal).
+    space: SpaceMeta,
     pages: HashMap<TabId, E::Page>,
     settings: Settings,
     sinks: SinkFactory,
@@ -70,19 +72,21 @@ pub struct Browser<E: Engine> {
 }
 
 impl<E: Engine> Browser<E> {
-    /// Memulihkan sesi (semua tab tidur) lalu membangunkan tab aktif.
+    /// Memulihkan Space aktif dari `spaces` (semua tab tidur) lalu
+    /// membangunkan tab aktif.
     pub fn new(
         engine: E,
         settings: Settings,
-        session: Option<&SessionFile>,
+        spaces: &SpacesFile,
         history: History,
         sinks: SinkFactory,
         now: Instant,
     ) -> Self {
-        let mut tabs = match session {
-            Some(s) => TabList::from_session(s, now),
-            None => TabList::new(now),
-        };
+        let fallback = SpacesFile::personal_default();
+        let saved =
+            spaces.spaces.get(spaces.active_space).or_else(|| spaces.spaces.first()).unwrap_or(&fallback.spaces[0]);
+        let space = saved.meta();
+        let mut tabs = TabList::from_space(saved, now);
         // Tab dari sesi sudah tercatat saat dibuka dulu; memuatnya lagi
         // bukan kunjungan baru.
         let ids: Vec<TabId> = tabs.iter().map(|t| t.id).collect();
@@ -98,6 +102,7 @@ impl<E: Engine> Browser<E> {
         let mut b = Self {
             engine,
             tabs,
+            space,
             pages: HashMap::new(),
             settings,
             sinks,
@@ -628,12 +633,25 @@ impl<E: Engine> Browser<E> {
         std::mem::take(&mut self.changes)
     }
 
-    pub fn session_if_dirty(&mut self) -> Option<crate::session::SessionFile> {
+    pub fn session_if_dirty(&mut self) -> Option<SpacesFile> {
         if !self.dirty {
             return None;
         }
         self.dirty = false;
-        Some(self.tabs.to_session())
+        Some(self.spaces_file())
+    }
+
+    /// Status lengkap untuk `spaces.json`.
+    pub fn spaces_file(&self) -> SpacesFile {
+        SpacesFile {
+            version: crate::spaces_file::SPACES_VERSION,
+            active_space: 0,
+            spaces: vec![self.tabs.to_space(&self.space)],
+        }
+    }
+
+    pub fn space(&self) -> &SpaceMeta {
+        &self.space
     }
 
     /// HTTP/3 dimatikan (bawaan): petunjuk HTTP/3 dihapus sebelum koneksi baru

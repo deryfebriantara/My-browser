@@ -6,6 +6,7 @@ use crate::engine::{Engine, JsTag, Page, PageEvent};
 use crate::session::{SESSION_VERSION, SavedTab, SessionFile};
 use crate::settings::Settings;
 use crate::sleep::Pressure;
+use crate::spaces_file::SpacesFile;
 use crate::suggest::{Suggestion, SuggestionKind};
 use crate::tabs::{TabId, TabKind, Url};
 use std::cell::RefCell;
@@ -122,12 +123,18 @@ fn secs(n: u64) -> Duration {
 
 /// Tab latar tidur setelah 300 detik, paling banyak 3 tab bangun (angka
 /// kecil supaya test mudah dibaca; bawaannya lebih longgar).
-fn setup(session: Option<&SessionFile>) -> (Browser<FakeEngine>, Shared, Instant) {
+fn setup(spaces: Option<&SpacesFile>) -> (Browser<FakeEngine>, Shared, Instant) {
     let log = Shared::default();
     let t0 = Instant::now();
     let settings = Settings { sleep_idle_secs: 300, max_awake: 3, ..Settings::default() };
-    let b =
-        Browser::new(FakeEngine(log.clone()), settings, session, History::new(), Box::new(|_| Box::new(|_| {})), t0);
+    let b = Browser::new(
+        FakeEngine(log.clone()),
+        settings,
+        spaces.unwrap_or(&SpacesFile::personal_default()),
+        History::new(),
+        Box::new(|_| Box::new(|_| {})),
+        t0,
+    );
     (b, log, t0)
 }
 
@@ -373,7 +380,7 @@ fn title_during_load_does_not_rename_previous_entry() {
 fn session_restore_does_not_count() {
     let saved = |url: &str| SavedTab { url: url.into(), title: String::new(), scroll_y: 0.0 };
     let s = SessionFile { version: SESSION_VERSION, active_index: Some(0), tabs: vec![saved("https://a.com/")] };
-    let (mut b, _log, t0) = setup(Some(&s));
+    let (mut b, _log, t0) = setup(Some(&SpacesFile::from_session(&s)));
     let a = b.tabs().active();
     b.handle_event(a, PageEvent::LoadFinished, t0);
     assert!(b.history().is_empty());
@@ -430,7 +437,14 @@ fn history_disabled_records_nothing() {
     let log = Shared::default();
     let t0 = Instant::now();
     let settings = Settings { history_enabled: false, ..Settings::default() };
-    let mut b = Browser::new(FakeEngine(log), settings, None, History::new(), Box::new(|_| Box::new(|_| {})), t0);
+    let mut b = Browser::new(
+        FakeEngine(log),
+        settings,
+        &SpacesFile::personal_default(),
+        History::new(),
+        Box::new(|_| Box::new(|_| {})),
+        t0,
+    );
     let a = b.tabs().active();
     assert!(b.navigate("a.com", t0));
     b.handle_event(a, PageEvent::LoadFinished, t0);
@@ -628,7 +642,7 @@ fn download_in_fresh_tab_leaves_it_blank_and_out_of_session() {
     b.handle_event(a, PageEvent::UrlChanged(u("https://cdn.a.com/file.zip")), t0);
     b.handle_event(a, PageEvent::DownloadStarted, t0);
     assert!(b.tabs().get(a).unwrap().url.is_none());
-    assert!(b.session_if_dirty().unwrap().tabs.is_empty());
+    assert!(b.session_if_dirty().unwrap().spaces[0].tabs.is_empty());
 }
 
 #[test]
@@ -744,7 +758,7 @@ fn session_restore_wakes_only_active_tab() {
         active_index: Some(1),
         tabs: vec![saved("https://a.com/"), saved("https://b.com/"), saved("https://c.com/")],
     };
-    let (_b, log, _t0) = setup(Some(&s));
+    let (_b, log, _t0) = setup(Some(&SpacesFile::from_session(&s)));
     assert_eq!(log.borrow().live, 1);
     assert_eq!(log.borrow().calls, vec![Call::Load("https://b.com/".into())]);
 }
@@ -898,8 +912,14 @@ fn http3_hints_kept_when_enabled() {
     let log = Shared::default();
     let t0 = Instant::now();
     let settings = Settings { http3_enabled: true, ..Settings::default() };
-    let mut b =
-        Browser::new(FakeEngine(log.clone()), settings, None, History::new(), Box::new(|_| Box::new(|_| {})), t0);
+    let mut b = Browser::new(
+        FakeEngine(log.clone()),
+        settings,
+        &SpacesFile::personal_default(),
+        History::new(),
+        Box::new(|_| Box::new(|_| {})),
+        t0,
+    );
     assert!(b.navigate("a.com", t0));
     b.tick(t0 + secs(30), Pressure::Normal);
     assert_eq!(log.borrow().http3_forgets, 0);
@@ -979,4 +999,30 @@ fn place_tab_marks_session_dirty() {
     assert!(b.place_tab(a, TabKind::Pinned, 0));
     assert!(b.session_if_dirty().is_some());
     assert!(b.take_changes().contains(&UiChange::Tabs));
+}
+
+#[test]
+fn new_restores_kinds_and_wakes_only_active() {
+    use crate::spaces_file::{SpaceTab, SpacesFile};
+    let tab = |kind: TabKind, url: &str| SpaceTab {
+        kind,
+        url: url.into(),
+        title: String::new(),
+        scroll_y: 0.0,
+        saved_url: None,
+        saved_title: String::new(),
+    };
+    let mut file = SpacesFile::personal_default();
+    file.spaces[0].tabs = vec![
+        tab(TabKind::Pinned, "https://p.com/"),
+        tab(TabKind::Today, "https://a.com/"),
+        tab(TabKind::Today, "https://b.com/"),
+    ];
+    file.spaces[0].active_index = Some(2);
+    let (b, log, _t0) = setup(Some(&file));
+    let kinds: Vec<TabKind> = b.tabs().iter().map(|t| t.kind).collect();
+    assert_eq!(kinds, vec![TabKind::Pinned, TabKind::Today, TabKind::Today]);
+    assert_eq!(log.borrow().live, 1);
+    assert!(has(&log, Call::Load("https://b.com/".into())));
+    assert_eq!(b.space().name, "Personal");
 }

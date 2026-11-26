@@ -101,8 +101,7 @@ fn main() {
     // tanpa pool, referensi itu bocor dan tab sesi yang dipulihkan tidak pernah
     // bisa melepas proses WebContent-nya saat ditidurkan.
     let (_state, _timer, _pressure) = objc2::rc::autoreleasepool(|_| {
-        let (settings, session, history) = persistence::load();
-        let state = AppState::new(mtm, settings, session.as_ref(), history);
+        let state = AppState::new(mtm, persistence::load());
         *delegate.ivars().state.borrow_mut() = Some(state.clone());
         app.setMainMenu(Some(&menu::build(mtm, &state.ui.target)));
         state.refresh();

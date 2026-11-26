@@ -19,6 +19,7 @@ pub mod session;
 pub mod settings;
 pub mod sidebar;
 pub mod sleep;
+pub mod spaces_file;
 pub mod suggest;
 pub mod tabs;
 pub mod theme;
