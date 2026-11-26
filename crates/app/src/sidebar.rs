@@ -6,7 +6,7 @@ use crate::actions::ActionTarget;
 use crate::backdrop::Backdrop;
 use crate::favicons::Favicons;
 use crate::layout::CARD_RADIUS;
-use crate::layout::{Frame, TILE_GAP, TILE_HEIGHT, insertion_index, tile_columns};
+use crate::layout::{Frame, SidebarMode, TILE_GAP, TILE_HEIGHT, insertion_index, tile_columns};
 use crate::paint::{DropPhase, PaintView};
 use crate::sidebar_row::{ROW_HEIGHT, RowStyle, TabRowView, symbol};
 use crate::state::AppState;
@@ -51,6 +51,8 @@ pub struct Sidebar {
     pub forward: Retained<NSButton>,
     pub reload: Retained<NSButton>,
     claude: Retained<NSButton>,
+    /// Menempelkan sidebar atau mengaktifkan sembunyi otomatis (⌘S).
+    toggle: Retained<NSButton>,
     pub address: Retained<NSTextField>,
     address_box: Retained<PaintView>,
     scroll: Retained<NSScrollView>,
@@ -130,7 +132,9 @@ impl Sidebar {
         let claude = icon_button(mtm, &symbol("sparkles", "Ask Claude"), target, sel!(toggleChat:));
         claude.setContentTintColor(Some(&NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 0.82, 0.54, 1.0)));
         claude.setToolTip(Some(&NSString::from_str("Ask Claude (⌘J)")));
-        for button in [&back, &forward, &reload, &claude] {
+        let toggle = icon_button(mtm, &symbol("sidebar.left", "Toggle Sidebar"), target, sel!(toggleSidebar:));
+        toggle.setToolTip(Some(&NSString::from_str("Hide Sidebar (⌘S)")));
+        for button in [&back, &forward, &reload, &claude, &toggle] {
             view.addSubview(button);
         }
 
@@ -201,6 +205,7 @@ impl Sidebar {
             forward,
             reload,
             claude,
+            toggle,
             address,
             address_box,
             scroll,
@@ -240,9 +245,11 @@ impl Sidebar {
         let f = self.frame.get();
         let w = f.w;
         let row_y = (self.top_center.get() - BUTTON / 2.0).max(0.0);
-        let buttons = [&self.claude, &self.reload, &self.forward, &self.back];
+        // Lima tombol rata kanan, berjarak 26 pt: muat di sebelah tombol
+        // jendela pada lebar sidebar paling kecil (200 pt).
+        let buttons = [&self.claude, &self.reload, &self.forward, &self.back, &self.toggle];
         for (i, button) in buttons.into_iter().enumerate() {
-            let x = w - PAD - BUTTON - i as f64 * (BUTTON + 4.0);
+            let x = w - PAD - BUTTON - i as f64 * (BUTTON + 2.0);
             button.setFrame(NSRect::new(NSPoint::new(x, row_y), NSSize::new(BUTTON, BUTTON)));
         }
         let mut address_y = row_y + BUTTON + 8.0;
@@ -459,6 +466,17 @@ impl Sidebar {
             layer.setCornerRadius(if on { CARD_RADIUS } else { 0.0 });
             layer.setMasksToBounds(on);
         }
+    }
+
+    /// Tooltip tombol sidebar sesuai mode: menempel menyembunyikan, melayang menempelkan.
+    pub fn set_mode_hint(&self, mode: SidebarMode) {
+        let tip = if mode == SidebarMode::Docked { "Hide Sidebar (⌘S)" } else { "Keep Sidebar Open (⌘S)" };
+        self.toggle.setToolTip(Some(&NSString::from_str(tip)));
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn toggle_button(&self) -> Retained<NSButton> {
+        self.toggle.clone()
     }
 
     pub fn set_interact(&self, on: bool) {

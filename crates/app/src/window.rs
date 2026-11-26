@@ -166,6 +166,7 @@ impl Ui {
         let mode = self.mode.get();
         self.sidebar.set_frame(frames.sidebar, top);
         self.sidebar.set_overlay(mode == SidebarMode::Overlay);
+        self.sidebar.set_mode_hint(mode);
         self.sidebar.view.setHidden(mode == SidebarMode::Hidden);
         let height = frames.sidebar.h + if mode == SidebarMode::Docked { 0.0 } else { 2.0 * layout::INSET };
         self.edge.setFrame(NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(layout::INSET, height)));

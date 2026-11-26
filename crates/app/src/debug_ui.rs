@@ -135,6 +135,10 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
         "sidebar_click" => {
             let text = text.unwrap_or_default();
             let (id, part) = text.split_once(':').unwrap_or((text, ""));
+            if id == "toggle" {
+                unsafe { state.ui.sidebar.toggle_button().performClick(None) };
+                return ok(json!({"clicked": text}));
+            }
             if id == "interact_off" {
                 unsafe { state.ui.sidebar.interact_off_button().performClick(None) };
                 return ok(json!({"clicked": text}));
