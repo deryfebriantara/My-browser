@@ -112,7 +112,7 @@ dependencies = [
 
 [[package]]
 name = "blocklist-gen"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "adblock",
  "serde_json",
@@ -220,7 +220,7 @@ checksum = "0e9c71c2167ca323c882b99918929403426e2373ea17242ff5653e0d5e1058be"
 
 [[package]]
 name = "engine-webkit"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "block2",
  "my-browser-core",
@@ -442,14 +442,14 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
 name = "memtool"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "libc",
 ]
 
 [[package]]
 name = "my-browser"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "block2",
  "dispatch2",
@@ -473,7 +473,7 @@ dependencies = [
 
 [[package]]
 name = "my-browser-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -484,7 +484,7 @@ dependencies = [
 
 [[package]]
 name = "my-browser-mcp"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "my-browser-core",
  "serde",
@@ -493,7 +493,7 @@ dependencies = [
 
 [[package]]
 name = "my-browser-vault"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "argon2",
  "chacha20poly1305",
