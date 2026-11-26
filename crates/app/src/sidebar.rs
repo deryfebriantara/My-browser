@@ -4,9 +4,9 @@
 
 use crate::actions::ActionTarget;
 use crate::favicons::Favicons;
-use crate::layout::Frame;
+use crate::layout::{Frame, TILE_GAP, TILE_HEIGHT, tile_columns};
 use crate::paint::PaintView;
-use crate::sidebar_row::{ROW_HEIGHT, TabRowView, symbol};
+use crate::sidebar_row::{ROW_HEIGHT, RowStyle, TabRowView, symbol};
 use browser_core::sidebar::{RowInfo, SidebarModel};
 use browser_core::theme::SECONDARY_ALPHA;
 use objc2::rc::Retained;
@@ -47,6 +47,13 @@ pub struct Sidebar {
     rows: RefCell<Vec<ShownRow>>,
     /// Jarak pusat tombol jendela (merah/kuning/hijau) dari tepi atas.
     top_center: Cell<f64>,
+    frame: Cell<Frame>,
+    /// Grid ubin favorit (tidak ikut bergulir).
+    favs: Retained<PaintView>,
+    favs_height: Cell<f64>,
+    /// Penanda "Claude can interact" di bawah baris atas.
+    interact: Retained<PaintView>,
+    interact_off: Retained<NSButton>,
 }
 
 fn icon_button(mtm: MainThreadMarker, image: &NSImage, target: &ActionTarget, action: Sel) -> Retained<NSButton> {
@@ -63,6 +70,18 @@ fn header(mtm: MainThreadMarker, text: &str, width: f64, y: f64) -> Retained<NST
     field.setTextColor(Some(&NSColor::colorWithWhite_alpha(1.0, SECONDARY_ALPHA)));
     field.setFrame(NSRect::new(NSPoint::new(PAD + 6.0, y + 6.0), NSSize::new(width - 2.0 * PAD, 14.0)));
     field
+}
+
+/// Favicon host baris (true), atau monogram / ikon globe (false).
+fn row_icon(row: &RowInfo, favicons: &Favicons, size: f64) -> (Retained<NSImage>, bool) {
+    if let Some(image) = row.host.as_deref().and_then(|h| favicons.image(h)) {
+        return (image, true);
+    }
+    let icon = match row.host.as_deref() {
+        Some(host) => Favicons::monogram_image(host, size),
+        None => symbol("globe", "Page"),
+    };
+    (icon, false)
 }
 
 impl Sidebar {
@@ -111,6 +130,29 @@ impl Sidebar {
         address_box.addSubview(&address);
         view.addSubview(&address_box);
 
+        let interact = PaintView::fill(mtm, &NSColor::colorWithSRGBRed_green_blue_alpha(1.0, 0.58, 0.0, 0.32), 8.0);
+        let interact_label = NSTextField::labelWithString(&NSString::from_str("Claude can interact"), mtm);
+        interact_label.setFont(Some(&NSFont::systemFontOfSize(12.0)));
+        interact_label.setTextColor(Some(&NSColor::whiteColor()));
+        interact_label.setFrame(NSRect::new(NSPoint::new(10.0, 5.0), NSSize::new(130.0, 16.0)));
+        interact.addSubview(&interact_label);
+        let interact_off = unsafe {
+            NSButton::buttonWithTitle_target_action(
+                &NSString::from_str("Turn Off"),
+                Some(target as &AnyObject),
+                Some(sel!(toggleClaudeInteract:)),
+                mtm,
+            )
+        };
+        interact_off.setBordered(false);
+        interact_off.setFont(Some(&NSFont::boldSystemFontOfSize(12.0)));
+        interact.addSubview(&interact_off);
+        interact.setHidden(true);
+        view.addSubview(&interact);
+
+        let favs = PaintView::container(mtm, true, false);
+        view.addSubview(&favs);
+
         let scroll = NSScrollView::initWithFrame(NSScrollView::alloc(mtm), NSRect::ZERO);
         scroll.setHasVerticalScroller(true);
         scroll.setHasHorizontalScroller(false);
@@ -134,6 +176,11 @@ impl Sidebar {
             stop_icon,
             rows: RefCell::default(),
             top_center: Cell::new(14.0),
+            frame: Cell::new(Frame { x: 0.0, y: 0.0, w: 0.0, h: 0.0 }),
+            favs,
+            favs_height: Cell::new(0.0),
+            interact,
+            interact_off,
         }
     }
 
@@ -141,19 +188,37 @@ impl Sidebar {
     /// jendela dari tepi atas sidebar.
     pub fn set_frame(&self, f: Frame, top_center: f64) {
         self.top_center.set(top_center);
+        self.frame.set(f);
         self.view.setFrame(NSRect::new(NSPoint::new(f.x, f.y), NSSize::new(f.w, f.h)));
+        self.layout_inner();
+    }
+
+    /// Menata isi sidebar dari atas ke bawah: baris atas, penanda interaksi
+    /// Claude, kolom alamat, grid favorit, lalu daftar yang bisa digulir.
+    fn layout_inner(&self) {
+        let f = self.frame.get();
         let w = f.w;
-        let row_y = (top_center - BUTTON / 2.0).max(0.0);
+        let row_y = (self.top_center.get() - BUTTON / 2.0).max(0.0);
         let buttons = [&self.claude, &self.reload, &self.forward, &self.back];
         for (i, button) in buttons.into_iter().enumerate() {
             let x = w - PAD - BUTTON - i as f64 * (BUTTON + 4.0);
             button.setFrame(NSRect::new(NSPoint::new(x, row_y), NSSize::new(BUTTON, BUTTON)));
         }
-        let address_y = row_y + BUTTON + 8.0;
+        let mut address_y = row_y + BUTTON + 8.0;
+        if !self.interact.isHidden() {
+            self.interact.setFrame(NSRect::new(NSPoint::new(PAD, address_y - 2.0), NSSize::new(w - 2.0 * PAD, 26.0)));
+            self.interact_off.setFrame(NSRect::new(NSPoint::new(w - 2.0 * PAD - 72.0, 3.0), NSSize::new(64.0, 20.0)));
+            address_y += 30.0;
+        }
         self.address_box
             .setFrame(NSRect::new(NSPoint::new(PAD, address_y), NSSize::new(w - 2.0 * PAD, ADDRESS_HEIGHT)));
         self.address.setFrame(NSRect::new(NSPoint::new(10.0, 4.0), NSSize::new(w - 2.0 * PAD - 20.0, 22.0)));
-        let list_y = address_y + ADDRESS_HEIGHT + 8.0;
+        let mut list_y = address_y + ADDRESS_HEIGHT + 8.0;
+        let favs_height = self.favs_height.get();
+        self.favs.setFrame(NSRect::new(NSPoint::new(0.0, list_y), NSSize::new(w, favs_height)));
+        if favs_height > 0.0 {
+            list_y += favs_height + 8.0;
+        }
         self.scroll.setFrame(NSRect::new(NSPoint::new(0.0, list_y), NSSize::new(w, (f.h - list_y - PAD).max(0.0))));
     }
 
@@ -179,6 +244,53 @@ impl Sidebar {
         }
     }
 
+    /// Ubin favorit di grid di atas daftar. Mengubah tinggi grid lalu menata ulang sidebar.
+    fn render_favorites(
+        &self,
+        model: &SidebarModel,
+        favicons: &Favicons,
+        target: &ActionTarget,
+        shown: &mut Vec<ShownRow>,
+    ) {
+        let mtm = MainThreadMarker::from(&*self.view);
+        for old in self.favs.subviews().iter() {
+            old.removeFromSuperview();
+        }
+        let inner = (self.frame.get().w - 2.0 * PAD).max(0.0);
+        let columns = tile_columns(inner);
+        let tile_w = ((inner - TILE_GAP * (columns as f64 - 1.0)) / columns as f64).max(0.0);
+        for (i, row) in model.favorites.iter().enumerate() {
+            let (icon, favicon) = row_icon(row, favicons, 20.0);
+            let view = TabRowView::new(mtm, row, RowStyle::Tile, &icon, tile_w, target);
+            let (r, c) = (i / columns, i % columns);
+            view.setFrameOrigin(NSPoint::new(
+                PAD + c as f64 * (tile_w + TILE_GAP),
+                r as f64 * (TILE_HEIGHT + TILE_GAP),
+            ));
+            self.favs.addSubview(&view);
+            shown.push(ShownRow { info: row.clone(), view, favicon });
+        }
+        let rows = model.favorites.len().div_ceil(columns);
+        let height = if rows == 0 { 0.0 } else { rows as f64 * (TILE_HEIGHT + TILE_GAP) - TILE_GAP };
+        self.favs_height.set(height);
+        self.layout_inner();
+    }
+
+    pub fn set_interact(&self, on: bool) {
+        self.interact.setHidden(!on);
+        self.layout_inner();
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn interact_visible(&self) -> bool {
+        !self.interact.isHidden()
+    }
+
+    #[cfg(debug_assertions)]
+    pub fn interact_off_button(&self) -> Retained<NSButton> {
+        self.interact_off.clone()
+    }
+
     /// Menggambar ulang daftar tab. Dipanggil dari putaran run loop berikutnya
     /// (lihat `AppState::layout_sidebar`), tidak dari dalam aksi baris.
     pub fn render(&self, model: &SidebarModel, favicons: &Favicons, target: &ActionTarget) {
@@ -187,25 +299,20 @@ impl Sidebar {
             old.removeFromSuperview();
         }
         let mut shown = Vec::new();
+        self.render_favorites(model, favicons, target, &mut shown);
         let width = self.scroll.contentSize().width;
         let row_w = (width - 2.0 * PAD).max(0.0);
         let mut y = 0.0;
         let add_rows = |rows: &[RowInfo], y: &mut f64, shown: &mut Vec<ShownRow>| {
             for row in rows {
-                let cached = row.host.as_deref().and_then(|h| favicons.image(h));
-                let favicon = cached.is_some();
-                let icon = cached.unwrap_or_else(|| match row.host.as_deref() {
-                    Some(host) => Favicons::monogram_image(host, 16.0),
-                    None => symbol("globe", "Page"),
-                });
-                let view = TabRowView::new(mtm, row, &icon, row_w, target);
+                let (icon, favicon) = row_icon(row, favicons, 16.0);
+                let view = TabRowView::new(mtm, row, RowStyle::Row, &icon, row_w, target);
                 view.setFrameOrigin(NSPoint::new(PAD, *y));
                 self.doc.addSubview(&view);
                 shown.push(ShownRow { info: row.clone(), view, favicon });
                 *y += ROW_HEIGHT + 2.0;
             }
         };
-        add_rows(&model.favorites, &mut y, &mut shown);
         if !model.pinned.is_empty() {
             self.doc.addSubview(&header(mtm, "PINNED", width, y));
             y += HEADER_HEIGHT;

@@ -23,6 +23,8 @@ pub struct RowInfo {
     pub active: bool,
     pub asleep: bool,
     pub playing: bool,
+    /// Slot Favorite/Pinned yang sudah berpindah dari alamat simpanannya.
+    pub saved_differs: bool,
 }
 
 impl RowInfo {
@@ -68,6 +70,7 @@ pub fn sidebar_model(tabs: &TabList) -> SidebarModel {
             active: tab.id == active,
             asleep: !tab.awake && tab.url.is_some(),
             playing: tab.media_active,
+            saved_differs: tab.kind != TabKind::Today && tab.saved_url.is_some() && tab.saved_url != tab.url,
         };
         match tab.kind {
             TabKind::Favorite => model.favorites.push(row),
@@ -145,10 +148,22 @@ mod tests {
             active: false,
             asleep: true,
             playing: true,
+            saved_differs: false,
         };
         assert_eq!(row.accessibility_label(), "Docs, example.com, asleep, playing audio");
         let plain = RowInfo { host: None, asleep: false, playing: false, ..row };
         assert_eq!(plain.accessibility_label(), "Docs");
+    }
+
+    #[test]
+    fn saved_differs_after_navigating_a_slot() {
+        let t0 = Instant::now();
+        let mut l = TabList::new(t0);
+        let p = l.open(Some(u("https://p.example/")), t0, true);
+        l.place(p, TabKind::Pinned, 0);
+        assert!(!sidebar_model(&l).pinned[0].saved_differs);
+        l.get_mut(p).unwrap().url = Some(u("https://p.example/other"));
+        assert!(sidebar_model(&l).pinned[0].saved_differs);
     }
 
     #[test]

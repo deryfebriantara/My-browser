@@ -1,8 +1,10 @@
-//! Satu baris tab di sidebar. Seluruh baris adalah tombol (`selectTab:`,
-//! tag = id tab), jadi klik mouse, VoiceOver, dan pengujian memakai jalur
-//! yang sama. Tombol tutup muncul saat kursor di atas baris.
+//! Satu baris tab (atau ubin favorit) di sidebar. Seluruh baris adalah tombol
+//! (`selectTab:`, tag = id tab), jadi klik mouse, VoiceOver, dan pengujian
+//! memakai jalur yang sama. Tombol tutup muncul saat kursor di atas baris;
+//! klik kanan membuka menu konteks tab.
 
 use crate::actions::ActionTarget;
+use crate::layout::TILE_HEIGHT;
 use browser_core::sidebar::RowInfo;
 use browser_core::tabs::TabKind;
 use browser_core::theme::SECONDARY_ALPHA;
@@ -10,16 +12,24 @@ use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool};
 use objc2::{AllocAnyThread, DefinedClass, MainThreadMarker, MainThreadOnly, Message, define_class, msg_send, sel};
 use objc2_app_kit::{
-    NSAccessibility, NSBezierPath, NSButton, NSColor, NSEvent, NSFont, NSImage, NSImageView, NSLineBreakMode,
-    NSTextField, NSTrackingArea, NSTrackingAreaOptions, NSView,
+    NSAccessibility, NSBezierPath, NSButton, NSColor, NSEvent, NSFont, NSImage, NSImageView, NSLineBreakMode, NSMenu,
+    NSMenuItem, NSTextField, NSTrackingArea, NSTrackingAreaOptions, NSView,
 };
 use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
 use std::cell::{Cell, RefCell};
 
 pub const ROW_HEIGHT: f64 = 28.0;
 
+/// Baris di daftar Pinned/Today, atau ubin di grid favorit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RowStyle {
+    Row,
+    Tile,
+}
+
 #[derive(Default)]
 pub struct RowIvars {
+    tile: Cell<bool>,
     active: Cell<bool>,
     hover: Cell<bool>,
     close: RefCell<Option<Retained<NSButton>>>,
@@ -45,16 +55,19 @@ define_class!(
     impl TabRowView {
         #[unsafe(method(drawRect:))]
         fn draw_rect(&self, _dirty: NSRect) {
-            let alpha = if self.ivars().active.get() {
-                0.24
-            } else if self.ivars().hover.get() {
-                0.10
+            let ivars = self.ivars();
+            let (active, hover, base, radius) =
+                if ivars.tile.get() { (0.28, 0.18, 0.12, 10.0) } else { (0.24, 0.10, 0.0, 8.0) };
+            let alpha = if ivars.active.get() {
+                active
+            } else if ivars.hover.get() {
+                hover
             } else {
-                0.0
+                base
             };
             if alpha > 0.0 {
                 NSColor::colorWithWhite_alpha(1.0, alpha).setFill();
-                NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(self.bounds(), 8.0, 8.0).fill();
+                NSBezierPath::bezierPathWithRoundedRect_xRadius_yRadius(self.bounds(), radius, radius).fill();
             }
         }
 
@@ -110,17 +123,62 @@ fn small_button(
     button
 }
 
+/// Menu klik kanan untuk satu tab; setiap item membawa tag = id tab.
+fn context_menu(mtm: MainThreadMarker, row: &RowInfo, target: &ActionTarget) -> Retained<NSMenu> {
+    let menu = NSMenu::new(mtm);
+    menu.setAutoenablesItems(false);
+    let add = |title: &str, action: objc2::runtime::Sel, enabled: bool| {
+        let item = unsafe {
+            NSMenuItem::initWithTitle_action_keyEquivalent(
+                NSMenuItem::alloc(mtm),
+                &NSString::from_str(title),
+                Some(action),
+                &NSString::new(),
+            )
+        };
+        unsafe { item.setTarget(Some(target as &AnyObject)) };
+        item.setTag(row.id.0 as isize);
+        item.setEnabled(enabled);
+        menu.addItem(&item);
+    };
+    match row.kind {
+        TabKind::Today => {
+            add("Pin Tab", sel!(togglePin:), true);
+            add("Add to Favorites", sel!(toggleFavorite:), true);
+        }
+        TabKind::Pinned => {
+            add("Unpin Tab", sel!(togglePin:), true);
+            add("Add to Favorites", sel!(toggleFavorite:), true);
+        }
+        TabKind::Favorite => add("Remove from Favorites", sel!(toggleFavorite:), true),
+    }
+    if row.kind != TabKind::Today {
+        add("Set Current Page as Pinned URL", sel!(setPinnedURL:), row.saved_differs);
+    }
+    add("Copy Link", sel!(copyTabLink:), row.url.is_some());
+    if !row.asleep {
+        add("Sleep Tab", sel!(sleepTab:), !row.active);
+    }
+    menu.addItem(&NSMenuItem::separatorItem(mtm));
+    let close = if row.kind == TabKind::Today { "Close Tab" } else { "Unload Tab" };
+    add(close, sel!(closeTabButton:), true);
+    menu
+}
+
 impl TabRowView {
     pub fn new(
         mtm: MainThreadMarker,
         row: &RowInfo,
+        style: RowStyle,
         icon: &NSImage,
         width: f64,
         target: &ActionTarget,
     ) -> Retained<Self> {
         let this = Self::alloc(mtm).set_ivars(RowIvars::default());
-        let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(width, ROW_HEIGHT));
+        let height = if style == RowStyle::Tile { TILE_HEIGHT } else { ROW_HEIGHT };
+        let frame = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(width, height));
         let this: Retained<Self> = unsafe { msg_send![super(this), initWithFrame: frame] };
+        this.ivars().tile.set(style == RowStyle::Tile);
         this.ivars().active.set(row.active);
         this.setBordered(false);
         this.setTitle(&NSString::new());
@@ -132,45 +190,26 @@ impl TabRowView {
         this.setAccessibilityLabel(Some(&NSString::from_str(&row.accessibility_label())));
         this.setAccessibilitySelected(row.active);
         this.setToolTip(Some(&NSString::from_str(&row.title)));
+        // SAFETY: menu dibuat di main thread dan dipegang oleh view.
+        unsafe { this.setMenu(Some(&context_menu(mtm, row, target))) };
         let text_alpha = if row.asleep { SECONDARY_ALPHA } else { 1.0 };
 
-        let image = NSImageView::imageViewWithImage(icon, mtm);
-        image.setFrame(NSRect::new(NSPoint::new(8.0, 6.0), NSSize::new(16.0, 16.0)));
-        image.setAlphaValue(text_alpha);
-        this.addSubview(&image);
-
-        let title = NSTextField::labelWithString(&NSString::from_str(&row.title), mtm);
-        title.setFont(Some(&NSFont::systemFontOfSize(13.0)));
-        title.setTextColor(Some(&NSColor::colorWithWhite_alpha(1.0, text_alpha)));
-        title.setLineBreakMode(NSLineBreakMode::ByTruncatingTail);
-        title.setUsesSingleLineMode(true);
-        title.setFrame(NSRect::new(NSPoint::new(32.0, 5.0), NSSize::new((width - 32.0 - 28.0).max(0.0), 17.0)));
-        this.addSubview(&title);
-        *this.ivars().title.borrow_mut() = Some(title);
-
-        let trailing = if row.playing {
-            Some(symbol("speaker.wave.2.fill", "Playing audio"))
-        } else if row.asleep {
-            Some(symbol("moon.fill", "Asleep"))
+        if style == RowStyle::Tile {
+            let image = NSImageView::imageViewWithImage(icon, mtm);
+            image.setFrame(NSRect::new(NSPoint::new(((width - 20.0) / 2.0).round(), 10.0), NSSize::new(20.0, 20.0)));
+            // Favicon di cache berukuran 16 pt (PNG 32 px); di ubin diperbesar ke 20 pt.
+            image.setImageScaling(objc2_app_kit::NSImageScaling::ScaleProportionallyUpOrDown);
+            image.setAlphaValue(text_alpha);
+            this.addSubview(&image);
+            if row.asleep {
+                let moon = NSImageView::imageViewWithImage(&symbol("moon.fill", "Asleep"), mtm);
+                moon.setContentTintColor(Some(&NSColor::colorWithWhite_alpha(1.0, SECONDARY_ALPHA)));
+                moon.setFrame(NSRect::new(NSPoint::new(width - 13.0, 4.0), NSSize::new(9.0, 9.0)));
+                this.addSubview(&moon);
+            }
         } else {
-            None
-        };
-        if let Some(glyph) = trailing {
-            let view = NSImageView::imageViewWithImage(&glyph, mtm);
-            view.setContentTintColor(Some(&NSColor::colorWithWhite_alpha(1.0, SECONDARY_ALPHA)));
-            view.setFrame(NSRect::new(NSPoint::new(width - 24.0, 7.0), NSSize::new(14.0, 14.0)));
-            this.addSubview(&view);
-            *this.ivars().glyph.borrow_mut() = Some(view);
+            this.add_row_parts(mtm, row, icon, width, text_alpha, target);
         }
-
-        let (name, label) = if row.kind == TabKind::Today { ("xmark", "Close Tab") } else { ("minus", "Unload Tab") };
-        let close = small_button(mtm, &symbol(name, label), target, sel!(closeTabButton:), row.id.0 as isize);
-        close.setToolTip(Some(&NSString::from_str(label)));
-        close.setContentTintColor(Some(&NSColor::whiteColor()));
-        close.setFrame(NSRect::new(NSPoint::new(width - 25.0, 6.0), NSSize::new(16.0, 16.0)));
-        close.setHidden(true);
-        this.addSubview(&close);
-        *this.ivars().close.borrow_mut() = Some(close);
 
         let options = NSTrackingAreaOptions::MouseEnteredAndExited
             | NSTrackingAreaOptions::ActiveAlways
@@ -186,6 +225,55 @@ impl TabRowView {
         };
         this.addTrackingArea(&area);
         this
+    }
+
+    /// Ikon, judul, tanda tidur/audio, dan tombol tutup untuk gaya baris.
+    fn add_row_parts(
+        &self,
+        mtm: MainThreadMarker,
+        row: &RowInfo,
+        icon: &NSImage,
+        width: f64,
+        text_alpha: f64,
+        target: &ActionTarget,
+    ) {
+        let image = NSImageView::imageViewWithImage(icon, mtm);
+        image.setFrame(NSRect::new(NSPoint::new(8.0, 6.0), NSSize::new(16.0, 16.0)));
+        image.setAlphaValue(text_alpha);
+        self.addSubview(&image);
+
+        let title = NSTextField::labelWithString(&NSString::from_str(&row.title), mtm);
+        title.setFont(Some(&NSFont::systemFontOfSize(13.0)));
+        title.setTextColor(Some(&NSColor::colorWithWhite_alpha(1.0, text_alpha)));
+        title.setLineBreakMode(NSLineBreakMode::ByTruncatingTail);
+        title.setUsesSingleLineMode(true);
+        title.setFrame(NSRect::new(NSPoint::new(32.0, 5.0), NSSize::new((width - 32.0 - 28.0).max(0.0), 17.0)));
+        self.addSubview(&title);
+        *self.ivars().title.borrow_mut() = Some(title);
+
+        let trailing = if row.playing {
+            Some(symbol("speaker.wave.2.fill", "Playing audio"))
+        } else if row.asleep {
+            Some(symbol("moon.fill", "Asleep"))
+        } else {
+            None
+        };
+        if let Some(glyph) = trailing {
+            let view = NSImageView::imageViewWithImage(&glyph, mtm);
+            view.setContentTintColor(Some(&NSColor::colorWithWhite_alpha(1.0, SECONDARY_ALPHA)));
+            view.setFrame(NSRect::new(NSPoint::new(width - 24.0, 7.0), NSSize::new(14.0, 14.0)));
+            self.addSubview(&view);
+            *self.ivars().glyph.borrow_mut() = Some(view);
+        }
+
+        let (name, label) = if row.kind == TabKind::Today { ("xmark", "Close Tab") } else { ("minus", "Unload Tab") };
+        let close = small_button(mtm, &symbol(name, label), target, sel!(closeTabButton:), row.id.0 as isize);
+        close.setToolTip(Some(&NSString::from_str(label)));
+        close.setContentTintColor(Some(&NSColor::whiteColor()));
+        close.setFrame(NSRect::new(NSPoint::new(width - 25.0, 6.0), NSSize::new(16.0, 16.0)));
+        close.setHidden(true);
+        self.addSubview(&close);
+        *self.ivars().close.borrow_mut() = Some(close);
     }
 
     /// Sama dengan kursor masuk atau keluar dari baris.

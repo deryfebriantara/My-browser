@@ -67,6 +67,11 @@ pub fn build(mtm: MainThreadMarker, target: &ActionTarget) -> Retained<NSMenu> {
             it("New Tab", sel!(newTab:), "t", cmd, t, 0),
             it("Close Tab", sel!(closeActiveTab:), "w", cmd, t, 0),
             it("Reopen Closed Tab", sel!(reopenClosedTab:), "t", cmd_shift, t, 0),
+            it("", sel!(goBack:), "", cmd, t, 0),
+            it("Pin Tab", sel!(togglePin:), "d", cmd, t, 0),
+            it("Add to Favorites", sel!(toggleFavorite:), "", cmd, t, 0),
+            it("Set Current Page as Pinned URL", sel!(setPinnedURL:), "", cmd, t, 0),
+            it("", sel!(goBack:), "", cmd, t, 0),
             it("Open Location", sel!(focusAddress:), "l", cmd, t, 0),
         ],
     ));

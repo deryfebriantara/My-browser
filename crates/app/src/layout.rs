@@ -10,6 +10,15 @@ pub const PANEL_WIDTH: f64 = 380.0;
 /// Lebar kartu halaman paling kecil sebelum sidebar dipersempit.
 pub const CARD_MIN: f64 = 320.0;
 pub const CARD_RADIUS: f64 = 10.0;
+/// Ubin favorit: lebar minimal, jarak antarubin, dan tinggi.
+pub const TILE_MIN: f64 = 44.0;
+pub const TILE_GAP: f64 = 6.0;
+pub const TILE_HEIGHT: f64 = 40.0;
+
+/// Jumlah kolom ubin favorit yang muat di lebar `inner_width`.
+pub fn tile_columns(inner_width: f64) -> usize {
+    (((inner_width + TILE_GAP) / (TILE_MIN + TILE_GAP)).floor() as usize).max(1)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Frame {
@@ -112,6 +121,14 @@ mod tests {
         for frame in [tiny.sidebar, tiny.card, tiny.panel.unwrap()] {
             assert!(frame.w >= 0.0 && frame.h >= 0.0, "{frame:?}");
         }
+    }
+
+    #[test]
+    fn tile_columns_fit_sidebar_width() {
+        assert_eq!(tile_columns(224.0), 4);
+        assert_eq!(tile_columns(184.0), 3);
+        assert_eq!(tile_columns(344.0), 7);
+        assert_eq!(tile_columns(10.0), 1);
     }
 
     #[test]

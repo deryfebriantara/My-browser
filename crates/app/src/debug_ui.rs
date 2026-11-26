@@ -135,6 +135,10 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
         "sidebar_click" => {
             let text = text.unwrap_or_default();
             let (id, part) = text.split_once(':').unwrap_or((text, ""));
+            if id == "interact_off" {
+                unsafe { state.ui.sidebar.interact_off_button().performClick(None) };
+                return ok(json!({"clicked": text}));
+            }
             let Ok(id) = id.parse::<u64>() else { return err("id tab tidak valid") };
             let target = state.ui.sidebar.rows().iter().find(|r| r.info.id.0 == id).map(|r| r.view.clone());
             let Some(row) = target else { return err("baris tab tidak ada di sidebar") };
@@ -150,6 +154,26 @@ pub fn handle(state: &Rc<AppState>, action: &str, text: Option<&str>) -> Control
             ok(json!({"clicked": text}))
         }
         "window_layout" => ok(window_layout(state)),
+        // "<id>:<judul item>": menjalankan item menu konteks baris itu, seperti
+        // klik kanan lalu memilih item tersebut.
+        "sidebar_menu" => {
+            let text = text.unwrap_or_default();
+            let Some((id, title)) = text.split_once(':') else { return err("format: <id>:<judul item>") };
+            let Ok(id) = id.parse::<u64>() else { return err("id tab tidak valid") };
+            let row = state.ui.sidebar.rows().iter().find(|r| r.info.id.0 == id).map(|r| r.view.clone());
+            let Some(row) = row else { return err("baris tab tidak ada di sidebar") };
+            let Some(menu) = row.menu() else { return err("baris tanpa menu konteks") };
+            let titles: Vec<String> = menu.itemArray().iter().map(|i| i.title().to_string()).collect();
+            let Some(index) = titles.iter().position(|t| t == title) else {
+                return err(&format!("item tidak ada; tersedia: {}", titles.join(", ")));
+            };
+            let enabled = menu.itemAtIndex(index as isize).is_some_and(|i| i.isEnabled());
+            if !enabled {
+                return err("item menu nonaktif");
+            }
+            menu.performActionForItemAtIndex(index as isize);
+            ok(json!({"performed": title}))
+        }
         // "<lebar>x<tinggi>" mengubah ukuran area isi jendela (seperti menyeret pojoknya).
         "window_size" => {
             let Some((w, h)) = text.unwrap_or_default().split_once('x') else { return err("format: <lebar>x<tinggi>") };
@@ -251,7 +275,12 @@ fn sidebar_state(state: &AppState) -> Value {
             })
             .collect()
     };
-    json!({"favorites": section(TabKind::Favorite), "pinned": section(TabKind::Pinned), "today": section(TabKind::Today)})
+    json!({
+        "favorites": section(TabKind::Favorite),
+        "pinned": section(TabKind::Pinned),
+        "today": section(TabKind::Today),
+        "interact_pill": state.ui.sidebar.interact_visible(),
+    })
 }
 
 fn window_layout(state: &AppState) -> Value {

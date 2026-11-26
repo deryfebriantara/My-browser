@@ -1,7 +1,8 @@
 //! Target aksi Objective-C untuk tombol, menu, address field, dan window.
 //! Semua handler hanya meneruskan ke `AppState`.
 
-use crate::state::AppState;
+use crate::state::{AppState, TabAction};
+use browser_core::tabs::TabKind;
 use objc2::rc::Retained;
 use objc2::runtime::{AnyObject, Bool, Sel};
 use objc2::{DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send, sel};
@@ -14,6 +15,12 @@ use std::rc::{Rc, Weak};
 
 pub struct TargetIvars {
     state: Weak<AppState>,
+}
+
+/// Tab dari tag pengirim (menu konteks baris); tag 0 (menu bar) berarti tab aktif.
+fn tab_from(sender: Option<&AnyObject>) -> Option<u64> {
+    let tag = tag_of(sender);
+    (tag > 0).then_some(tag as u64)
 }
 
 fn tag_of(sender: Option<&AnyObject>) -> isize {
@@ -47,6 +54,36 @@ define_class!(
         fn close_tab_button(&self, sender: Option<&AnyObject>) {
             let id = tag_of(sender) as u64;
             self.with(|s| s.close_tab(id));
+        }
+
+        #[unsafe(method(togglePin:))]
+        fn toggle_pin(&self, sender: Option<&AnyObject>) {
+            let id = tab_from(sender);
+            self.with(|s| s.tab_action(id, TabAction::TogglePin));
+        }
+
+        #[unsafe(method(toggleFavorite:))]
+        fn toggle_favorite(&self, sender: Option<&AnyObject>) {
+            let id = tab_from(sender);
+            self.with(|s| s.tab_action(id, TabAction::ToggleFavorite));
+        }
+
+        #[unsafe(method(setPinnedURL:))]
+        fn set_pinned_url(&self, sender: Option<&AnyObject>) {
+            let id = tab_from(sender);
+            self.with(|s| s.tab_action(id, TabAction::SetPinnedUrl));
+        }
+
+        #[unsafe(method(sleepTab:))]
+        fn sleep_tab(&self, sender: Option<&AnyObject>) {
+            let id = tab_from(sender);
+            self.with(|s| s.tab_action(id, TabAction::Sleep));
+        }
+
+        #[unsafe(method(copyTabLink:))]
+        fn copy_tab_link(&self, sender: Option<&AnyObject>) {
+            let id = tab_from(sender);
+            self.with(|s| s.tab_action(id, TabAction::CopyLink));
         }
 
         #[unsafe(method(selectTab:))]
@@ -193,6 +230,22 @@ define_class!(
                 let open = self.ivars().state.upgrade().is_some_and(|s| s.chat.is_open());
                 item.setState(if open { NSControlStateValueOn } else { NSControlStateValueOff });
                 return Bool::YES;
+            }
+            for (action, on, off) in [
+                (sel!(togglePin:), "Unpin Tab", "Pin Tab"),
+                (sel!(toggleFavorite:), "Remove from Favorites", "Add to Favorites"),
+            ] {
+                if item.action() == Some(action) {
+                    let Some(state) = self.ivars().state.upgrade() else { return Bool::NO };
+                    let Some((kind, blank)) = state.active_tab_kind() else { return Bool::NO };
+                    let current = if action == sel!(togglePin:) { TabKind::Pinned } else { TabKind::Favorite };
+                    item.setTitle(&objc2_foundation::NSString::from_str(if kind == current { on } else { off }));
+                    return Bool::new(!blank);
+                }
+            }
+            if item.action() == Some(sel!(setPinnedURL:)) {
+                let differs = self.ivars().state.upgrade().is_some_and(|s| s.active_saved_differs());
+                return Bool::new(differs);
             }
             if item.action() == Some(sel!(resetEmulation:)) {
                 let emulated = self.ivars().state.upgrade().is_some_and(|s| s.active_emulated());

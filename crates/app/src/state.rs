@@ -67,6 +67,16 @@ pub struct AppState {
     pub favicons: Favicons,
 }
 
+/// Aksi menu konteks tab di sidebar.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TabAction {
+    TogglePin,
+    ToggleFavorite,
+    SetPinnedUrl,
+    Sleep,
+    CopyLink,
+}
+
 struct NavInfo {
     can_back: bool,
     can_forward: bool,
@@ -191,6 +201,12 @@ impl AppState {
             self.ui.show_content(view, viewport);
             let space = self.browser.borrow().space().name.clone();
             self.ui.card.show_empty(nav.blank.then_some(space.as_str()));
+            // Berpindah tab mengakhiri pengeditan address bar (juga fokus
+            // otomatis saat jendela aktif), supaya field menampilkan alamat
+            // tab yang baru.
+            if !nav.blank && self.ui.sidebar.is_editing() {
+                self.ui.sidebar.address.abortEditing();
+            }
             if nav.blank {
                 self.ui.sidebar.address.setStringValue(&NSString::new());
                 self.focus_address();
@@ -238,6 +254,7 @@ impl AppState {
         let title = self.nav_info().title;
         self.update_window_title(&title);
         self.ui.card.set_outline(on);
+        self.ui.sidebar.set_interact(on);
         self.ui.show_notice(if on {
             "Claude can now click, type, and run JavaScript"
         } else {
@@ -403,6 +420,49 @@ impl AppState {
     pub fn close_tab(&self, id: u64) {
         self.browser.borrow_mut().close_tab(TabId(id), Instant::now());
         self.refresh();
+    }
+
+    /// Aksi pada satu tab dari menu konteks sidebar atau menu File (`None`: tab aktif).
+    pub fn tab_action(&self, id: Option<u64>, action: TabAction) {
+        let id = id.map_or_else(|| self.browser.borrow().tabs().active(), TabId);
+        match action {
+            TabAction::TogglePin => {
+                self.browser.borrow_mut().toggle_pin(id);
+            }
+            TabAction::ToggleFavorite => {
+                self.browser.borrow_mut().toggle_favorite(id);
+            }
+            TabAction::SetPinnedUrl => {
+                self.browser.borrow_mut().set_pinned_url(id);
+            }
+            TabAction::Sleep => {
+                self.browser.borrow_mut().request_sleep(id);
+            }
+            TabAction::CopyLink => {
+                let url = self.browser.borrow().tabs().get(id).and_then(|t| t.url.as_ref().map(|u| u.to_string()));
+                if let Some(url) = url {
+                    let board = objc2_app_kit::NSPasteboard::generalPasteboard();
+                    board.clearContents();
+                    // SAFETY: tipe string standar pasteboard.
+                    board
+                        .setString_forType(&NSString::from_str(&url), unsafe { objc2_app_kit::NSPasteboardTypeString });
+                }
+            }
+        }
+        self.refresh();
+    }
+
+    /// Bagian tab aktif dan apakah tab itu kosong (untuk judul menu Pin/Favorit).
+    pub fn active_tab_kind(&self) -> Option<(browser_core::tabs::TabKind, bool)> {
+        let b = self.browser.borrow();
+        b.tabs().get(b.tabs().active()).map(|t| (t.kind, t.is_blank()))
+    }
+
+    pub fn active_saved_differs(&self) -> bool {
+        let b = self.browser.borrow();
+        b.tabs().get(b.tabs().active()).is_some_and(|t| {
+            t.kind != browser_core::tabs::TabKind::Today && t.saved_url.is_some() && t.saved_url != t.url
+        })
     }
 
     pub fn select_tab(&self, id: u64) {
